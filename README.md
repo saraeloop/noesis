@@ -10,9 +10,7 @@ It extends LangGraph-style execution with an Intuition Layer that provides hint-
 ```bash
 git clone https://github.com/yourname/naosis.git
 cd naosis
-uv venv
-source .venv/bin/activate
-uv pip install -e .
+uv sync
 ```
 
 Then run your first episode:

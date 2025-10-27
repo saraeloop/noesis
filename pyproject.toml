@@ -6,3 +6,9 @@ requires-python = ">=3.11"
 
 [tool.uv]
 package = "noesis"
+
+
+
+├─ trace.py
+├─ config.py
+└─ intuition.py
