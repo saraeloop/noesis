@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Noesis Event",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "episode_id": { "type": "string" },
+    "phase": { "type": "string", "enum": ["reason", "act", "memory", "terminate", "intuition"] },
+    "payload": { "type": "object" },
+    "evidence_ids": { "type": "array", "items": { "type": "string" } },
+    "latency_ms": { "type": "number" },
+    "intuition": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string" },
+        "advice": { "type": "string" },
+        "applied": { "type": "boolean" },
+        "confidence": { "type": "number" },
+        "rationale": { "type": "string" }
+      }
+    }
+  },
+  "required": ["timestamp", "episode_id", "phase"]
+}

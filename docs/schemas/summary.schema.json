@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Noesis Evaluation Summary",
+  "type": "object",
+  "properties": {
+    "episode_id": { "type": "string" },
+    "task": { "type": "string" },
+    "flags": {
+      "type": "object",
+      "properties": {
+        "intuition": { "type": "boolean" }
+      }
+    },
+    "seed": { "type": "integer" },
+    "timings": { "type": "object" },
+    "outcome": { "type": "string" },
+    "steps": { "type": "integer" },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "success_rate": { "type": "number" },
+        "tool_correctness": { "type": "number" },
+        "termination_quality": { "type": "number" }
+      }
+    }
+  },
+  "required": ["episode_id", "task", "outcome"]
+}

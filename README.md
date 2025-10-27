@@ -91,4 +91,4 @@ All episode outputs include `schema_version` for reproducibility.
 
 ## 🪶 License
 
-MIT © 2025 Your Name
+Apache License 2.0

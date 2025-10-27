@@ -52,7 +52,7 @@ def run(task: str, *, seed: int = 0, intuition: bool = True, tags: Dict[str, Any
         tags=tags or {},
     ).__dict__
 
-    # Write an initial “start” event (placeholder)
+    # Write an initial “start” event 
     write_event(run_dir, {
         "ts": started_at,
         "episode_id": episode_id,
