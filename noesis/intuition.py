@@ -1,19 +1,49 @@
 """
-Intuition Layer (toggleable).
+Defines the Intuition interface. A lightweight advisory layer
+that can analyze the current agent state and emit directional hints.
 
-Contract:
-- When enabled, produce:
-    hints: List[{text, confidence, rationale}]
-    risk_forecast: List[{agent_id, risk, reason, watch_factors}]
-- When disabled, return empty lists.
+This layer is model-agnostic and designed for JSON-friendly outputs.
 """
-from __future__ import annotations
-from typing import Dict, Any, List, Tuple
 
-def generate_hints(task: str, prior_runs: list[dict] | None = None) -> List[Dict[str, Any]]:
-    """Stub: return empty list for now."""
-    return []
+from typing import Any, Dict, Optional, Protocol
+from dataclasses import dataclass, field
+import abc
 
-def forecast_risks(task: str, agents: dict | None = None) -> List[Dict[str, Any]]:
-    """Stub: return empty list for now."""
-    return []
+
+@dataclass
+class IntuitionEvent:
+    """Structured record of an intuition signal."""
+    kind: str
+    advice: str
+    confidence: float
+    applied: bool = False
+    rationale: Optional[str] = None
+    evidence_ids: list[str] = field(default_factory=list)
+
+
+class Intuition(Protocol):
+    """Interface for intuition policies."""
+
+    @abc.abstractmethod
+    def advise(self, state: Dict[str, Any]) -> Optional[IntuitionEvent]:
+        """
+        Analyze current agent state and optionally return an intuition event.
+
+        Parameters
+        ----------
+        state : dict
+            Snapshot of the agent’s reasoning context (memory, recent tools, etc.)
+
+        Returns
+        -------
+        Optional[IntuitionEvent]
+            Directional hint or None if no advice is triggered.
+        """
+        ...
+
+
+class NullIntuition:
+    """Baseline intuition that does nothing (Intuition OFF)."""
+
+    def advise(self, state: Dict[str, Any]) -> Optional[IntuitionEvent]:
+        return None
