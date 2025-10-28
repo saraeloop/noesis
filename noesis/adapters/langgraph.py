@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Protocol
 from os import PathLike
 
-from ..trace import write_event
-from ..intuition import Intuition, IntuitionEvent
+from ..trace.files import write_event
+from ..intuition.base import Intuition, IntuitionEvent
 
 __all__ = ["LangGraphAdapter", "Executor"]
 
