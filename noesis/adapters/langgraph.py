@@ -1,72 +1,37 @@
 """
 LangGraph adapter for Noēsis.
-
 Bridges LangGraph node lifecycle events into Noēsis trace + intuition systems.
-
-Responsibilities:
-  • Translate LangGraph callbacks into Noēsis event schema.
-  • Maintain lightweight state snapshots for intuition probes.
-  • Inject directional hints (pre/post node execution).
-  • Handle graceful termination and summary finalization.
-
-This adapter enables running standard LangGraph graphs under Noēsis
-with full introspection, traceability, and A/B testing for intuition policies.
-
-References:
-  - Integrates with LangGraph (MIT License)
-    © 2024 LangChain Inc.  https://github.com/langchain-ai/langgraph
 """
-from __future__ import annotations
 
+from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Dict, Optional, Protocol
+from os import PathLike
 
 from ..trace import write_event
 from ..intuition import Intuition, IntuitionEvent
 
+__all__ = ["LangGraphAdapter", "Executor"]
 
-# Executor contract
+
 class Executor(Protocol):
-    """Minimal execution contract Noēsis expects from any backend."""
+    """Backend execution contract expected by Noēsis."""
     def execute(
         self,
         *,
         task: str,
         episode_id: str,
-        run_dir,  # Path-like; duck-typed to avoid import cycles
+        run_dir: PathLike[str] | str,
         intuition: Optional[Intuition] = None,
         seed: int = 0,
         tags: Optional[Dict[str, Any]] = None,
     ) -> Any: ...
 
 
-# Registry 
-_GRAPH_REGISTRY: Dict[str, Callable[[], Any]] = {}
-
-
-def register_graph(name: str, factory: Callable[[], Any]) -> None:
-    """Register a LangGraph factory under a human-friendly key."""
-    key = name.strip().lower()
-    if not key:
-        raise ValueError("graph name must be non-empty")
-    _GRAPH_REGISTRY[key] = factory
-
-
-def create_graph(name: str) -> Any:
-    """Instantiate a previously-registered graph by key."""
-    key = name.strip().lower()
-    try:
-        return _GRAPH_REGISTRY[key]()
-    except KeyError:
-        available = ", ".join(sorted(_GRAPH_REGISTRY.keys()))
-        raise ValueError(f"unknown graph '{name}'. registered: [{available}]") from None
-
-
-
-# LangGraphAdapter
 @dataclass
 class _State:
+    """Minimal state snapshot carried across the run for advisory hooks."""
     history: list
     tools_seen: list
 
@@ -75,26 +40,20 @@ class LangGraphAdapter:
     """
     Wrap a LangGraph graph to emit Noēsis-compatible events and apply intuition.
 
-    Usage:
-        graph = create_graph("react")         # via registry
-        adapter = LangGraphAdapter(graph)
-        adapter.execute(task=..., episode_id=..., run_dir=..., intuition=policy)
-
     Notes:
-      - Today we call `graph.run(task)` as a placeholder. In a later pass,
-        attach LangGraph node/tool callbacks to capture granular events.
+      - Placeholder integration invokes `graph.run(task)`.
+      - Future: attach to LangGraph node/tool callbacks for granular tracing.
     """
 
     def __init__(self, graph: Any) -> None:
         self.graph = graph
         self._state = _State(history=[], tools_seen=[])
 
-    # helpers 
     @staticmethod
     def _ts() -> str:
         return datetime.now(timezone.utc).isoformat()
 
-    def _log(self, run_dir, episode_id: str, phase: str, payload: Dict[str, Any]) -> None:
+    def _log(self, run_dir: PathLike[str] | str, episode_id: str, phase: str, payload: Dict[str, Any]) -> None:
         write_event(
             run_dir,
             {
@@ -106,18 +65,17 @@ class LangGraphAdapter:
             },
         )
 
-    # execution 
     def execute(
         self,
         *,
         task: str,
         episode_id: str,
-        run_dir,
+        run_dir: PathLike[str] | str,
         intuition: Optional[Intuition] = None,
         seed: int = 0,
         tags: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        # Pre-run intuition (directional hint)
+        # Pre-run advisory
         if intuition:
             evt: IntuitionEvent | None = intuition.advise(
                 {
@@ -143,18 +101,24 @@ class LangGraphAdapter:
                     },
                 )
 
-        # TODO: hook LangGraph callbacks to emit per-node/tool events.
+        # Execution boundary
         self._log(run_dir, episode_id, "reason", {"note": "enter graph.run", "task": task})
 
         try:
-            # Placeholder API; adjust to your concrete LangGraph interface.
-            result = self.graph.run(task)
+            # Prefer `.run(task)`; fall back to callable(graph)(task).
+            if hasattr(self.graph, "run"):
+                result = self.graph.run(task)  # type: ignore[attr-defined]
+            elif callable(self.graph):
+                result = self.graph(task)      # type: ignore[call-arg]
+            else:
+                raise TypeError("graph object is neither runnable (.run) nor callable")
+
             self._log(run_dir, episode_id, "observe", {"result_excerpt": str(result)[:400]})
             self._log(run_dir, episode_id, "terminate", {"status": "ok"})
             return result
 
         except Exception as e:
-            # TODO: map exception types to structured error payloads.
+            # Failure boundary
             self._log(run_dir, episode_id, "error", {"message": str(e)})
             self._log(run_dir, episode_id, "terminate", {"status": "error"})
             raise
