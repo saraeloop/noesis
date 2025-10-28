@@ -1,7 +1,6 @@
 """
 Facade exposing the public API:
     run, summary, events, metrics, list, last, set, paths
-Internals (LangGraph wiring, tools, IO) can evolve without breaking this API.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -23,11 +22,7 @@ from .intuition import Intuition, NullIntuition, IntuitionEvent
 
 SCHEMA_VERSION = "1.0.0"
 
-# --------------------------------------------------------------------------- #
 # Public API
-# --------------------------------------------------------------------------- #
-
-
 def set(**overrides: Any) -> None:
     """Update global configuration (paths, agents file, tasks file, timeout)."""
     _cfg.set(**overrides)
