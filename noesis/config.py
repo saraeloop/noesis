@@ -1,33 +1,46 @@
+# noesis/config.py
 """
 Global, minimally invasive configuration for Noēsis.
 
 Design:
-- Keep a tiny set of knobs (paths, agents file, tasks file, timeouts).
-- Store in a module-level dict; avoid hidden state elsewhere.
-- Only `set()` mutates config; reads are pure.
+- Tiny set of knobs (paths, agents file, tasks file, timeouts, intuition mode).
+- Stored in a module-level dataclass; only `set()` mutates.
+- `get()` returns a plain, JSON-friendly dict (no Path/Enum leakage).
 """
+# noesis/config.py
 from __future__ import annotations
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+import builtins as _builtins  # <-- add this
+
+from .intuition.mode import IntuitionMode
 
 DEFAULT_RUNS_DIR = Path("runs")
 DEFAULT_AGENTS = "agents.yaml"
 DEFAULT_TASKS = "tasks.yaml"
 
-@dataclass
+@dataclass(frozen=True)
 class Config:
     runs_dir: Path = DEFAULT_RUNS_DIR
     agents: str = DEFAULT_AGENTS
     tasks: str = DEFAULT_TASKS
     timeout_sec: int = 60
+    intuition_mode: IntuitionMode = IntuitionMode.ADVISORY
 
-_config = Config()
+_config: Config = Config()
+
+def _normalize_intuition_mode(val: Any) -> IntuitionMode:
+    if isinstance(val, IntuitionMode):
+        return val
+    if isinstance(val, str):
+        return IntuitionMode(val.lower().strip())
+    raise ValueError(f"invalid intuition_mode: {val!r}")
 
 def get() -> Dict[str, Any]:
-    """Return a copy of the current config as plain dict (read-only to callers)."""
     c = asdict(_config)
     c["runs_dir"] = str(_config.runs_dir)
+    c["intuition_mode"] = _config.intuition_mode.value
     return c
 
 def set(**overrides: Any) -> None:
@@ -37,13 +50,27 @@ def set(**overrides: Any) -> None:
         agents: str
         tasks: str
         timeout_sec: int
+        intuition_mode: str | IntuitionMode
     """
     global _config
+
+    allowed = {"runs_dir", "agents", "tasks", "timeout_sec", "intuition_mode"}
+    # Use built-in set, not this function name:
+    unknown = _builtins.set(overrides) - allowed   # <-- fix
+    if unknown:
+        raise ValueError(f"unknown config keys: {sorted(unknown)}")
+
+    new = _config
     if "runs_dir" in overrides:
-        _config.runs_dir = Path(overrides["runs_dir"])
+        new = replace(new, runs_dir=Path(overrides["runs_dir"]))
     if "agents" in overrides:
-        _config.agents = str(overrides["agents"])
+        new = replace(new, agents=str(overrides["agents"]))
     if "tasks" in overrides:
-        _config.tasks = str(overrides["tasks"])
+        new = replace(new, tasks=str(overrides["tasks"]))
     if "timeout_sec" in overrides:
-        _config.timeout_sec = int(overrides["timeout_sec"])
+        new = replace(new, timeout_sec=int(overrides["timeout_sec"]))
+    if "intuition_mode" in overrides:
+        mode = _normalize_intuition_mode(overrides["intuition_mode"])
+        new = replace(new, intuition_mode=mode)
+
+    _config = new

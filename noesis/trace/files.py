@@ -15,7 +15,14 @@ SUMMARY_FILE = "summary.json"
 
 # Canonical phases for event.phase
 PHASES: set[str] = {
-    "start", "intuition", "reason", "act", "memory", "terminate", "error"
+    "start",
+    "intuition",
+    "direction",
+    "reason",
+    "act",
+    "memory",
+    "terminate",
+    "error",
 }
 
 # Minimal schema contract for events

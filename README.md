@@ -110,6 +110,80 @@ last = ns.last()
 When `intuition=True`, Noēsis injects pre-run advisory hints and risk forecasts derived from prior episodes.
 This enables controlled comparisons between baseline vs. intuition-guided reasoning — essentially, memory for foresight.
 
+### 🧭 Direction Layer (intuition with steering)
+
+**Author a policy (hint / intervene / veto)**
+
+```python
+import noesis as ns
+
+class Guardrails(ns.DirectedIntuition):
+    def advise(self, state):
+        task = state["task"].lower()
+        if "compare" in task and "gdp" in task:
+            return self.intervene(
+                advice="Normalize city metrics before comparing.",
+                patch={"normalize": True},
+                rationale="Enforce apples-to-apples comparisons.",
+            )
+        if "leak" in task:
+            return self.veto(
+                advice="Stop: policy prohibits data exfiltration steps.",
+                rationale="Policy compliance",
+            )
+        return self.hint(advice="Call out culture alongside economics.")
+```
+
+**Run (direction ON by default when a policy is supplied).**
+
+```python
+episode_id = ns.solve("Compare Tokyo and Kyoto GDP", using="react", intuition=Guardrails())
+```
+
+For engineers: patches are applied before graph invocation, so you can enforce preconditions (e.g., `normalize=True`) without changing your graph code. Every intervention is logged with a diff, so you can A/B and roll back cleanly.
+
+Example script: `uv run python -m noesis.examples.direction_demo.direction_demo`
+
+**Under the hood:**
+- Snapshot state (task, tags, rolling history, tools) and hand it to the policy.
+- Log the advisory signal and, if present, the resulting direction event with target/scope metadata.
+- Apply the shallow patch to dict inputs (diff logged) or skip with a reason if unsupported.
+- Veto raises `NoesisVeto`, ending the episode with a `direction` event marked `status='blocked'`.
+
+**Inspect: summary, metrics, events.**
+
+```python
+summ = ns.summary(episode_id)
+summ["metrics"]["direction_events"]   # total direction signals
+summ["metrics"]["direction_applied"]  # patches merged successfully
+summ["metrics"]["direction_vetoed"]   # runs blocked by policy
+events = ns.events(episode_id)
+[e for e in events if e["phase"] == "direction"]
+```
+
+Typical outcomes: `+1–2` `direction_events`, `direction_applied=1`, and an extra `direction` line in `events.jsonl` showing `{target:'input', scope:'episode', applied:true, patch:{normalize:True}}`.
+
+Patches are shallow-merged into dict inputs (no deep merge); string tasks are mapped via the adapter’s input mapper first. If the graph expects non-dict inputs and you skip an input mapper, the patch is ignored but still logged.
+
+Edge cases: if multiple policies emit patches, the last event you return wins, and every attempt is logged. Veto raises a typed `NoesisVeto`, so you can catch policy stops separately from runtime failures. A future `direction_helped` metric can compare paired runs to flag whether steering improved outcomes.
+
+Dashboards: `summary(...)["flags"]["direction"]` reports `{applied, vetoed}` so you don’t have to recompute counts. Every direction payload is stamped with the policy name/version plus a normalized reason (`applied`, `empty_patch`, `not_dict_input`, `policy_low_confidence`, `veto`).
+
+Confidence threshold: interventions apply when `confidence ≥ 0.5`. Below that, they log `policy_low_confidence` and leave the graph input untouched. You can surface a different cutoff via config (e.g., `ns.set(direction_min_confidence=0.6)`) in a follow-up patch.
+
+Quick peek pattern (copy/paste ready):
+
+```python
+import json, noesis as ns
+ep = ns.last()
+flags = ns.summary(ep)["flags"]["direction"]
+print("Direction:", flags)
+events = [e for e in ns.events(ep) if e["phase"] == "direction"]
+print(json.dumps(events[-1]["payload"], indent=2) if events else "—")
+```
+
+`flags["direction"]["last_diff"]` gives you a human-friendly glimpse, e.g. `['normalize: false→true']`.
+
 ---
 
 ## 🔌 Adapter Model
@@ -129,7 +203,6 @@ ep = ns.solve("Compare two cities", using="react")
 | LangGraph | `adapters/langgraph.py` | ✅ Implemented |
 | CrewAI | `adapters/crewai.py` | 🔜 Planned |
 | AutoGen | `adapters/autogen.py` | 🔜 Planned |
-| Metis | `adapters/metis.py` | 🔜 Planned |
 
 Adapters make Noēsis framework-agnostic and future-proof.
 
@@ -161,7 +234,7 @@ noesis/
 
 ## ⚙️ Versioning
 
-- **Package:** noesis v0.1.0
+- **Package:** noesis v0.1.0-alpha
 - **Schema:** summary.schema.json v1.0.0
 - **Python:** ≥ 3.11
 

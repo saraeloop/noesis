@@ -3,4 +3,5 @@ __pycache__/
 dist/
 build/
 runs/
-*.pyc
+*.pycuv.lock
+uv.lock

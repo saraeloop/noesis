@@ -11,6 +11,13 @@ from typing import Dict, List, Any
 
 def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Placeholder: return a metrics dict with default values; replace later."""
+    direction_events = [e for e in events if e.get("phase") == "direction"]
+    direction_applied = sum(
+        1
+        for e in direction_events
+        if e.get("payload", {}).get("applied") and e.get("payload", {}).get("status") != "blocked"
+    )
+    direction_vetoed = sum(1 for e in direction_events if e.get("payload", {}).get("status") == "blocked")
     return {
         "success": 0,
         "steps": len(events),
@@ -19,4 +26,7 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         "tool_correctness": 0.0,
         "coherence": 0.0,
         "intuition_alignment": 0.0,
+        "direction_events": len(direction_events),
+        "direction_applied": direction_applied,
+        "direction_vetoed": direction_vetoed,
     }

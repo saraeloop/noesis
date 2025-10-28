@@ -9,7 +9,7 @@ Stable public API:
     summary(episode_id) -> dict
     events(episode_id, *, stream=False) -> list[dict] | Iterator[dict]
     metrics(episode_id) -> dict
-    list(limit=50, since=None) -> list[dict]
+    list_runs(limit=50, since=None) -> list[dict]
     last() -> str | None
     set(**overrides) -> None
     paths(episode_id) -> dict
@@ -21,11 +21,49 @@ from __future__ import annotations
 __version__ = "0.1.0a0"
 __schema_version__ = "1.0.0"
 
-# Public API re-exports
-from .core import solve, run, run_using, run_graph, set
-from .io import summary, events, metrics, list, last, paths
+# Core execution API
+from .core import (
+    solve,
+    run,
+    run_using,
+    run_graph,
+    set,
+)
 
-__all__ = [
-    "solve", "run", "run_using", "run_graph", "set",
-    "summary", "events", "metrics", "list", "last", "paths",
-]
+# Read/inspect API 
+from .io import (
+    summary,
+    events,
+    metrics,
+    paths,
+    last,
+    list_runs,
+)
+# Ergonomic intuition surface 
+from .intuition.base import Intuition, IntuitionEvent, NullIntuition, DirectedIntuition, DirectiveKind
+from .intuition.mode import IntuitionMode
+from .exceptions import NoesisError, NoesisVeto
+
+__all__ = (
+    # core
+    "solve",
+    "run",
+    "run_using",
+    "run_graph",
+    "set",
+    "summary",
+    "events",
+    "metrics",
+    "paths",
+    "last",
+    "list_runs",
+    # intuition
+    "Intuition",
+    "IntuitionEvent",
+    "NullIntuition",
+    "DirectedIntuition",
+    "DirectiveKind",
+    "IntuitionMode",
+    "NoesisError",
+    "NoesisVeto",
+)
