@@ -1,38 +1,49 @@
 """
-Defines the Intuition interface. A lightweight advisory layer
-that can analyze the current agent state and emit directional hints.
+Intuition contracts: lightweight advisory layer emitting directional hints.
 
-This layer is model-agnostic and designed for JSON-friendly outputs.
+JSON-friendly by design; model- and framework-agnostic.
 """
 
-from typing import Any, Dict, Optional, Protocol
+from __future__ import annotations
 from dataclasses import dataclass, field
-import abc
+from typing import Any, Dict, Optional, Protocol, TypeAlias
+
+# Public surface
+__all__ = ["IntuitionEvent", "Intuition", "NullIntuition", "StateSnapshot"]
+
+# TODO: consider Literal types for 'kind' once policy enums stabilize
+StateSnapshot: TypeAlias = Dict[str, Any]
 
 
-@dataclass
+@dataclass(slots=True)
 class IntuitionEvent:
     """Structured record of an intuition signal."""
-    kind: str
-    advice: str
-    confidence: float
-    applied: bool = False
+    kind: str                     # e.g., "forecast", "risk", "routing", "budget"
+    advice: str                   # human-readable, actionable hint
+    confidence: float             # [0.0, 1.0]
+    applied: bool = False         # whether the system acted on this advice
     rationale: Optional[str] = None
     evidence_ids: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # Clamp to a sane range; avoid downstream math errors.
+        if self.confidence < 0.0:
+            self.confidence = 0.0
+        elif self.confidence > 1.0:
+            self.confidence = 1.0
+
 
 class Intuition(Protocol):
-    """Interface for intuition policies."""
+    """Interface for intuition policies (pure advisory)."""
 
-    @abc.abstractmethod
-    def advise(self, state: Dict[str, Any]) -> Optional[IntuitionEvent]:
+    def advise(self, state: StateSnapshot) -> Optional[IntuitionEvent]:
         """
-        Analyze current agent state and optionally return an intuition event.
+        Analyze the current reasoning context and optionally emit a hint.
 
         Parameters
         ----------
-        state : dict
-            Snapshot of the agent’s reasoning context (memory, recent tools, etc.)
+        state : StateSnapshot
+            Snapshot of task, history, tools_seen, tags, etc.
 
         Returns
         -------
@@ -43,7 +54,7 @@ class Intuition(Protocol):
 
 
 class NullIntuition:
-    """Baseline intuition that does nothing (Intuition OFF)."""
-
-    def advise(self, state: Dict[str, Any]) -> Optional[IntuitionEvent]:
+    """Baseline intuition: no-op policy used when intuition is OFF."""
+    def advise(self, state: StateSnapshot) -> Optional[IntuitionEvent]:
+        # Intentional no-op; keeps call sites uniform.
         return None
