@@ -184,6 +184,11 @@ print(json.dumps(events[-1]["payload"], indent=2) if events else "—")
 
 `flags["direction"]["last_diff"]` gives you a human-friendly glimpse, e.g. `['normalize: false→true']`.
 
+Further reading:
+- [Direction overview](docs/direction/overview.md) – lifecycle, troubleshooting, CI guardrails.
+- [Direction how-to](docs/direction/howto.md) – step-by-step tutorial with code.
+- [Direction reference](docs/direction/reference.md) – reason codes, metrics, API cheatsheet.
+
 ---
 
 ## 🔌 Adapter Model
