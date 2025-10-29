@@ -86,10 +86,8 @@ print(json.dumps(events[-1]["payload"], indent=2) if events else "—")
 
 ### Where to start
 
-- Read the [How-to guide](howto.md) for a step-by-step tutorial.
-- Run the examples:
-  - `noesis.examples.city_analysis` for advisory-only policies.
-  - `noesis.examples.direction_demo` for interventions, vetoes, and stress tests.
+- Read the [How-to guide](howto.md) for a step-by-step tutorial featuring an inlined policy class you can adapt.
+- Build a small regression harness that compares `baseline` vs. `directed` runs in your own flows.
 
 ### CI guardrail snippet
 
@@ -97,7 +95,7 @@ print(json.dumps(events[-1]["payload"], indent=2) if events else "—")
 # Fail CI if any nightly guardrail vetoes the run
 python - <<'PY'
 import noesis as ns, sys
-from noesis.examples.direction_demo.policy import GuardrailsPolicy
+from policies.guardrails import GuardrailsPolicy  # adjust to your project
 
 ep = ns.solve("Nightly QA tasks", using="guardrails", intuition=GuardrailsPolicy())
 metrics = ns.summary(ep)["metrics"]

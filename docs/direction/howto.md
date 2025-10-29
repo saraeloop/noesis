@@ -7,10 +7,6 @@ This guide walks through turning an existing LangGraph flow into a direction-awa
 3. Run baseline vs. directed episodes and capture the diff.
 4. Handle vetoes and stress-test edge cases.
 
-The tutorial mirrors the runnable example in `noesis/examples/direction_demo/`.
-
----
-
 ## 1. Provide an input mapper
 
 ```python
@@ -46,7 +42,7 @@ Key points:
 ## 2. Author a policy
 
 ```python
-# noesis/examples/direction_demo/policy.py
+# policies/guardrails.py
 import noesis as ns
 
 class GuardrailsPolicy(ns.DirectedIntuition):
@@ -86,7 +82,7 @@ Tips:
 
 ```python
 import noesis as ns
-from noesis.examples.direction_demo.policy import GuardrailsPolicy
+from policies.guardrails import GuardrailsPolicy
 
 ns.set(intuition_mode="hybrid")
 
@@ -131,28 +127,7 @@ All vetoes produce a `direction` event with `reason: "veto"` and terminate the e
 
 ---
 
-## 5. Stress-test edge cases
-
-The demo script includes four policies to validate behavior:
-
-| Policy | Expectation |
-|--------|-------------|
-| `EmptyPatchPolicy` | Logs `reason: "empty_patch"`, no input change. |
-| `LowConfidencePolicy` | `confidence=0.4` → `reason: "policy_low_confidence"`. |
-| `MultiPatchPolicy` | Applies multiple keys, diff shows every change. |
-| `StringInputPolicy` | Graph takes a plain string → `reason: "not_dict_input"`. |
-
-Run them quickly:
-
-```bash
-uv run python -m noesis.examples.direction_demo.direction_demo
-```
-
-Scroll to the “Stress tests” section in the output for reason codes and diffs.
-
----
-
-## 6. Next steps
+## 5. Next steps
 
 - Integrate direction checks into CI (see `docs/direction/overview.md` for a ready-to-copy snippet) and fail the build whenever `direction_vetoed > 0`.
 - Compose multiple policies by dispatching on task/tags and returning a single `IntuitionEvent`—today the last direction event wins.

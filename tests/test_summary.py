@@ -19,10 +19,15 @@ def test_metrics_keys_dedup(tmp_path):
     episode_id = ns.run(task="Metrics sanity check", intuition=False)
     metrics = ns.summary(episode_id)["metrics"]
 
+    assert metrics["success"] == 1  # baseline run() now terminates with status 'ok'
     assert "veto_rate" in metrics
     assert "top_reasons" in metrics
     assert "direction_veto_rate" not in metrics
     assert "direction_top_reasons" not in metrics
+    assert "action_efficiency" not in metrics
+    experimental = metrics.get("experimental")
+    assert isinstance(experimental, dict)
+    assert experimental.get("coherence") is None
 
 
 def test_duration_and_mode_flags(tmp_path):
@@ -45,6 +50,20 @@ def test_direction_policy_omitted_when_absent(tmp_path):
     direction_flags = ns.summary(episode_id)["flags"]["direction"]
 
     assert "policy" not in direction_flags
+
+
+def test_success_metric(tmp_path):
+    runs_dir = tmp_path / "runs-success"
+    ns.set(runs_dir=str(runs_dir))
+
+    class Adapter:
+        def run(self, task):
+            return {"result": task}
+
+    episode_id = ns.solve("Success task", using=lambda: Adapter(), intuition=False)
+    metrics = ns.summary(episode_id)["metrics"]
+
+    assert metrics["success"] == 1
 
 
 def test_insight_phase_validates(tmp_path):

@@ -14,6 +14,7 @@
 - Flags now report `mode="off"` when intuition is disabled and omit empty policy tags.
 - Rebuilt the CLI: shared `-j/-q` ergonomics, new `version` command, experimental `new` scaffolder stub, and richer human output across `list`, `show`, and `events`.
 - CLI polish: global `--compact/--verbose/--debug`, `noesis insight` shortcut, compact demo output by default, and stress tests gated behind `--stress/--debug`.
+- Metrics trimmed to trusted fields (`success`, direction stats, latencies); placeholders now live under `metrics.experimental` with nulls until defined.
 - Insight latency metrics now ceil to the nearest millisecond, avoiding `0` when direction events follow immediately after `start`.
 
 ### Tests

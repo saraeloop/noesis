@@ -54,6 +54,14 @@ def _ms_between(a: Optional[str], b: Optional[str]) -> Optional[int]:
         return None
 
 
+def _success_from_events(events: List[Dict[str, Any]]) -> int:
+    for event in reversed(events):
+        if event.get("phase") == "terminate":
+            status = (event.get("payload") or {}).get("status")
+            return 1 if status == "ok" else 0
+    return 0
+
+
 def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute roll-up metrics from an episode summary + event stream."""
     direction_events = [e for e in events if e.get("phase") == "direction"]
@@ -108,14 +116,10 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
     base_steps = len(events)
     ideal_steps = summary.get("metrics", {}).get("ideal_steps", 0)
 
-    return {
-        "success": summary.get("metrics", {}).get("success", 0),
+    metrics: Dict[str, Any] = {
+        "success": _success_from_events(events),
         "steps": base_steps,
         "ideal_steps": ideal_steps,
-        "action_efficiency": 0.0,            # TBD (when act-phase semantics land)
-        "tool_correctness": 0.0,             # TBD
-        "coherence": 0.0,                    # TBD
-        "intuition_alignment": 0.0,          # keep placeholder for now
         "direction_events": len(direction_events),
         "direction_applied": len(applied),
         "direction_vetoed": len(vetoed),
@@ -127,3 +131,11 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         "policy_confidence_histogram": buckets,
         "alignment": alignment,
     }
+
+    metrics["experimental"] = {
+        "action_efficiency": None,
+        "coherence": None,
+        "tool_correctness": None,
+        "intuition_alignment": None,
+    }
+    return metrics

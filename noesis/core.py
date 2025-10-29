@@ -348,7 +348,7 @@ def run(
         intuition_impl,
         {"task": task, "seed": seed, "history": [], "tools_seen": [], "tags": tags or {}},
     )
-    _terminate_event(run_dir, episode_id, {"status": "noop"})
+    _terminate_event(run_dir, episode_id, {"status": "ok"})
 
     _finalize_summary(
         run_dir=run_dir,

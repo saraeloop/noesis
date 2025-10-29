@@ -16,6 +16,8 @@ uv add noesis
 noesis run "Summarize this repo"
 noesis solve react "Weekly plan for a 3-person team"
 noesis events $(noesis list -j | jq -r '.[0].episode_id') --phase insight -j
+# optional: uv tool install .   # or pipx install .
+# then `noesis --help` works everywhere
 ```
 
 Prefer Python?
@@ -98,6 +100,7 @@ runs = ns.list_runs(limit=10)
 | `NoesisVeto` | Exception raised on policy veto |
 
 > 🧪 The helper `noesis.insight.compute_metrics()` is experimental and may change between releases.
+> New metrics land under `metrics.experimental` until they graduate into the stable set below.
 
 ---
 
@@ -191,16 +194,12 @@ Install the package (or run via `uv run`) and use the bundled CLI for quick chec
 
 ```bash
 noesis run "Summarize the weekly report"
-noesis solve "Audit transaction pipeline" --using guardrails --policy noesis.examples.direction_demo.policy:GuardrailsPolicy
+noesis solve "Audit transaction pipeline" --using my_adapter
 noesis list --limit 5
 noesis show ep_20250101_120000_dead_beef_s0
 noesis events ep_20250101_120000_dead_beef_s0 --phase direction
 noesis events ep_20250101_120000_dead_beef_s0 --phase insight -j
 noesis version
-noesis demo direction
-# Baseline: ep_… (applied=0)
-# Directed: ep_… (diff=normalize false→true)
-# Tip: add --verbose for full trace
 ```
 
 > 🧪 `noesis new <flow|policy> <name>` is an experimental scaffolder stub — it prints a helpful reminder while templates are in flight.
@@ -215,7 +214,7 @@ noesis demo direction
 | `noesis show` | Episode summary snapshot |
 | `noesis events` | Stream events across phases |
 | `noesis insight` | Shortcut for `events --phase insight` |
-| `noesis demo` | Guided showcase (use `--verbose` for details) |
+| `noesis version` | CLI and core version info |
 
 ### 🎚️ Verbosity controls
 
@@ -245,7 +244,7 @@ Extend policy aliases directly from config:
 
 ```toml
 [noesis.policy_aliases]
-guardrails = "noesis.examples.direction_demo.policy:GuardrailsPolicy"
+guardrails = "your_project.policies:GuardrailsPolicy"
 ```
 
 ---
