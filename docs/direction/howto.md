@@ -157,4 +157,4 @@ Scroll to the “Stress tests” section in the output for reason codes and diff
 - Integrate direction checks into CI (see `docs/direction/overview.md` for a ready-to-copy snippet) and fail the build whenever `direction_vetoed > 0`.
 - Compose multiple policies by dispatching on task/tags and returning a single `IntuitionEvent`—today the last direction event wins.
 - Track direction metrics across releases by diffing `direction_applied` / `direction_vetoed` in `summary(ep)` for your regression suites.
-
+- Capture shared defaults in `noesis.toml` (runs_dir, direction_min_confidence) so scripts and CLI share the same settings.

@@ -51,6 +51,18 @@ Reason codes emitted in `direction.payload.reason`:
 - Direction currently patches dict inputs only. Noēsis will wrap bare strings as `{"task": <text>}` by default; provide `__noesis_input_mapper__` or `input_mapper` to emit richer shapes.
 - Policy identity in logs appears as `PolicyClass@__version__` when a `__version__` attribute exists, otherwise just `PolicyClass`.
 
+### Configuration file
+
+Drop a `noesis.toml` (or `.noesis.toml`) next to your project to set shared defaults:
+
+```toml
+runs_dir = "runs"
+direction_min_confidence = 0.6
+# intuition_mode = "hybrid"
+```
+
+The loader picks it up automatically so CLI invocations and imports share the same settings.
+
 ### Troubleshooting
 
 - No diff shown → the patch was empty (`reason: "empty_patch"`).

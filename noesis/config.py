@@ -12,7 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 from typing import Any, Dict, Optional
-import builtins as _builtins  # <-- add this
+import builtins as _builtins
+import tomllib
 
 from .intuition.mode import IntuitionMode
 
@@ -20,6 +21,8 @@ DEFAULT_RUNS_DIR = Path("runs")
 DEFAULT_AGENTS = "agents.yaml"
 DEFAULT_TASKS = "tasks.yaml"
 DEFAULT_DIRECTION_MIN_CONFIDENCE = 0.5
+CONFIG_FILE_CANDIDATES = ("noesis.toml", ".noesis.toml")
+ALLOWED_KEYS = {"runs_dir", "agents", "tasks", "timeout_sec", "intuition_mode", "direction_min_confidence"}
 
 @dataclass(frozen=True)
 class Config:
@@ -54,12 +57,11 @@ def set(**overrides: Any) -> None:
         tasks: str
         timeout_sec: int
         intuition_mode: str | IntuitionMode
+        direction_min_confidence: float
     """
     global _config
 
-    allowed = {"runs_dir", "agents", "tasks", "timeout_sec", "intuition_mode", "direction_min_confidence"}
-    # Use built-in set, not this function name:
-    unknown = _builtins.set(overrides) - allowed   # <-- fix
+    unknown = _builtins.set(overrides) - ALLOWED_KEYS
     if unknown:
         raise ValueError(f"unknown config keys: {sorted(unknown)}")
 
@@ -79,3 +81,23 @@ def set(**overrides: Any) -> None:
         new = replace(new, direction_min_confidence=float(overrides["direction_min_confidence"]))
 
     _config = new
+
+
+def _load_config_file() -> None:
+    for name in CONFIG_FILE_CANDIDATES:
+        path = Path.cwd() / name
+        if not path.is_file():
+            continue
+        with path.open("rb") as fh:
+            data = tomllib.load(fh)
+        table = data.get("noesis", data)
+        overrides: Dict[str, Any] = {}
+        for key in ALLOWED_KEYS:
+            if key in table:
+                overrides[key] = table[key]
+        if overrides:
+            set(**overrides)
+        break
+
+
+_load_config_file()

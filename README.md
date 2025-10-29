@@ -201,6 +201,16 @@ noesis show ep_20250101_120000_dead_beef_s0
 noesis events ep_20250101_120000_dead_beef_s0 --phase direction
 ```
 
+### ⚙️ Configuration
+
+Create a `noesis.toml` (or `.noesis.toml`) in your project root to share defaults between CLI and Python:
+
+```toml
+runs_dir = "runs"
+direction_min_confidence = 0.6
+# intuition_mode = "hybrid"
+```
+
 ---
 
 ## 🔌 Adapter Model
