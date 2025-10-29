@@ -1,7 +1,20 @@
 """
-Trace event helpers.
+Trace events: append-only runtime record format for Noēsis.
 
-Defines the append-only JSONL contract used to capture runtime events.
+Purpose
+-------
+Defines the canonical JSONL schema used to capture execution traces
+across all adapters, agents, and intuition layers. Every event is a
+single line of structured JSON written to `events.jsonl`, forming an
+immutable chronological ledger of the reasoning process.
+
+Design
+------
+- Append-only by contract — no rewrites, ensuring replay fidelity.
+- Human-readable JSON Lines format (1 event per line).
+- Phases (`start`, `intuition`, `direction`, `reason`, `observe`,
+  `terminate`, `error`, etc.) describe the reasoning lifecycle.
+- Schema validation guards consistency without blocking extensions.
 """
 
 from __future__ import annotations
@@ -22,6 +35,7 @@ PHASES: set[str] = {
     "memory",
     "terminate",
     "error",
+    "insight",
 }
 
 # Minimal schema contract for events

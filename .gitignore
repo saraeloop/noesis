@@ -1,7 +1,27 @@
+# Bytecode & cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
 .venv/
+.env/
+
+# Build artifacts
 dist/
 build/
-runs/
-*.pycuv.lock
+*.egg-info/
+
+# Package manager locks
 uv.lock
+*.pycuv.lock
+
+# Test and runtime data
+.pytest_cache/
+runs/
+
+# Editor & OS junk
+.DS_Store
+.vscode/
+.idea/

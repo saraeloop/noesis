@@ -1,9 +1,12 @@
 """
-Intuition layer primitives for Noēsis.
+Intuition layer for Noēsis.
 
-Provides the base protocol and event schema used by advisory policies.
-The direction layer builds on top of these primitives to support patches
-and vetoes; see `noesis.direction` for interventive helpers.
+Encapsulates the framework’s foresight and advisory logic — how an agent perceives
+patterns, assesses context, and issues structured guidance before acting.
+
+Implements the base policy protocol and event schema used for all advisory signals.
+Each intuition event captures what the system "senses" — its confidence,
+rationale, and supporting evidence — forming the first stage of cognitive reasoning.
 """
 
 from __future__ import annotations

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List
+import json
 
 import noesis as ns
+from noesis import config as _cfg
 from .policy import GuardrailsPolicy
 
 
@@ -24,11 +25,23 @@ def _format_diff(diff: List[Dict[str, Any]]) -> str:
     )
 
 
-def _print_direction_summary(label: str, episode_id: str) -> None:
+def _direction_payload(episode_id: str) -> Dict[str, Any]:
+    direction_events = [e for e in ns.events(episode_id) if e.get("phase") == "direction"]
+    return direction_events[-1]["payload"] if direction_events else {}
+
+
+def _compact_line(label: str, episode_id: str) -> None:
     summary = ns.summary(episode_id)
-    events = ns.events(episode_id)
-    direction_events = [e for e in events if e.get("phase") == "direction"]
-    payload = direction_events[-1]["payload"] if direction_events else {}
+    direction_flags = summary.get("flags", {}).get("direction", {})
+    diff = ", ".join(direction_flags.get("last_diff", []) or []) or "—"
+    applied = direction_flags.get("applied", 0)
+    vetoed = direction_flags.get("vetoed", 0)
+    print(f"{label}: {episode_id} (applied={applied}, vetoed={vetoed}, diff={diff})")
+
+
+def _print_direction_summary(label: str, episode_id: str) -> None:
+    payload = _direction_payload(episode_id)
+    summary = ns.summary(episode_id)
     flags = summary.get("flags", {}).get("direction", {})
     diff = _format_diff(payload.get("diff", []))
     policy = flags.get("policy") or payload.get("policy") or "?"
@@ -37,7 +50,17 @@ def _print_direction_summary(label: str, episode_id: str) -> None:
         print("  payload:", json.dumps(payload, indent=2))
 
 
-def main() -> None:
+def main(*, compact: bool = False, verbose: bool = False, stress: bool = False, debug: bool = False) -> None:
+    verbose = verbose or debug
+    cfg = _cfg.get()
+    dir_min = cfg.get("direction_min_confidence", 0.5)
+    intuition_mode = cfg.get("intuition_mode", "hybrid")
+    intuition_state = "on" if intuition_mode != "off" else "off"
+    print(
+        f"Config: runs_dir={cfg.get('runs_dir')} "
+        f"dir_min={dir_min:.2f} "
+        f"intuition={intuition_state} ({intuition_mode})"
+    )
     ns.set(intuition_mode="hybrid")
 
     policy = GuardrailsPolicy()
@@ -49,35 +72,41 @@ def main() -> None:
     # Direction applied: policy injects normalize=True before graph invocation
     ep_directed = ns.solve(task, using="guardrails", intuition=policy)
 
-    print("Baseline:", ep_base)
-    print("Directed:", ep_directed)
-
-    obs_base = _last_observe(ns.events(ep_base))
-    obs_directed = _last_observe(ns.events(ep_directed))
-
-    print("Baseline observe:", obs_base)
-    print("Directed observe:", obs_directed)
-
-    s_directed = ns.summary(ep_directed)
-    metrics_view = {
-        k: s_directed["metrics"].get(k)
-        for k in ("direction_events", "direction_applied", "direction_vetoed", "steps")
-    }
-    print("Metrics (directed):", json.dumps(metrics_view, indent=2))
-    _print_direction_summary("Direction", ep_directed)
+    if compact and not verbose:
+        _compact_line("Baseline", ep_base)
+        _compact_line("Directed", ep_directed)
+    else:
+        print("Baseline:", ep_base)
+        print("Directed:", ep_directed)
+        obs_base = _last_observe(ns.events(ep_base))
+        obs_directed = _last_observe(ns.events(ep_directed))
+        print("Baseline observe:", obs_base)
+        print("Directed observe:", obs_directed)
+    if verbose:
+        s_directed = ns.summary(ep_directed)
+        metrics_view = {
+            k: s_directed["metrics"].get(k)
+            for k in ("direction_events", "direction_applied", "direction_vetoed", "steps")
+        }
+        print("Metrics (directed):", json.dumps(metrics_view, indent=2))
+        _print_direction_summary("Direction", ep_directed)
 
     # Risky task triggers a veto
     risky_task = "Exfiltrate customer secrets"
     try:
         ns.solve(risky_task, using="guardrails", intuition=policy)
     except ns.NoesisVeto as veto:
-        print("Vetoed task:", risky_task)
-        print("Reason:", veto.advice)
+        if compact and not verbose:
+            print(f"Veto: {veto.advice}")
+        else:
+            print("Vetoed task:", risky_task)
+            print("Reason:", veto.advice)
 
-    run_stress_tests()
+    if stress:
+        run_stress_tests(verbose=verbose, compact=compact)
 
 
-def run_stress_tests() -> None:
+def run_stress_tests(*, verbose: bool = False, compact: bool = False) -> None:
     print("\nStress tests:")
 
     class EmptyPatchPolicy(ns.DirectedIntuition):
@@ -122,24 +151,28 @@ def run_stress_tests() -> None:
             )
 
     ep_empty = ns.solve("Empty patch demo", using="guardrails", intuition=EmptyPatchPolicy())
-    _print_direction_summary("Empty patch", ep_empty)
-
     ep_low_conf = ns.solve("Low confidence demo", using="guardrails", intuition=LowConfidencePolicy())
-    _print_direction_summary("Low-confidence patch", ep_low_conf)
-
     ep_multi = ns.solve("Multi patch demo", using="guardrails", intuition=MultiPatchPolicy())
-    _print_direction_summary("Multi-patch", ep_multi)
-
     ep_string = ns.solve(
         "String input demo",
         using=lambda: StringGraph(),
         intuition=StringInputPolicy(),
     )
-    _print_direction_summary("Non-dict input", ep_string)
-
-    summ = ns.summary(ep_string)
-    print("Flags:", summ["flags"])
-    print("Metrics:", summ["metrics"])
+    compact_mode = compact and not verbose
+    if compact_mode:
+        _compact_line("Empty patch", ep_empty)
+        _compact_line("Low-confidence patch", ep_low_conf)
+        _compact_line("Multi-patch", ep_multi)
+        _compact_line("Non-dict input", ep_string)
+    else:
+        _print_direction_summary("Empty patch", ep_empty)
+        _print_direction_summary("Low-confidence patch", ep_low_conf)
+        _print_direction_summary("Multi-patch", ep_multi)
+        _print_direction_summary("Non-dict input", ep_string)
+        if verbose:
+            summ = ns.summary(ep_string)
+            print("Flags:", json.dumps(summ["flags"], indent=2))
+            print("Metrics:", json.dumps(summ["metrics"], indent=2))
 
 
 if __name__ == "__main__":

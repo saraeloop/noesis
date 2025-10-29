@@ -1,8 +1,9 @@
 """
-Direction layer helpers for Noēsis.
+Direction layer for Noēsis.
 
-Extends the intuition primitives with ergonomic constructors for
-interventions, diffs, and veto-style signals.
+Encodes the framework’s capacity to steer, translating intuition into action.
+Direction policies can adjust inputs, apply guarded patches, or veto unsafe paths,
+allowing the system to influence outcomes while remaining transparent and traceable.
 """
 
 from __future__ import annotations

@@ -1,13 +1,18 @@
 """
-Read-only convenience API for inspecting past episodes.
+Introspection and trace I/O for Noēsis.
 
-Functions:
-    summary()  →  Load episode summary JSON
-    events()   →  Load or stream event logs
-    metrics()  →  Extract computed metrics
-    list_runs() → List prior runs with brief metadata
-    last()     →  Get most recent episode ID
-    paths()    →  Canonical file paths for an episode
+Provides a stable, read-only interface to past execution artifacts:
+    • summary()  →  load episode summary JSON
+    • events()   →  iterate or stream structured event logs
+    • metrics()  →  extract computed metrics from summaries
+    • list_runs() → enumerate prior runs with brief metadata
+    • last()     →  return the most recent episode ID
+    • paths()    →  resolve canonical file locations
+
+Design goals:
+    - Immutable by design (read-only surface)
+    - Aligned with trace schema for easy analysis
+    - Serves as the bridge between runtime episodes and the insight layer
 """
 from __future__ import annotations
 from pathlib import Path

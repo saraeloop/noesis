@@ -9,28 +9,23 @@ It adds layers of Intuition, Direction, and Insight, forming a cognitive loop yo
 
 ## 🚀 Quickstart (uv)
 
+Install and go:
+
 ```bash
-git clone https://github.com/yourname/noesis.git
-cd noesis
-uv sync
+uv add noesis
+noesis run "Summarize this repo"
+noesis solve react "Weekly plan for a 3-person team"
+noesis events $(noesis list -j | jq -r '.[0].episode_id') --phase insight -j
 ```
 
-Run your first episode:
+Prefer Python?
 
 ```python
 import noesis as ns
 
 ep = ns.run(task="Summarize", seed=42, intuition=True)
-ns.summary(ep)
-ns.metrics(ep)
-```
-
-Outputs:
-
-```
-runs/<episode_id>/
- ├─ events.jsonl   # step-by-step trace
- └─ summary.json   # metrics, hints, forecasts, results
+summary = ns.summary(ep)
+summary["metrics"]
 ```
 
 ---
@@ -84,24 +79,25 @@ import noesis as ns
 ep   = ns.run(task="demo", seed=0, intuition=True)     # baseline (no adapter)
 summ = ns.summary(ep)
 evts = ns.events(ep)
-mets = ns.metrics(ep)
+metrics = summ["metrics"]
 
 ns.set(runs_dir="./runs", agents="agents.yaml")
-eps  = ns.list(limit=10)
-last = ns.last()
+runs = ns.list_runs(limit=10)
 ```
 
 | Function | Description |
 |----------|-------------|
 | `run()` | Execute one episode (baseline) |
 | `solve()` | Run using an external adapter (e.g. LangGraph) |
-| `summary()` | Load summary JSON |
+| `summary()` | Load summary JSON (metrics included) |
 | `events()` | Load or stream events |
-| `metrics()` | Return computed metrics |
-| `list()` | List prior runs |
-| `last()` | Get most recent run ID |
+| `list_runs()` | List prior runs |
 | `set()` | Override global config |
-| `paths()` | Return canonical file paths |
+| `Intuition` | Base class for advisory policies |
+| `DirectedIntuition` | Helper base for hints/interventions/vetoes |
+| `NoesisVeto` | Exception raised on policy veto |
+
+> 🧪 The helper `noesis.insight.compute_metrics()` is experimental and may change between releases.
 
 ---
 
@@ -196,10 +192,42 @@ Install the package (or run via `uv run`) and use the bundled CLI for quick chec
 ```bash
 noesis run "Summarize the weekly report"
 noesis solve "Audit transaction pipeline" --using guardrails --policy noesis.examples.direction_demo.policy:GuardrailsPolicy
-noesis list-runs --limit 5
+noesis list --limit 5
 noesis show ep_20250101_120000_dead_beef_s0
 noesis events ep_20250101_120000_dead_beef_s0 --phase direction
+noesis events ep_20250101_120000_dead_beef_s0 --phase insight -j
+noesis version
+noesis demo direction
+# Baseline: ep_… (applied=0)
+# Directed: ep_… (diff=normalize false→true)
+# Tip: add --verbose for full trace
 ```
+
+> 🧪 `noesis new <flow|policy> <name>` is an experimental scaffolder stub — it prints a helpful reminder while templates are in flight.
+
+### 🧾 Cheat sheet
+
+| Command | Purpose |
+|---------|---------|
+| `noesis run` | Baseline episode (no adapter) |
+| `noesis solve` | Run via adapter/flow |
+| `noesis list` | Recent runs (compact table) |
+| `noesis show` | Episode summary snapshot |
+| `noesis events` | Stream events across phases |
+| `noesis insight` | Shortcut for `events --phase insight` |
+| `noesis demo` | Guided showcase (use `--verbose` for details) |
+
+### 🎚️ Verbosity controls
+
+| Flag | Effect |
+|------|--------|
+| `--compact` | Compact output (default unless overridden) |
+| `--verbose` | Detailed output (metrics, payloads) |
+| `--debug` | Verbose plus debugging/stress info |
+| `--stress` | Demo-only: include stress tests |
+| Env | `NOESIS_VERBOSE=1`, `NOESIS_DEBUG=1`, `NOESIS_COMPACT=0/1` |
+
+Global flags apply before the subcommand, e.g. `noesis --verbose demo direction`.
 
 ### ⚙️ Configuration
 
@@ -209,6 +237,15 @@ Create a `noesis.toml` (or `.noesis.toml`) in your project root to share default
 runs_dir = "runs"
 direction_min_confidence = 0.6
 # intuition_mode = "hybrid"
+```
+
+Noēsis automatically loads `noesis.toml` / `.noesis.toml` from the current working directory (falling back to parent directories) and then applies any `NOESIS_*` environment overrides. Calls to `ns.set(...)` take precedence for the lifetime of the process, so CLI demos will reflect any overrides you apply after import.
+
+Extend policy aliases directly from config:
+
+```toml
+[noesis.policy_aliases]
+guardrails = "noesis.examples.direction_demo.policy:GuardrailsPolicy"
 ```
 
 ---
@@ -227,9 +264,12 @@ ep = ns.solve("Compare two cities", using="react")
 
 | Framework | Adapter path | Status |
 |-----------|--------------|--------|
-| LangGraph | `adapters/langgraph.py` | ✅ Implemented |
-| CrewAI | `adapters/crewai.py` | 🔜 Planned |
+| LangGraph | `adapters/langgraph.py` | ✅ Stable |
+| CrewAI | `adapters/crewai.py` | 🧪 Experimental |
+| OpenAI Assistants | `adapters/assistant.py` | 🧪 Experimental |
 | AutoGen | `adapters/autogen.py` | 🔜 Planned |
+
+> 🧪 Both `CrewAIAdapter` and `AssistantsAdapter` are experimental surfaces; expect breaking changes while the integrations stabilize.
 
 Adapters make Noēsis framework-agnostic and future-proof.
 
@@ -262,7 +302,7 @@ noesis/
 
 ## ⚙️ Versioning
 
-- **Package:** noesis v0.2.0
+- **Package:** noesis v0.3.1
 - **Schema:** summary.schema.json v1.0.0
 - **Python:** ≥ 3.11
 

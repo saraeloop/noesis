@@ -1,7 +1,17 @@
 """
-Summary file helpers.
+Trace summaries: atomic read/write helpers for per-episode snapshots.
 
-Handles atomic reads/writes for the per-episode summary snapshot.
+Purpose
+-------
+Manages the `summary.json` file that captures the final state of each
+Noēsis episode. Summaries aggregate metadata, metrics, and direction
+flags after execution.
+
+Design
+------
+- Atomic writes via a temporary file to prevent corruption on crash.
+- Human-readable JSON with stable key ordering.
+- Always safe to read; missing files yield `{}` instead of errors.
 """
 
 from __future__ import annotations
@@ -17,10 +27,15 @@ SUMMARY_FILE = "summary.json"
 __all__ = ["SUMMARY_FILE", "write_summary", "read_summary"]
 
 
+
+# Internal Utilities
+
 def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
-    """Atomic JSON write to prevent partial files on crash."""
+    """Write JSON atomically to avoid partial writes on crash."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent)) as tmp:
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", delete=False, dir=str(path.parent)
+    ) as tmp:
         json.dump(data, tmp, ensure_ascii=False, indent=2)
         tmp.flush()
         os.fsync(tmp.fileno())
@@ -28,16 +43,19 @@ def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
     tmp_path.replace(path)  # POSIX atomic move
 
 
+
+# Public API
+
 def write_summary(dir_path: Path, summary: Dict[str, Any]) -> None:
-    """Write summary.json atomically."""
+    """Atomically write `summary.json` under the given episode directory."""
     _atomic_write_json(dir_path / SUMMARY_FILE, summary)
 
 
 def read_summary(dir_path: Path) -> Dict[str, Any]:
-    """Read summary.json ({} if missing)."""
+    """Read `summary.json`, returning an empty dict if missing."""
     p = dir_path / SUMMARY_FILE
     if not p.exists():
-        # TODO: log warning if missing during active session
+        # Future: log warning if missing during active session
         return {}
     with p.open("r", encoding="utf-8") as f:
         return json.load(f)

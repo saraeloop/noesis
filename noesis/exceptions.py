@@ -1,4 +1,11 @@
-"""Custom exception hierarchy for Noēsis."""
+"""
+Exception hierarchy for Noēsis.
+
+Defines the system’s control boundaries, where reasoning escalates into
+explicit failure or veto. These exceptions mark deliberate interruptions
+in an agent’s cognitive loop, ensuring that intervention remains safe,
+auditable, and intentional.
+"""
 
 from __future__ import annotations
 

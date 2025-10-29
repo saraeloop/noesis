@@ -1,39 +1,64 @@
-# noesis/config.py
 """
-Global, minimally invasive configuration for Noēsis.
+Global configuration for Noēsis.
 
-Design:
-- Tiny set of knobs (paths, agents file, tasks file, timeouts, intuition mode).
-- Stored in a module-level dataclass; only `set()` mutates.
-- `get()` returns a plain, JSON-friendly dict (no Path/Enum leakage).
+Principles
+- Minimal knobs: paths, timeouts, intuition mode, direction confidence.
+- Immutable dataclass held at module scope; only `set()` mutates the singleton.
+- `get()` returns a plain JSON-safe dict (no Path/Enum leakage).
+- Auto-load from `noesis.toml` / `.noesis.toml` (current dir or parents).
+- Optional env overrides for CI/local via `NOESIS_*` variables.
 """
-# noesis/config.py
+
 from __future__ import annotations
-from dataclasses import dataclass, asdict, replace
+
+from dataclasses import dataclass, asdict, replace, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 import builtins as _builtins
+import os
 import tomllib
 
 from .intuition import IntuitionMode
+
+# Defaults & allowed keys
 
 DEFAULT_RUNS_DIR = Path("runs")
 DEFAULT_AGENTS = "agents.yaml"
 DEFAULT_TASKS = "tasks.yaml"
 DEFAULT_DIRECTION_MIN_CONFIDENCE = 0.5
+DEFAULT_TIMEOUT_SEC = 60
+DEFAULT_POLICY_ALIASES: Dict[str, str] = {}
+
 CONFIG_FILE_CANDIDATES = ("noesis.toml", ".noesis.toml")
-ALLOWED_KEYS = {"runs_dir", "agents", "tasks", "timeout_sec", "intuition_mode", "direction_min_confidence"}
+
+ALLOWED_KEYS = {
+    "runs_dir",
+    "agents",
+    "tasks",
+    "timeout_sec",
+    "intuition_mode",
+    "direction_min_confidence",
+    "policy_aliases",
+}
+
+
+# Config model (immutable)
 
 @dataclass(frozen=True)
 class Config:
     runs_dir: Path = DEFAULT_RUNS_DIR
     agents: str = DEFAULT_AGENTS
     tasks: str = DEFAULT_TASKS
-    timeout_sec: int = 60
+    timeout_sec: int = DEFAULT_TIMEOUT_SEC
     intuition_mode: IntuitionMode = IntuitionMode.ADVISORY
     direction_min_confidence: float = DEFAULT_DIRECTION_MIN_CONFIDENCE
+    policy_aliases: Dict[str, str] = field(default_factory=dict)
+
 
 _config: Config = Config()
+
+
+# Helpers
 
 def _normalize_intuition_mode(val: Any) -> IntuitionMode:
     if isinstance(val, IntuitionMode):
@@ -42,12 +67,62 @@ def _normalize_intuition_mode(val: Any) -> IntuitionMode:
         return IntuitionMode(val.lower().strip())
     raise ValueError(f"invalid intuition_mode: {val!r}")
 
+
+def _find_config_path() -> Optional[Path]:
+    """Search upwards from CWD for the first matching config file."""
+    cur = Path.cwd()
+    for parent in (cur, *cur.parents):
+        for name in CONFIG_FILE_CANDIDATES:
+            p = parent / name
+            if p.is_file():
+                return p
+    return None
+
+
+def _load_config_file() -> None:
+    """Load `noesis.toml` / `.noesis.toml` if found, applying allowed keys."""
+    path = _find_config_path()
+    if not path:
+        return
+    with path.open("rb") as fh:
+        data = tomllib.load(fh)
+    table = data.get("noesis", data)  # support both top-level and [noesis] table
+    overrides: Dict[str, Any] = {k: table[k] for k in ALLOWED_KEYS if k in table}
+    if overrides:
+        set(**overrides)
+
+
+def _load_env_overrides() -> None:
+    """Apply NOESIS_* environment variables (CI-friendly)."""
+    env: Dict[str, Any] = {}
+    if "NOESIS_RUNS_DIR" in os.environ:
+        env["runs_dir"] = os.environ["NOESIS_RUNS_DIR"]
+    if "NOESIS_AGENTS" in os.environ:
+        env["agents"] = os.environ["NOESIS_AGENTS"]
+    if "NOESIS_TASKS" in os.environ:
+        env["tasks"] = os.environ["NOESIS_TASKS"]
+    if "NOESIS_TIMEOUT_SEC" in os.environ:
+        env["timeout_sec"] = os.environ["NOESIS_TIMEOUT_SEC"]
+    if "NOESIS_INTUITION_MODE" in os.environ:
+        env["intuition_mode"] = os.environ["NOESIS_INTUITION_MODE"]
+    if "NOESIS_DIR_MIN_CONFIDENCE" in os.environ:
+        env["direction_min_confidence"] = os.environ["NOESIS_DIR_MIN_CONFIDENCE"]
+    if env:
+        set(**env)
+
+
+
+# Public API
+
 def get() -> Dict[str, Any]:
+    """Return current config as a JSON-safe dict."""
     c = asdict(_config)
     c["runs_dir"] = str(_config.runs_dir)
     c["intuition_mode"] = _config.intuition_mode.value
     c["direction_min_confidence"] = float(_config.direction_min_confidence)
+    c["policy_aliases"] = dict(_config.policy_aliases)
     return c
+
 
 def set(**overrides: Any) -> None:
     """
@@ -55,49 +130,73 @@ def set(**overrides: Any) -> None:
         runs_dir: str | Path
         agents: str
         tasks: str
-        timeout_sec: int
+        timeout_sec: int (> 0)
         intuition_mode: str | IntuitionMode
-        direction_min_confidence: float
+        direction_min_confidence: float in [0.0, 1.0]
     """
     global _config
 
     unknown = _builtins.set(overrides) - ALLOWED_KEYS
     if unknown:
-        raise ValueError(f"unknown config keys: {sorted(unknown)}")
+        allowed = ", ".join(sorted(ALLOWED_KEYS))
+        bad = ", ".join(sorted(unknown))
+        raise ValueError(f"unknown config keys: {bad} (allowed: {allowed})")
 
     new = _config
+
     if "runs_dir" in overrides:
-        new = replace(new, runs_dir=Path(overrides["runs_dir"]))
+        rd = Path(overrides["runs_dir"])
+        # DX: ensure the directory exists so later I/O never explodes on first run.
+        rd.mkdir(parents=True, exist_ok=True)
+        new = replace(new, runs_dir=rd)
+
     if "agents" in overrides:
         new = replace(new, agents=str(overrides["agents"]))
+
     if "tasks" in overrides:
         new = replace(new, tasks=str(overrides["tasks"]))
+
     if "timeout_sec" in overrides:
-        new = replace(new, timeout_sec=int(overrides["timeout_sec"]))
+        ts = int(overrides["timeout_sec"])
+        if ts <= 0:
+            raise ValueError("timeout_sec must be > 0")
+        new = replace(new, timeout_sec=ts)
+
     if "intuition_mode" in overrides:
         mode = _normalize_intuition_mode(overrides["intuition_mode"])
         new = replace(new, intuition_mode=mode)
+
     if "direction_min_confidence" in overrides:
-        new = replace(new, direction_min_confidence=float(overrides["direction_min_confidence"]))
+        val = float(overrides["direction_min_confidence"])
+        if not (0.0 <= val <= 1.0):
+            raise ValueError("direction_min_confidence must be within [0.0, 1.0]")
+        new = replace(new, direction_min_confidence=val)
+
+    if "policy_aliases" in overrides:
+        aliases = overrides["policy_aliases"]
+        if not isinstance(aliases, dict):
+            raise ValueError("policy_aliases must be a mapping of alias -> spec")
+        normalized = {str(k): str(v) for k, v in aliases.items()}
+        new = replace(new, policy_aliases=normalized)
 
     _config = new
 
 
-def _load_config_file() -> None:
-    for name in CONFIG_FILE_CANDIDATES:
-        path = Path.cwd() / name
-        if not path.is_file():
-            continue
-        with path.open("rb") as fh:
-            data = tomllib.load(fh)
-        table = data.get("noesis", data)
-        overrides: Dict[str, Any] = {}
-        for key in ALLOWED_KEYS:
-            if key in table:
-                overrides[key] = table[key]
-        if overrides:
-            set(**overrides)
-        break
+def reset() -> None:
+    """Reset configuration to defaults (primarily for tests)."""
+    global _config
+    _config = Config()
 
 
+def reload_from_disk_and_env() -> None:
+    """Re-apply environment overrides and config file (idempotent)."""
+    _load_env_overrides()
+    _load_config_file()
+
+
+
+# Boot-time load order
+# env → file
+
+_load_env_overrides()
 _load_config_file()

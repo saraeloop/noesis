@@ -160,8 +160,10 @@ def test_direction_veto(tmp_path):
     with pytest.raises(NoesisVeto):
         ns.solve("Danger", using=lambda: DictGraph(), intuition=VetoPolicy())
 
-    # Use last() within this isolated runs_dir to retrieve the vetoed episode id
-    ep = ns.last()
+    # Fetch the most recent episode recorded in this isolated runs_dir
+    runs = ns.list_runs(limit=1)
+    assert runs, "expected a recorded episode after veto"
+    ep = runs[0]["episode_id"]
     summ = ns.summary(ep)
     assert summ["flags"]["direction"]["vetoed"] == 1
 

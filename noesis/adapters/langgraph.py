@@ -1,6 +1,20 @@
 """
 LangGraph adapter for Noēsis.
-Bridges LangGraph node lifecycle events into Noēsis trace + intuition systems.
+
+Bridges LangGraph executions into the Noēsis cognitive loop,
+translating node-level reasoning into structured events and
+policy-aware interventions.
+
+Purpose
+--------
+- Acts as a runtime bridge between LangGraph graphs and the Noēsis
+  trace, intuition, and direction layers.
+- Captures every reasoning phase ("intuition", "reason", "direction",
+  "observe", "terminate") as normalized events.
+- Applies DirectedIntuition patches and vetoes in-line with
+  confidence thresholds and schema-consistent diffs.
+- Ensures every LangGraph run produces a complete, analyzable
+  trace and summary regardless of outcome.
 """
 
 from __future__ import annotations
