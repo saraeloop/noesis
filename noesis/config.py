@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 import builtins as _builtins
 import tomllib
 
-from .intuition.mode import IntuitionMode
+from .intuition import IntuitionMode
 
 DEFAULT_RUNS_DIR = Path("runs")
 DEFAULT_AGENTS = "agents.yaml"

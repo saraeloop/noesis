@@ -18,30 +18,17 @@ Stable public API:
 from __future__ import annotations
 
 # Package metadata
-__version__ = "0.1.0a0"
+__version__ = "0.2.0"
 __schema_version__ = "1.0.0"
 
 # Core execution API
-from .core import (
-    solve,
-    run,
-    run_using,
-    run_graph,
-    set,
-)
+from .core import solve, run, run_using, run_graph, set
 
 # Read/inspect API 
-from .io import (
-    summary,
-    events,
-    metrics,
-    paths,
-    last,
-    list_runs,
-)
+from .io import summary, events, metrics, paths, last, list_runs
 # Ergonomic intuition surface 
-from .intuition.base import Intuition, IntuitionEvent, NullIntuition, DirectedIntuition, DirectiveKind
-from .intuition.mode import IntuitionMode
+from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
+from .direction import DirectedIntuition, DirectiveKind
 from .exceptions import NoesisError, NoesisVeto
 
 __all__ = (

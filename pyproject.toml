@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "0.1.0"
+version = "0.2.0"
 description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
-authors = [{ name = "Sara Elo" }]
+authors = [{ name = "Sara Loera" }]
 keywords = ["agents", "ai", "langgraph", "intuition", "reasoning"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -34,13 +34,15 @@ dev = [
 [project.scripts]
 noesis = "noesis.cli:main"
 
+
 [project.urls]
 Homepage = "https://github.com/saraeloop/noesis"
 Repository = "https://github.com/saraeloop/noesis"
 Documentation = "https://github.com/saraeloop/noesis#readme"
 
-# Control build contents (optional but recommended)
+# Control build contents 
 [tool.hatch.build]
+exclude = ["tests", "tests/**"]
 # Include only the package and selected top-level files
 include = [
   "noesis/**",

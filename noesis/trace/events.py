@@ -1,17 +1,16 @@
 """
-Tracing contracts: events.jsonl (append-only) and summary.json (single file).
+Trace event helpers.
 
-Only defines interfaces & helpers; real IO is orchestrated by runner.
+Defines the append-only JSONL contract used to capture runtime events.
 """
+
 from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, Iterator, List, Any
+from typing import Any, Dict, Iterator, List
 import json
-import os
-import tempfile
 
 EVENTS_FILE = "events.jsonl"
-SUMMARY_FILE = "summary.json"
 
 # Canonical phases for event.phase
 PHASES: set[str] = {
@@ -34,6 +33,16 @@ REQUIRED_EVENT_KEYS: set[str] = {
     "evidence_ids",
 }
 RECOMMENDED_EVENT_KEYS: set[str] = {"agent_id"}
+
+__all__ = [
+    "EVENTS_FILE",
+    "PHASES",
+    "REQUIRED_EVENT_KEYS",
+    "RECOMMENDED_EVENT_KEYS",
+    "write_event",
+    "iter_events",
+    "read_events",
+]
 
 
 def _validate_event_schema(event: Dict[str, Any]) -> None:
@@ -87,31 +96,3 @@ def iter_events(dir_path: Path) -> Iterator[Dict[str, Any]]:
 def read_events(dir_path: Path) -> List[Dict[str, Any]]:
     """Return all events ([] if none)."""
     return list(iter_events(dir_path) or ())
-
-
-def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
-    """Atomic JSON write to prevent partial files on crash."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent)) as tmp:
-        json.dump(data, tmp, ensure_ascii=False, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)  # POSIX atomic move
-
-    # TODO: add version stamping or hash for traceability
-
-
-def write_summary(dir_path: Path, summary: Dict[str, Any]) -> None:
-    """Write summary.json atomically."""
-    _atomic_write_json(dir_path / SUMMARY_FILE, summary)
-
-
-def read_summary(dir_path: Path) -> Dict[str, Any]:
-    """Read summary.json ({} if missing)."""
-    p = dir_path / SUMMARY_FILE
-    if not p.exists():
-        # TODO: log warning if missing during active session
-        return {}
-    with p.open("r", encoding="utf-8") as f:
-        return json.load(f)

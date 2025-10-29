@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from . import config as _cfg
-from .trace.files import EVENTS_FILE, SUMMARY_FILE, read_events, read_summary
+from .trace.events import EVENTS_FILE, read_events
+from .trace.summary import SUMMARY_FILE, read_summary
 
 
 

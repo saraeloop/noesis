@@ -9,12 +9,12 @@ import json
 
 from . import config as _cfg
 from .state.episode import EpisodeSummary, new_episode_id, begin_episode
-from .trace.files import read_events, write_event, write_summary
-from .eval.metrics import compute_metrics
-from .intuition.mode import IntuitionMode
-from .intuition.base import Intuition, IntuitionEvent, NullIntuition
+from .trace.events import read_events, write_event
+from .trace.summary import write_summary
+from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
+from .insight import compute_metrics
 
 # Soft-depend on adapters
 try:
@@ -73,10 +73,7 @@ def run(
         task=task,
         seed=seed,
         started_at=started_at,
-        flags={
-            "intuition": intuition_enabled,
-            "mode": getattr(intuition_impl, "mode", IntuitionMode.ADVISORY).value,
-        },
+        flags={"intuition": intuition_enabled, "mode": getattr(intuition_impl, "mode", IntuitionMode.ADVISORY).value},
         agents_config_hash="sha256:TODO",
         answer={},
         metrics=compute_metrics({}, ev),

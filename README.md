@@ -3,7 +3,7 @@
 _"understanding" / "intellect"_
 
 Noēsis is a lightweight Python framework for running, tracing, and evaluating agentic reasoning workflows.
-It extends LangGraph-style execution with an Intuition Layer for hint-based foresight, risk forecasting, and outcome analysis.
+It adds layers of Intuition, Direction, and Insight, forming a cognitive loop you can measure, steer, and improve.
 
 ---
 
@@ -241,27 +241,28 @@ Adapters make Noēsis framework-agnostic and future-proof.
 noesis/
  ├─ __init__.py           # Public API (run, solve, summary, etc.)
  ├─ core.py               # Execution + orchestration
- ├─ io.py                 # I/O helpers
+ ├─ config.py             # Global configuration + noesis.toml loader
+ ├─ intuition.py          # Advisory layer contracts
+ ├─ direction.py          # Interventions + veto helpers
+ ├─ insight.py            # Metrics + lightweight analytics
+ ├─ io.py                 # Run inspection helpers
  ├─ loader.py             # Dynamic adapter + graph loader
  │
  ├─ adapters/             # Framework bridges (LangGraph, CrewAI, etc.)
  │   └─ langgraph.py
- ├─ eval/                 # Evaluation + metrics
- │   └─ metrics.py
- ├─ intuition/            # Intuition layer (foresight logic)
- │   └─ base.py
  ├─ state/                # Episode state + schema models
  │   └─ episode.py
  ├─ trace/                # Trace + summary event handling
- │   └─ files.py
- └─ config.py             # Global configuration
+ │   ├─ events.py
+ │   └─ summary.py
+ └─ exceptions.py         # Framework-specific error types
 ```
 
 ---
 
 ## ⚙️ Versioning
 
-- **Package:** noesis v0.1.0-alpha
+- **Package:** noesis v0.2.0
 - **Schema:** summary.schema.json v1.0.0
 - **Python:** ≥ 3.11
 
