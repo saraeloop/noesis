@@ -124,6 +124,7 @@ def run(
         "vetoed": metrics_bucket["direction_vetoed"],
         "policy": last_payload.get("policy"),
         "last_diff": diff_strings,
+        "threshold": _cfg.get()["direction_min_confidence"],
     }
     write_summary(run_dir, summ)
     return episode_id
@@ -158,7 +159,7 @@ def run_using(
     )
 
     graph = _load_graph(using)
-    adapter = _select_adapter(graph)
+    adapter = _select_adapter(graph, _cfg.get()["direction_min_confidence"])
 
     veto_error: NoesisVeto | None = None
 
@@ -227,6 +228,7 @@ def run_using(
         "vetoed": metrics_bucket["direction_vetoed"],
         "policy": last_payload.get("policy"),
         "last_diff": diff_strings,
+        "threshold": _cfg.get()["direction_min_confidence"],
     }
     write_summary(run_dir, summ)
 
@@ -359,10 +361,10 @@ def _load_graph(source: GraphSource) -> Any:
     return load_graph(source)
 
 
-def _select_adapter(graph_obj: Any):
+def _select_adapter(graph_obj: Any, min_confidence: float):
     # FIX: wrap LangGraph objects that use .invoke OR .run
     if LangGraphAdapter is not None and (hasattr(graph_obj, "invoke") or hasattr(graph_obj, "run")):
-        return LangGraphAdapter(graph_obj)
+        return LangGraphAdapter(graph_obj, min_confidence=min_confidence)
 
     class _CallableAdapter:
         def __init__(self, obj: Any):

@@ -19,6 +19,7 @@ from .intuition.mode import IntuitionMode
 DEFAULT_RUNS_DIR = Path("runs")
 DEFAULT_AGENTS = "agents.yaml"
 DEFAULT_TASKS = "tasks.yaml"
+DEFAULT_DIRECTION_MIN_CONFIDENCE = 0.5
 
 @dataclass(frozen=True)
 class Config:
@@ -27,6 +28,7 @@ class Config:
     tasks: str = DEFAULT_TASKS
     timeout_sec: int = 60
     intuition_mode: IntuitionMode = IntuitionMode.ADVISORY
+    direction_min_confidence: float = DEFAULT_DIRECTION_MIN_CONFIDENCE
 
 _config: Config = Config()
 
@@ -41,6 +43,7 @@ def get() -> Dict[str, Any]:
     c = asdict(_config)
     c["runs_dir"] = str(_config.runs_dir)
     c["intuition_mode"] = _config.intuition_mode.value
+    c["direction_min_confidence"] = float(_config.direction_min_confidence)
     return c
 
 def set(**overrides: Any) -> None:
@@ -54,7 +57,7 @@ def set(**overrides: Any) -> None:
     """
     global _config
 
-    allowed = {"runs_dir", "agents", "tasks", "timeout_sec", "intuition_mode"}
+    allowed = {"runs_dir", "agents", "tasks", "timeout_sec", "intuition_mode", "direction_min_confidence"}
     # Use built-in set, not this function name:
     unknown = _builtins.set(overrides) - allowed   # <-- fix
     if unknown:
@@ -72,5 +75,7 @@ def set(**overrides: Any) -> None:
     if "intuition_mode" in overrides:
         mode = _normalize_intuition_mode(overrides["intuition_mode"])
         new = replace(new, intuition_mode=mode)
+    if "direction_min_confidence" in overrides:
+        new = replace(new, direction_min_confidence=float(overrides["direction_min_confidence"]))
 
     _config = new

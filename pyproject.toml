@@ -1,12 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
 [project]
 name = "noesis"
-description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 version = "0.1.0"
+description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
+authors = [{ name = "Sara Elo" }]
+keywords = ["agents", "ai", "langgraph", "intuition", "reasoning"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+# Runtime deps only (none yet)
+dependencies = []
 
+[project.optional-dependencies]
+langgraph = [
+  "langgraph>=0.0.45",
+  "langchain>=0.1.0",
+]
+dev = [
+  "pytest>=7.4",
+  "ruff>=0.5",
+]
 
+[project.scripts]
+noesis = "noesis.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/saraeloop/noesis"
+Repository = "https://github.com/saraeloop/noesis"
+Documentation = "https://github.com/saraeloop/noesis#readme"
 
-
-
-
+# Control build contents (optional but recommended)
+[tool.hatch.build]
+# Include only the package and selected top-level files
+include = [
+  "noesis/**",
+  "LICENSE",
+  "README.md",
+  "pyproject.toml",
+]
+# If you want to ship examples/docs in sdists but not wheels:
+[tool.hatch.build.targets.sdist]
+include = [
+  "noesis/**",
+  "docs/**",
+  "flows/**",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]

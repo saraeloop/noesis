@@ -14,8 +14,6 @@ from ..trace.files import write_event
 from ..intuition.base import Intuition, IntuitionEvent, DirectiveKind
 from ..exceptions import NoesisVeto
 
-MIN_INTERVENTION_CONFIDENCE = 0.5
-
 __all__ = ["LangGraphAdapter", "Executor"]
 
 
@@ -87,12 +85,13 @@ class LangGraphAdapter:
         The explicit constructor argument takes precedence over the attribute.
     """
 
-    def __init__(self, graph: Any, *, input_mapper: Optional[Callable[[str], Any]] = None) -> None:
+    def __init__(self, graph: Any, *, input_mapper: Optional[Callable[[str], Any]] = None, min_confidence: float = 0.5) -> None:
         self.graph = graph
         # precedence: explicit arg > graph attribute > identity
         discovered = getattr(graph, "__noesis_input_mapper__", None)
         self.input_mapper: Callable[[str], Any] = input_mapper or discovered or (lambda t: t)
         self._state = _State(history=[], tools_seen=[])
+        self._min_confidence = float(min_confidence)
 
     def _log(self, run_dir: PathLike[str] | str, episode_id: str, phase: str, payload: Dict[str, Any]) -> None:
         body = {
@@ -226,6 +225,7 @@ class LangGraphAdapter:
             "target": directive.target,
             "scope": directive.scope,
             "policy": policy_tag,
+            "threshold": self._min_confidence,
         }
 
         if directive.blocking or kind == DirectiveKind.VETO.value:
@@ -237,7 +237,7 @@ class LangGraphAdapter:
         if kind == DirectiveKind.INTERVENTION.value:
             patch = directive.patch or {}
 
-            if directive.confidence < MIN_INTERVENTION_CONFIDENCE:
+            if directive.confidence < self._min_confidence:
                 payload.update({
                     "applied": False,
                     "patch": patch,

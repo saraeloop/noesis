@@ -46,9 +46,8 @@ Reason codes emitted in `direction.payload.reason`:
 
 ### Confidence threshold
 
-- Interventions apply when `confidence ≥ 0.5` (currently hardcoded in the LangGraph adapter).
-- Below that, the adapter logs `policy_low_confidence` and leaves the original input untouched.
-- Future releases will expose `ns.set(direction_min_confidence=...)` for tuning.
+- Interventions apply when `confidence ≥ 0.5` (configurable via `ns.set(direction_min_confidence=...)`).
+- Below the threshold, the adapter logs `policy_low_confidence` and leaves the original input untouched.
 - Direction currently patches dict inputs only. Noēsis will wrap bare strings as `{"task": <text>}` by default; provide `__noesis_input_mapper__` or `input_mapper` to emit richer shapes.
 - Policy identity in logs appears as `PolicyClass@__version__` when a `__version__` attribute exists, otherwise just `PolicyClass`.
 

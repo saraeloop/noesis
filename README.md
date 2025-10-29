@@ -169,7 +169,7 @@ Edge cases: if multiple policies emit patches, the last event you return wins, a
 
 Dashboards: `summary(...)["flags"]["direction"]` reports `{applied, vetoed}` so you don’t have to recompute counts. Every direction payload is stamped with the policy name/version plus a normalized reason (`applied`, `empty_patch`, `not_dict_input`, `policy_low_confidence`, `veto`).
 
-Confidence threshold: interventions apply when `confidence ≥ 0.5`. Below that, they log `policy_low_confidence` and leave the graph input untouched. You can surface a different cutoff via config (e.g., `ns.set(direction_min_confidence=0.6)`) in a follow-up patch.
+Confidence threshold: interventions apply when `confidence ≥ 0.5`. Below that, they log `policy_low_confidence` and leave the graph input untouched. Adjust it at runtime with `ns.set(direction_min_confidence=0.6)`.
 
 Quick peek pattern (copy/paste ready):
 
@@ -182,12 +182,24 @@ events = [e for e in ns.events(ep) if e["phase"] == "direction"]
 print(json.dumps(events[-1]["payload"], indent=2) if events else "—")
 ```
 
-`flags["direction"]["last_diff"]` gives you a human-friendly glimpse, e.g. `['normalize: false→true']`.
+`flags["direction"]["last_diff"]` gives you a human-friendly glimpse, e.g. `['normalize: false→true']`. The same block also reports the active threshold (`threshold` field).
 
 Further reading:
 - [Direction overview](docs/direction/overview.md) – lifecycle, troubleshooting, CI guardrails.
 - [Direction how-to](docs/direction/howto.md) – step-by-step tutorial with code.
 - [Direction reference](docs/direction/reference.md) – reason codes, metrics, API cheatsheet.
+
+### 🛠️ CLI shortcuts
+
+Install the package (or run via `uv run`) and use the bundled CLI for quick checks:
+
+```bash
+noesis run "Summarize the weekly report"
+noesis solve "Audit transaction pipeline" --using guardrails --policy noesis.examples.direction_demo.policy:GuardrailsPolicy
+noesis list-runs --limit 5
+noesis show ep_20250101_120000_dead_beef_s0
+noesis events ep_20250101_120000_dead_beef_s0 --phase direction
+```
 
 ---
 

@@ -58,7 +58,7 @@ Merge semantics: dict merge is shallow; patched keys overwrite existing keys, ne
 
 ## Summary + metrics
 
-`summary(ep)["flags"]["direction"]` → `{applied, vetoed, policy, last_diff}`.
+`summary(ep)["flags"]["direction"]` → `{applied, vetoed, policy, last_diff, threshold}`.
 
 `summary(ep)["metrics"]` adds:
 
@@ -74,7 +74,6 @@ Merge semantics: dict merge is shallow; patched keys overwrite existing keys, ne
 
 ## Defaults and limits
 
-- Confidence threshold for applying patches: `0.5` (hardcoded today).
+- Confidence threshold for applying patches: default `0.5`, configurable via `ns.set(direction_min_confidence=...)`.
 - Direction operates on dict inputs only—supply `__noesis_input_mapper__` for custom schemas.
 - Multiple policies must be composed manually (e.g., orchestrate inside one `advise`); the last returned directive wins.
-
