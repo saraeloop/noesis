@@ -22,6 +22,9 @@ def test_metrics_keys_dedup(tmp_path):
     assert metrics["success"] == 1  # baseline run() now terminates with status 'ok'
     assert "veto_rate" in metrics
     assert "top_reasons" in metrics
+    assert "plan_count" in metrics
+    assert "reflect_count" in metrics
+    assert isinstance(metrics.get("latencies"), dict)
     assert "direction_veto_rate" not in metrics
     assert "direction_top_reasons" not in metrics
     assert "action_efficiency" not in metrics

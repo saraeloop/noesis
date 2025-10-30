@@ -65,6 +65,9 @@ def _success_from_events(events: List[Dict[str, Any]]) -> int:
 def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute roll-up metrics from an episode summary + event stream."""
     direction_events = [e for e in events if e.get("phase") == "direction"]
+    plan_events = [e for e in events if e.get("phase") == "plan"]
+    reflect_events = [e for e in events if e.get("phase") == "reflect"]
+    act_events = [e for e in events if e.get("phase") == "act"]
 
     applied = [
         e for e in direction_events
@@ -88,8 +91,8 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
 
     # Latencies
     t_start = _first_event_time(events, "start")
-    t_first_dir = _first_event_time(direction_events, "direction")
-    first_action_latency_ms = _ms_between(t_start, t_first_dir)
+    t_first_act = _first_event_time(act_events, "act")
+    first_action_latency_ms = _ms_between(t_start, t_first_act)
 
     t_veto = _first_event_time(vetoed, "direction")
     time_to_veto_ms = _ms_between(t_start, t_veto)
@@ -113,12 +116,13 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         idx = min(max(int(c * 10), 0), 9)  # c=1.0 → bucket 9
         buckets[idx] += 1
 
-    base_steps = len(events)
     ideal_steps = summary.get("metrics", {}).get("ideal_steps", 0)
 
     metrics: Dict[str, Any] = {
         "success": _success_from_events(events),
-        "steps": base_steps,
+        "steps": len(act_events),
+        "plan_count": len(plan_events),
+        "reflect_count": len(reflect_events),
         "ideal_steps": ideal_steps,
         "direction_events": len(direction_events),
         "direction_applied": len(applied),
@@ -126,11 +130,15 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         "direction_applied_rate": direction_applied_rate,
         "veto_rate": veto_rate,
         "top_reasons": top_reasons,
-        "first_action_latency_ms": first_action_latency_ms,
-        "time_to_veto_ms": time_to_veto_ms,
+        "latencies": {
+            "first_action_ms": first_action_latency_ms,
+            "time_to_veto_ms": time_to_veto_ms,
+        },
         "policy_confidence_histogram": buckets,
         "alignment": alignment,
     }
+    metrics["first_action_latency_ms"] = first_action_latency_ms
+    metrics["time_to_veto_ms"] = time_to_veto_ms
 
     metrics["experimental"] = {
         "action_efficiency": None,

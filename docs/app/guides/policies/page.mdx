@@ -1,0 +1,60 @@
+---
+title: Intuition policies
+description: Author interventions and vetoes that steer agentic episodes safely.
+---
+
+import { Callout, Steps } from 'nextra/components'
+
+# Intuition policies
+
+Intuition is Noēsis shorthand for the policy classes that observe episode state and decide whether to
+intervene or veto. Policies are regular Python classes—easy to test, log, and ship.
+
+## Anatomy of a policy
+
+```python filename="intuition.py"
+from noesis import intuition, events
+
+
+class GuardRail(intuition.Policy):
+    def intervene(self, event: events.BaseEvent):
+        if event.type == "direction" and "wire transfer" in event.payload.text.lower():
+            return intuition.Patch(
+                reason="Financial transfers must be reviewed manually.",
+                replacement="Let's switch to manual verification before continuing."
+            )
+
+    def veto(self, event: events.BaseEvent):
+        if event.type == "insight" and event.payload.risk_score > 0.9:
+            return intuition.Veto(reason="Risk score too high for autonomous execution.")
+```
+
+## Wiring policies
+
+```bash filename="terminal"
+uv run noesis run "plan next steps" \
+  --adapter baseline \
+  --intuition GuardRail
+```
+
+Pass the dotted path to your policy class—Noēsis loads it and evaluates every event.
+
+<Steps>
+
+### 1. Observe events
+
+Policies receive every lifecycle event. Use event types to scope decisions and log metadata.
+
+### 2. Return a patch or veto
+
+`Patch` mutates the episode context; `Veto` halts execution. Both require a human-readable reason for auditing.
+
+### 3. Test in isolation
+
+Import your policy class in unit tests and feed synthetic events to assert interventions.
+
+</Steps>
+
+<Callout type="info" emoji="🛠️">
+Policies are pure Python—no hidden thread pools or async requirements. Keep state on the class if you need short-term memory.
+</Callout>

@@ -15,7 +15,10 @@ class EventsCommand:
         parser.add_argument("episode_id", help="Episode identifier")
         parser.add_argument(
             "--phase",
-            help="Filter by phase (start|intuition|direction|insight|reason|act|terminate|error)",
+            help=(
+                "Filter by phase "
+                "(start|observe|interpret|plan|act|reflect|learn|intuition|direction|insight|reason|terminate|error)"
+            ),
         )
         parser.add_argument("-j", "--json", action="store_true", help="JSON output")
         parser.add_argument("-q", "--quiet", action="store_true", help="Suppress banner")

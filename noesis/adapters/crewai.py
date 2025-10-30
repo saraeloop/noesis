@@ -37,7 +37,7 @@ class CrewAIAdapter:
 
     def _log(self, run_dir: PathLike[str] | str, episode: str, phase: str, payload: Dict[str, Any]) -> None:
         write_event(run_dir, {"timestamp": _ts(), "episode_id": episode, "agent_id": "adapter.crewai", "phase": phase, "payload": payload, "evidence_ids": []})
-        if phase in {"intuition", "direction", "reason", "observe", "error"}:
+        if phase in {"intuition", "direction", "reason", "interpret", "plan", "act", "observe", "reflect", "error"}:
             self._state.history.append({"phase": phase, "payload": payload})
             if len(self._state.history) > 50:
                 del self._state.history[0]
@@ -116,6 +116,8 @@ class CrewAIAdapter:
                         if applied:
                             input_obj = adjusted
 
+            input_excerpt = str(input_obj)[:160]
+
             # (Simulated) crew.run → plan/steps
             # Replace with real CrewAI call later.
             plan = [
@@ -123,11 +125,29 @@ class CrewAIAdapter:
                 {"step": 2, "action": "draft_plan"},
                 {"step": 3, "action": "review_with_user"},
             ]
-            self._log(run_dir, episode_id, "observe", {"result_excerpt": f"plan({len(plan)} steps)"})
-            self._log(run_dir, episode_id, "terminate", {"status": "ok"})
+            self._log(
+                run_dir,
+                episode_id,
+                "act",
+                {
+                    "adapter": "adapter.crewai",
+                    "input_excerpt": input_excerpt,
+                    "outcome": f"plan({len(plan)} steps)",
+                },
+            )
             return plan
 
         except Exception as e:
+            self._log(
+                run_dir,
+                episode_id,
+                "act",
+                {
+                    "adapter": "adapter.crewai",
+                    "input_excerpt": locals().get("input_excerpt", "<unset>"),
+                    "outcome": "error",
+                    "error": str(e),
+                },
+            )
             self._log(run_dir, episode_id, "error", {"message": str(e)})
-            self._log(run_dir, episode_id, "terminate", {"status": "error"})
             raise

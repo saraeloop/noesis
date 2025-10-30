@@ -1,0 +1,54 @@
+---
+title: Python API
+description: First-class functions and helpers exposed by the Noēsis Python package.
+---
+
+import { Callout } from 'nextra/components'
+
+# Python API
+
+Install Noēsis with `uv add noesis` or `pip install noesis`. Import the module as `import noesis as ns`.
+
+## Core functions
+
+| Function | Description |
+| -------- | ----------- |
+| `ns.run(task, *, intuition=False, **kwargs)` | Execute a baseline episode without an adapter. |
+| `ns.solve(task, *, using, intuition=False, **kwargs)` | Run through an adapter (e.g. LangGraph) registered under `using`. |
+| `ns.summary(episode_id)` | Load summary JSON including metrics and insight. |
+| `ns.events(episode_id, phase=None)` | Load event stream (optionally filtered by phase). |
+| `ns.list_runs(limit=20)` | Return recent episodes with metadata. |
+| `ns.last()` | Convenience helper to fetch the most recent episode ID. |
+| `ns.set(**config)` | Override global config (runs dir, thresholds, adapters, etc.). |
+
+## Intuition helpers
+
+- `noesis.DirectedIntuition`: base class for policies that can `hint`, `intervene`, or `veto`.
+- `noesis.NoesisVeto`: exception raised when a policy vetoes an episode.
+- `noesis.intuition.Policy`: low-level base class if you prefer full control.
+
+```python
+import noesis as ns
+
+
+class Guardrails(ns.DirectedIntuition):
+    def advise(self, state):
+        if "wire transfer" in state["task"].lower():
+            return self.veto(
+                advice="Escalate to manual review.",
+                rationale="Financial compliance"
+            )
+
+
+ep = ns.solve("Send a wire transfer", using="react", intuition=Guardrails())
+summary = ns.summary(ep)
+```
+
+## Insight utilities
+
+- `noesis.insight.compute_metrics(events)` — compute metrics from a sequence of events (experimental).
+- `noesis.insight.schemas` — JSON-schema helpers for validating custom metrics.
+
+<Callout type="info" emoji="🧪">
+Experimental APIs live under `noesis.insight.experimental` and can change between releases. Stable functions are documented on this page.
+</Callout>

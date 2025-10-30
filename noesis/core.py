@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 import json
 
 from . import config as _cfg
@@ -38,7 +38,7 @@ try:
 except Exception:  # noqa: BLE001
     LangGraphAdapter = None  # type: ignore[assignment]
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 
 # shared helpers (module scope) 
@@ -125,17 +125,182 @@ def _start_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> Non
     )
 
 
-def _observe_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> None:
+def _observe_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    task: str,
+    tags: Optional[Dict[str, Any]],
+    snapshot: Optional[Dict[str, Any]] = None,
+) -> None:
+    ts = _now()
+    payload: Dict[str, Any] = {
+        "task": task,
+        "tags": tags or {},
+        "timestamp": ts,
+    }
+    if snapshot:
+        payload["experimental"] = {"snapshot": snapshot}
     write_event(
         run_dir,
         {
-            "timestamp": _now(),
+            "timestamp": ts,
             "episode_id": episode_id,
             "agent_id": "system",
             "phase": "observe",
             "payload": payload,
             "evidence_ids": [],
         },
+    )
+
+
+def _interpret_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    signals: List[str],
+    reasons: Optional[List[str]] = None,
+    source: str = "system",
+) -> None:
+    payload: Dict[str, Any] = {"signals": signals}
+    if reasons:
+        payload["reasons"] = reasons
+    payload["experimental"] = {"source": source}
+    write_event(
+        run_dir,
+        {
+            "timestamp": _now(),
+            "episode_id": episode_id,
+            "agent_id": source,
+            "phase": "interpret",
+            "payload": payload,
+            "evidence_ids": [],
+        },
+    )
+
+
+def _plan_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    steps: List[str],
+    rationale: Optional[str] = None,
+    source: str = "system",
+) -> None:
+    payload: Dict[str, Any] = {"steps": steps}
+    if rationale:
+        payload["rationale"] = rationale
+    payload["experimental"] = {"source": source}
+    write_event(
+        run_dir,
+        {
+            "timestamp": _now(),
+            "episode_id": episode_id,
+            "agent_id": source,
+            "phase": "plan",
+            "payload": payload,
+            "evidence_ids": [],
+        },
+    )
+
+
+def _act_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    adapter: Optional[str] = None,
+    tool: Optional[str] = None,
+    input_excerpt: str,
+    outcome: str,
+    error: Optional[str] = None,
+) -> None:
+    payload: Dict[str, Any] = {
+        "input_excerpt": input_excerpt,
+        "outcome": outcome,
+    }
+    if adapter:
+        payload["adapter"] = adapter
+    if tool:
+        payload["tool"] = tool
+    if error:
+        payload["error"] = error
+    write_event(
+        run_dir,
+        {
+            "timestamp": _now(),
+            "episode_id": episode_id,
+            "agent_id": adapter or tool or "system",
+            "phase": "act",
+            "payload": payload,
+            "evidence_ids": [],
+        },
+    )
+
+
+def _reflect_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    success: bool,
+    deltas: Optional[List[str]] = None,
+    reasons: Optional[List[str]] = None,
+) -> None:
+    payload: Dict[str, Any] = {"success": success}
+    if deltas:
+        payload["deltas"] = deltas
+    if reasons:
+        payload["reasons"] = reasons
+    write_event(
+        run_dir,
+        {
+            "timestamp": _now(),
+            "episode_id": episode_id,
+            "agent_id": "system",
+            "phase": "reflect",
+            "payload": payload,
+            "evidence_ids": [],
+        },
+    )
+
+
+def _learn_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    updates: List[Dict[str, Any]],
+    scope: str,
+) -> None:
+    payload: Dict[str, Any] = {"updates": updates, "scope": scope}
+    write_event(
+        run_dir,
+        {
+            "timestamp": _now(),
+            "episode_id": episode_id,
+            "agent_id": "system",
+            "phase": "learn",
+            "payload": payload,
+            "evidence_ids": [],
+        },
+    )
+
+
+def _ensure_act_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    adapter_label: str,
+    input_excerpt: str,
+    outcome: str,
+) -> None:
+    events = read_events(run_dir)
+    if any(evt.get("phase") == "act" for evt in events):
+        return
+    _act_event(
+        run_dir,
+        episode_id,
+        adapter=adapter_label,
+        input_excerpt=input_excerpt,
+        outcome=outcome,
     )
 
 
@@ -159,12 +324,12 @@ def _maybe_intuition(
     enabled: bool,
     intuition: Intuition,
     snapshot: Dict[str, Any],
-) -> None:
+) -> IntuitionEvent | None:
     if not enabled:
-        return
+        return None
     evt: IntuitionEvent | None = intuition.advise(snapshot)
     if not evt:
-        return
+        return None
     write_event(
         run_dir,
         {
@@ -184,6 +349,27 @@ def _maybe_intuition(
             "evidence_ids": evt.evidence_ids,
         },
     )
+    signals: List[str] = [f"directive:{evt.kind}", evt.advice]
+    reasons = [evt.rationale] if evt.rationale else None
+    _interpret_event(
+        run_dir,
+        episode_id,
+        signals=signals,
+        reasons=reasons,
+        source="intuition",
+    )
+
+    plan_steps: List[str] = [f"{evt.kind}→{evt.target}"]
+    if evt.patch:
+        plan_steps.append(f"patch_keys:{','.join(sorted(evt.patch.keys()))}")
+    _plan_event(
+        run_dir,
+        episode_id,
+        steps=plan_steps,
+        rationale=evt.rationale,
+        source="intuition",
+    )
+    return evt
 
 
 def _safe_using_label(using: GraphSource) -> str:
@@ -339,15 +525,32 @@ def run(
     started_at = _now()
 
     intuition_impl, intuition_enabled = _normalize_intuition(intuition)
+    snapshot = {"task": task, "seed": seed, "history": [], "tools_seen": [], "tags": tags or {}}
 
     _start_event(run_dir, episode_id, {"task": task, "seed": seed})
+    _observe_event(run_dir, episode_id, task=task, tags=tags, snapshot=snapshot)
     _maybe_intuition(
         run_dir,
         episode_id,
         intuition_enabled,
         intuition_impl,
-        {"task": task, "seed": seed, "history": [], "tools_seen": [], "tags": tags or {}},
+        snapshot,
     )
+    _plan_event(
+        run_dir,
+        episode_id,
+        steps=["emit-summary-only"],
+        rationale="Core run without adapter",
+        source="system",
+    )
+    _act_event(
+        run_dir,
+        episode_id,
+        adapter="core.null",
+        input_excerpt=task[:120],
+        outcome="no_adapter",
+    )
+    _reflect_event(run_dir, episode_id, success=True, reasons=["no_adapter"])
     _terminate_event(run_dir, episode_id, {"status": "ok"})
 
     _finalize_summary(
@@ -378,24 +581,45 @@ def run_using(
     started_at = _now()
 
     intuition_impl, intuition_enabled = _normalize_intuition(intuition)
+    using_label = _safe_using_label(using)
+    snapshot = {
+        "task": task,
+        "seed": seed,
+        "history": [],
+        "tools_seen": [],
+        "tags": tags or {},
+        "using": using_label,
+    }
 
     _start_event(
         run_dir,
         episode_id,
-        {"task": task, "seed": seed, "using": _safe_using_label(using)},
+        {"task": task, "seed": seed, "using": using_label},
     )
+    _observe_event(run_dir, episode_id, task=task, tags=tags, snapshot=snapshot)
     _maybe_intuition(
         run_dir,
         episode_id,
         intuition_enabled,
         intuition_impl,
-        {"task": task, "seed": seed, "history": [], "tools_seen": [], "tags": tags or {}},
+        snapshot,
+    )
+    _plan_event(
+        run_dir,
+        episode_id,
+        steps=[f"adapter:{using_label}"],
+        rationale="Execute adapter",
+        source="system",
     )
 
     graph = _load_graph(using)
     adapter = _select_adapter(graph, _cfg.get()["direction_min_confidence"])
 
     veto_error: NoesisVeto | None = None
+    status_payload: Dict[str, Any] = {"status": "ok"}
+    reflect_reasons: List[str] = []
+    result_excerpt = ""
+    success = True
 
     try:
         result = adapter.execute(
@@ -409,14 +633,42 @@ def run_using(
 
         # Only core-log for the simple callable shim; real adapters log themselves.
         if type(adapter).__name__ == "_CallableAdapter":
-            _observe_event(run_dir, episode_id, {"result_excerpt": str(result)[:400]})
-            _terminate_event(run_dir, episode_id, {"status": "ok"})
+            result_excerpt = str(result)[:400]
+            _act_event(
+                run_dir,
+                episode_id,
+                adapter=using_label,
+                input_excerpt=task[:120],
+                outcome=result_excerpt,
+            )
+        else:
+            result_excerpt = str(result)[:200]
+        reflect_reasons.append("adapter_ok")
 
     except NoesisVeto as e:
-        _terminate_event(run_dir, episode_id, {"status": "blocked", "message": str(e)})
+        success = False
+        status_payload = {"status": "blocked", "message": str(e)}
         veto_error = e
+        reflect_reasons.append("veto")
     except Exception as e:  # noqa: BLE001
-        _terminate_event(run_dir, episode_id, {"status": "error", "message": str(e)})
+        success = False
+        status_payload = {"status": "error", "message": str(e)}
+        reflect_reasons.append(e.__class__.__name__)
+
+    _ensure_act_event(
+        run_dir,
+        episode_id,
+        adapter_label=f"adapter:{using_label}",
+        input_excerpt=task[:120],
+        outcome=result_excerpt or status_payload["status"],
+    )
+    _reflect_event(
+        run_dir,
+        episode_id,
+        success=success,
+        reasons=reflect_reasons or None,
+    )
+    _terminate_event(run_dir, episode_id, status_payload)
 
     _finalize_summary(
         run_dir=run_dir,
@@ -426,7 +678,7 @@ def run_using(
         started_at=started_at,
         intuition_enabled=intuition_enabled,
         intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
-        using_label=_safe_using_label(using),
+        using_label=using_label,
         tags=tags,
     )
 

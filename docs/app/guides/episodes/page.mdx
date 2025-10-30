@@ -1,0 +1,54 @@
+---
+title: Episodes
+description: Launch and inspect Noēsis episodes via CLI or Python.
+---
+
+import { Callout } from 'nextra/components'
+
+# Episodes
+
+Episodes are the unit of execution in Noēsis. Every episode carries a stable identifier (`ep_*`)
+and emits structured events you can subscribe to or archive.
+
+## Starting an episode
+
+```bash filename="terminal"
+uv run noesis run "demo prompt" --adapter baseline
+```
+
+Provide an adapter slug to wrap your own runtime. The CLI returns the new episode ID.
+
+## Listing episodes
+
+```bash filename="terminal"
+uv run noesis list --limit 5
+```
+
+Add `-j` to return JSON when scripting or piping to other tools.
+
+## Inspecting status
+
+```bash filename="terminal"
+uv run noesis show ep_abc123
+```
+
+Episodes transition through `queued → running → completed|errored|vetoed`. Re-run the command to see the latest state.
+
+## Tail events
+
+```bash filename="terminal"
+uv run noesis events ep_abc123 --phase direction -j
+```
+
+Events print as newline-delimited JSON. Pipe through `jq` for structured filtering or ship to your log sink.
+
+<Callout type="info" emoji="🐍">
+Prefer Python? Call <code>noesis.run()</code> and <code>noesis.events()</code> directly:
+
+```python
+import noesis as ns
+
+ep = ns.solve("Plan the week", using="react", intuition=True)
+events = ns.events(ep)
+```
+</Callout>

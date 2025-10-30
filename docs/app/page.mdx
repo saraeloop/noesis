@@ -1,0 +1,138 @@
+---
+title: 'Noēsis'
+description: 'Steer, observe, and harden agentic systems. Minimal surface. Strong guarantees.'
+navigation: false
+---
+
+import { Callout, Cards } from 'nextra/components'
+
+export const RunIcon = () => (
+  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#7c3aed] via-[#6366f1] to-[#22d3ee] text-base text-white shadow-[0_0_18px_rgba(99,102,241,0.45)]">
+    ▶︎
+  </span>
+)
+
+export const ShieldIcon = () => (
+  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base font-semibold text-white shadow-[0_0_18px_rgba(45,212,191,0.4)]">
+    ⌘
+  </span>
+)
+
+export const EyeIcon = () => (
+  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-base font-semibold text-white shadow-[0_0_18px_rgba(56,189,248,0.35)]">
+    👁
+  </span>
+)
+
+<div className="mt-10 sm:px-16 sm:py-20">
+  <div className="pointer-events-none absolute inset-0 -z-10">
+    <div className="absolute -top-48 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-gradient-to-br from-[#7c3aed] via-[#6366f1] to-[#22d3ee] opacity-30 blur-3xl" />
+    <div className="absolute bottom-0 left-0 h-60 w-60 rounded-full bg-gradient-to-tr from-[#38bdf8]/40 to-transparent opacity-40 blur-3xl" />
+    <div className="absolute -bottom-20 right-0 h-64 w-64 rounded-full bg-gradient-to-tr from-[#22d3ee]/40 to-transparent opacity-40 blur-3xl" />
+  </div>
+  <p className="text-xs font-medium uppercase tracking-[0.35em] text-slate-300/70">
+    Steer agentic systems
+  </p>
+  <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+    Noēsis: minimal control, maximal signal
+  </h1>
+  <p className="mx-auto mt-5 max-w-2xl text-base text-slate-300 sm:text-lg">
+    A tiny control-and-observability layer you can drop into research sandboxes or production pipelines.
+    Keep your favorite stack; add direction, veto power, and trustworthy metrics with one Python package.
+  </p>
+  <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+    <a className="btn-primary" href="/guides/quickstart">
+      Jump into the quickstart
+      <svg
+        aria-hidden
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        viewBox="0 0 24 24"
+      >
+        <path d="M5 12h14M13 5l7 7-7 7" />
+      </svg>
+    </a>
+    <a className="btn-secondary" href="/reference/python">
+      Explore the Python API
+    </a>
+  </div>
+</div>
+
+
+## What
+
+**Noēsis** helps you:
+
+- **Run** episodes (baseline or through an adapter you provide),
+- **Direct** them with lightweight, testable policies (a.k.a. _intuition_),
+- **Observe** trustworthy **insight** metrics and event streams.
+
+It’s a **small, stable API** you can embed in research code or production pipelines.
+
+## Why
+
+- **Guardrails without rewrites.** Inject patches or veto risky plans before tools run.
+- **Deterministic signals.** Insight reports only what we can defend (veto rate, latencies, confidence histogram, alignment).
+- **Minimal surface.** Fewer moving parts → easier reasoning, better tests.
+
+## How (mental model)
+
+- **Episode**: a single run (id: `ep_*`).
+- **Events**: structured lifecycle records (`start`, `direction`, `insight`, `terminate`, …).
+- **Intuition**: a policy class that may `intervene()` (apply a patch) or `veto()` (block).
+- **Insight**: post-hoc metrics derived from events (no magic, no placeholders).
+
+<Cards className="mt-10 grid gap-4 md:grid-cols-3">
+  <Cards.Card
+    title="Run"
+    description="Kick off baseline episodes or wrap any adapter with the same API primitives."
+    icon={<RunIcon />}
+    href="/guides/episodes"
+  />
+  <Cards.Card
+    title="Direct"
+    description="Author intuition policies that can patch or veto decisions with full auditability."
+    icon={<ShieldIcon />}
+    href="/guides/policies"
+  />
+  <Cards.Card
+    title="Observe"
+    description="Stream structured events and compute post-hoc insight metrics you can trust."
+    icon={<EyeIcon />}
+    href="/guides/insight"
+  />
+</Cards>
+
+---
+
+## Quick start
+
+### CLI
+
+```bash
+# Run without adapters (baseline)
+uv run noesis run "hello world"
+
+# List recent episodes (compact table)
+uv run noesis list --limit 5
+
+# Snapshot computed insight (JSON)
+uv run noesis insight ep_abc123
+```
+
+### Python
+
+```python
+import noesis as ns
+
+ep = ns.run(task="demo", intuition=True)
+summary = ns.summary(ep)
+events = ns.events(ep)
+```
+
+Explore the full surface area in the [Python reference](/reference/python) or jump to the
+[CLI reference](/reference/cli) for automation and scripting.

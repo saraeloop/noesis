@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.4.0 - 2025-10-30
+### Added
+- Verb-based event timeline (`observe`→`learn`) with minimal payload contracts and automatic stubs when adapters stay silent.
+- Insight metrics now include `steps` (act count), `plan_count`, `reflect_count`, and structured latencies while keeping legacy fields for compatibility.
+- Documentation stubs for the cognitive loop, event verbs reference, and cookbook recipe to inspect episodes.
+
+### Changed
+- Core emits `reflect` before `terminate`, keeping terminate semantics stable while enriching the loop with success metadata.
+- Summary schema bumped to 1.1.0 and version set to 0.4.0; no public API changes required and older episodes still render.
+
 ## v0.3.1 - 2025-10-29
 ### Added
 - Insight events now emit as a dedicated phase and the schema validator recognises them.

@@ -1,0 +1,25 @@
+---
+title: Event verbs
+description: Required fields and emission order for the observe -> learn timeline.
+---
+
+# Event verbs
+
+Verbs ride alongside the legacy phases so existing tooling keeps working, but the new timeline makes each stage explicit.
+
+| Verb | Fires when | Required payload keys |
+| --- | --- | --- |
+| `observe` | Episode input is captured | `task`, `tags`, `timestamp` |
+| `interpret` | A policy inspects context pre-plan | `signals` |
+| `plan` | A plan or route is locked in | `steps` |
+| `act` | A tool or adapter executes | `input_excerpt`, `outcome`, and `tool` or `adapter` |
+| `reflect` | Results are evaluated | `success` |
+| `learn` | State is updated for future runs | `updates`, `scope` |
+
+## Order invariant
+
+```
+observe -> (interpret -> plan)* -> act+ -> reflect -> (learn)? -> terminate
+```
+
+If an adapter never emits `act`/`reflect`, the core synthesises minimal stubs so summaries and metrics stay coherent.

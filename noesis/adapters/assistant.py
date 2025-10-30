@@ -37,7 +37,7 @@ class AssistantsAdapter:
 
     def _log(self, run_dir: PathLike[str] | str, episode: str, phase: str, payload: Dict[str, Any]) -> None:
         write_event(run_dir, {"timestamp": _ts(), "episode_id": episode, "agent_id": "adapter.assistants", "phase": phase, "payload": payload, "evidence_ids": []})
-        if phase in {"intuition", "direction", "reason", "observe", "error"}:
+        if phase in {"intuition", "direction", "reason", "interpret", "plan", "act", "observe", "reflect", "error"}:
             self._state.history.append({"phase": phase, "payload": payload})
             if len(self._state.history) > 50:
                 del self._state.history[0]
@@ -117,13 +117,33 @@ class AssistantsAdapter:
                         if applied:
                             input_obj = adjusted
 
+            input_excerpt = str(input_obj)[:160]
+
             # (Simulated) assistants run; replace with real SDK call later
             result = {"assistant_reply": f"Processed task: {input_obj.get('task', str(input_obj))}"}
-            self._log(run_dir, episode_id, "observe", {"result_excerpt": str(result)[:400]})
-            self._log(run_dir, episode_id, "terminate", {"status": "ok"})
+            self._log(
+                run_dir,
+                episode_id,
+                "act",
+                {
+                    "adapter": "adapter.assistants",
+                    "input_excerpt": input_excerpt,
+                    "outcome": str(result)[:400],
+                },
+            )
             return result
 
         except Exception as e:
+            self._log(
+                run_dir,
+                episode_id,
+                "act",
+                {
+                    "adapter": "adapter.assistants",
+                    "input_excerpt": locals().get("input_excerpt", "<unset>"),
+                    "outcome": "error",
+                    "error": str(e),
+                },
+            )
             self._log(run_dir, episode_id, "error", {"message": str(e)})
-            self._log(run_dir, episode_id, "terminate", {"status": "error"})
             raise

@@ -1,0 +1,40 @@
+---
+title: Insight metrics
+description: Capture deterministic, defensible telemetry from every Noēsis episode.
+---
+
+import { Callout, Steps } from 'nextra/components'
+
+# Insight metrics
+
+Insight transforms the raw event stream of an episode into structured metrics—no heuristics, no
+black boxes. Every metric references the underlying events so you can audit and reproduce it.
+
+## Snapshot insight
+
+```bash filename="terminal"
+uv run noesis insight ep_abc123
+```
+
+The CLI returns a JSON document containing latency percentiles, veto counts, confidence histograms,
+and any custom metrics you attach.
+
+<Steps>
+
+### 1. Define metrics
+
+Declare insight calculators in Python—each receives the full event log and returns a JSON-serializable payload.
+
+### 2. Register calculators
+
+Attach calculators to adapters or episodes so they run automatically after completion.
+
+### 3. Export
+
+Use `uv run noesis insight` for CLI access or call <code>noesis.summary(ep)["metrics"]</code> for programmatic access.
+
+</Steps>
+
+<Callout type="info" emoji="📊">
+Need structured output? Pass <code>-j</code> to emit JSON, then pipe into <code>jq</code> or your telemetry pipeline.
+</Callout>

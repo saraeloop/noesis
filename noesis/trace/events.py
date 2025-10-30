@@ -26,16 +26,35 @@ import json
 EVENTS_FILE = "events.jsonl"
 
 # Canonical phases for event.phase
+VERB_PHASES: set[str] = {
+    "observe",
+    "interpret",
+    "plan",
+    "act",
+    "reflect",
+    "learn",
+}
+
+# Canonical phases for event.phase
 PHASES: set[str] = {
     "start",
     "intuition",
     "direction",
     "reason",
-    "act",
     "memory",
     "terminate",
     "error",
     "insight",
+    *VERB_PHASES,
+}
+
+_VERB_PAYLOAD_MINIMA: dict[str, set[str]] = {
+    "observe": {"task", "tags", "timestamp"},
+    "interpret": {"signals"},
+    "plan": {"steps"},
+    "act": {"input_excerpt", "outcome"},
+    "reflect": {"success"},
+    "learn": {"updates", "scope"},
 }
 
 # Minimal schema contract for events
@@ -78,6 +97,17 @@ def _validate_event_schema(event: Dict[str, Any]) -> None:
         raise ValueError("event.payload must be a dict")
     if not isinstance(event.get("evidence_ids"), list):
         raise ValueError("event.evidence_ids must be a list")
+
+    if isinstance(phase, str) and phase in VERB_PHASES:
+        minima = _VERB_PAYLOAD_MINIMA.get(phase, set())
+        payload_keys = set(event["payload"].keys())
+        missing_payload = minima - payload_keys
+        if missing_payload:
+            raise ValueError(
+                f"{phase} payload missing required keys: {sorted(missing_payload)}"
+            )
+        if phase == "act" and not {"tool", "adapter"} & payload_keys:
+            raise ValueError("act payload requires either 'tool' or 'adapter'")
 
 
 def write_event(dir_path: Path, event: Dict[str, Any], *, validate: bool = True) -> None:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "0.3.1"
+version = "0.4.0"
 description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -40,9 +40,9 @@ noesis = "noesis.cli:main"
 
 
 [project.urls]
-Homepage = "https://github.com/saraeloop/noesis"
-Repository = "https://github.com/saraeloop/noesis"
-Documentation = "https://github.com/saraeloop/noesis#readme"
+Homepage = ""
+Repository = ""
+Documentation = ""
 
 # Control build contents 
 [tool.hatch.build]

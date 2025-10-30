@@ -53,7 +53,17 @@ class _State:
     tools_seen: list
 
     def append_history(self, phase: str, payload: Dict[str, Any]) -> None:
-        if phase in {"intuition", "direction", "reason", "observe", "error"}:
+        if phase in {
+            "intuition",
+            "direction",
+            "reason",
+            "observe",
+            "interpret",
+            "plan",
+            "act",
+            "reflect",
+            "error",
+        }:
             self.history.append({"phase": phase, "payload": payload})
             if len(self.history) > 50:
                 del self.history[0]
@@ -205,6 +215,8 @@ class LangGraphAdapter:
                     policy_tag,
                 )
 
+            input_excerpt = _excerpt(input_obj)
+
             if hasattr(self.graph, "invoke"):
                 result = self.graph.invoke(input_obj)  # compiled LangGraph
             elif hasattr(self.graph, "run"):
@@ -214,14 +226,32 @@ class LangGraphAdapter:
             else:
                 raise TypeError("graph object is neither runnable (.invoke/.run) nor callable")
 
-            self._log(run_dir, episode_id, "observe", {"result_excerpt": _excerpt(result)})
-            self._log(run_dir, episode_id, "terminate", {"status": "ok"})
+            self._log(
+                run_dir,
+                episode_id,
+                "act",
+                {
+                    "adapter": "adapter.langgraph",
+                    "input_excerpt": input_excerpt,
+                    "outcome": _excerpt(result),
+                },
+            )
             return result
 
         except Exception as e:
             # Failure boundary
+            self._log(
+                run_dir,
+                episode_id,
+                "act",
+                {
+                    "adapter": "adapter.langgraph",
+                    "input_excerpt": locals().get("input_excerpt", "<unset>"),
+                    "outcome": "error",
+                    "error": str(e),
+                },
+            )
             self._log(run_dir, episode_id, "error", {"message": str(e)})
-            self._log(run_dir, episode_id, "terminate", {"status": "error"})
             raise
 
     def _enforce_direction(
