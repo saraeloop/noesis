@@ -19,6 +19,7 @@ import os
 import tomllib
 
 from .intuition import IntuitionMode
+from .learn import LearnMode
 
 # Defaults & allowed keys
 
@@ -28,6 +29,8 @@ DEFAULT_TASKS = "tasks.yaml"
 DEFAULT_DIRECTION_MIN_CONFIDENCE = 0.5
 DEFAULT_TIMEOUT_SEC = 60
 DEFAULT_POLICY_ALIASES: Dict[str, str] = {}
+DEFAULT_LEARN_MODE = LearnMode.RECORD
+DEFAULT_LEARN_HOME = Path.home() / ".noesis" / "state"
 
 CONFIG_FILE_CANDIDATES = ("noesis.toml", ".noesis.toml")
 
@@ -39,6 +42,8 @@ ALLOWED_KEYS = {
     "intuition_mode",
     "direction_min_confidence",
     "policy_aliases",
+    "learn_mode",
+    "learn_home",
 }
 
 
@@ -53,6 +58,8 @@ class Config:
     intuition_mode: IntuitionMode = IntuitionMode.ADVISORY
     direction_min_confidence: float = DEFAULT_DIRECTION_MIN_CONFIDENCE
     policy_aliases: Dict[str, str] = field(default_factory=dict)
+    learn_mode: LearnMode = DEFAULT_LEARN_MODE
+    learn_home: Path = DEFAULT_LEARN_HOME
 
 
 _config: Config = Config()
@@ -66,6 +73,14 @@ def _normalize_intuition_mode(val: Any) -> IntuitionMode:
     if isinstance(val, str):
         return IntuitionMode(val.lower().strip())
     raise ValueError(f"invalid intuition_mode: {val!r}")
+
+
+def _normalize_learn_mode(val: Any) -> LearnMode:
+    if isinstance(val, LearnMode):
+        return val
+    if isinstance(val, str):
+        return LearnMode(val.lower().strip())
+    raise ValueError(f"invalid learn_mode: {val!r}")
 
 
 def _find_config_path() -> Optional[Path]:
@@ -107,6 +122,10 @@ def _load_env_overrides() -> None:
         env["intuition_mode"] = os.environ["NOESIS_INTUITION_MODE"]
     if "NOESIS_DIR_MIN_CONFIDENCE" in os.environ:
         env["direction_min_confidence"] = os.environ["NOESIS_DIR_MIN_CONFIDENCE"]
+    if "NOESIS_LEARN_MODE" in os.environ:
+        env["learn_mode"] = os.environ["NOESIS_LEARN_MODE"]
+    if "NOESIS_LEARN_HOME" in os.environ:
+        env["learn_home"] = os.environ["NOESIS_LEARN_HOME"]
     if env:
         set(**env)
 
@@ -121,6 +140,8 @@ def get() -> Dict[str, Any]:
     c["intuition_mode"] = _config.intuition_mode.value
     c["direction_min_confidence"] = float(_config.direction_min_confidence)
     c["policy_aliases"] = dict(_config.policy_aliases)
+    c["learn_mode"] = _config.learn_mode.value
+    c["learn_home"] = str(_config.learn_home)
     return c
 
 
@@ -133,6 +154,8 @@ def set(**overrides: Any) -> None:
         timeout_sec: int (> 0)
         intuition_mode: str | IntuitionMode
         direction_min_confidence: float in [0.0, 1.0]
+        learn_mode: str | LearnMode
+        learn_home: str | Path
     """
     global _config
 
@@ -178,6 +201,15 @@ def set(**overrides: Any) -> None:
             raise ValueError("policy_aliases must be a mapping of alias -> spec")
         normalized = {str(k): str(v) for k, v in aliases.items()}
         new = replace(new, policy_aliases=normalized)
+
+    if "learn_mode" in overrides:
+        mode = _normalize_learn_mode(overrides["learn_mode"])
+        new = replace(new, learn_mode=mode)
+
+    if "learn_home" in overrides:
+        home = Path(overrides["learn_home"]).expanduser()
+        home.mkdir(parents=True, exist_ok=True)
+        new = replace(new, learn_home=home)
 
     _config = new
 

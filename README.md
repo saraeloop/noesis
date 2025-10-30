@@ -301,7 +301,7 @@ noesis/
 
 ## ⚙️ Versioning
 
-- **Package:** noesis v0.4.0
+- **Package:** noesis v0.4.1
 - **Schema:** summary.schema.json v1.1.0
 - **Python:** ≥ 3.11
 

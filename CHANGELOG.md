@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.4.1 - 2025-10-30
+### Added
+- Learn events with configurable record/apply modes, persisted per-episode logs, and policy snapshots.
+- Insight metrics now expose `learn_proposals`/`learn_applied`, and CLI demo prints learn payloads for quick inspection.
+
+### Changed
+- Direction interventions can rewrite string inputs (used by the SQL guard demo) so patches increment applied counts.
+- Veto rates are omitted when no veto occurs, reducing noisy zeroes in dashboards.
+- Insight summaries now normalize metrics (act/interpret counts, consolidated latencies, pruned experimental buckets) and drop empty sections for cleaner artifacts.
+
 ## v0.4.0 - 2025-10-30
 ### Added
 - Verb-based event timeline (`observe`→`learn`) with minimal payload contracts and automatic stubs when adapters stay silent.

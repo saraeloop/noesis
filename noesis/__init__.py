@@ -14,7 +14,7 @@ Stable public API (v0.3.0):
 from __future__ import annotations
 
 # Package metadata
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __schema_version__ = "1.1.0"
 
 # Core execution API

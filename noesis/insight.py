@@ -68,6 +68,7 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
     plan_events = [e for e in events if e.get("phase") == "plan"]
     reflect_events = [e for e in events if e.get("phase") == "reflect"]
     act_events = [e for e in events if e.get("phase") == "act"]
+    interpret_events = [e for e in events if e.get("phase") == "interpret"]
 
     applied = [
         e for e in direction_events
@@ -81,9 +82,11 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
     ]
 
     # Rates
-    total_dir = len(direction_events) or 1  # guard
+    total_dir = max(len(direction_events), 1)
     direction_applied_rate = len(applied) / total_dir
-    veto_rate = len(vetoed) / total_dir
+    veto_rate: Optional[float] = None
+    if direction_events:
+        veto_rate = len(vetoed) / len(direction_events)
 
     # Top reasons
     reasons = [e.get("payload", {}).get("reason", "unknown") for e in direction_events]
@@ -120,7 +123,6 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
 
     metrics: Dict[str, Any] = {
         "success": _success_from_events(events),
-        "steps": len(act_events),
         "plan_count": len(plan_events),
         "reflect_count": len(reflect_events),
         "ideal_steps": ideal_steps,
@@ -128,7 +130,6 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         "direction_applied": len(applied),
         "direction_vetoed": len(vetoed),
         "direction_applied_rate": direction_applied_rate,
-        "veto_rate": veto_rate,
         "top_reasons": top_reasons,
         "latencies": {
             "first_action_ms": first_action_latency_ms,
@@ -136,14 +137,53 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         },
         "policy_confidence_histogram": buckets,
         "alignment": alignment,
+        "act_count": len(act_events),
+        "steps": len(act_events),
+        "interpret_count": len(interpret_events),
+        "experimental": {
+            "action_efficiency": None,
+            "coherence": None,
+            "tool_correctness": None,
+            "intuition_alignment": None,
+            "learn_kinds": {},
+        },
+        "learn_proposals": 0,
+        "learn_applied": 0,
     }
-    metrics["first_action_latency_ms"] = first_action_latency_ms
-    metrics["time_to_veto_ms"] = time_to_veto_ms
+    if veto_rate is not None and direction_events:
+        metrics["veto_rate"] = veto_rate
 
-    metrics["experimental"] = {
-        "action_efficiency": None,
-        "coherence": None,
-        "tool_correctness": None,
-        "intuition_alignment": None,
-    }
+    return _finalize_metrics(metrics)
+
+
+def _finalize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize metric payload before it is persisted/emitted."""
+    # Ensure steps mirrors the act count for stability.
+    act_count = metrics.get("act_count", metrics.get("steps", 0))
+    metrics["act_count"] = act_count
+    metrics["steps"] = act_count
+
+    # Drop duplicate rates if denominator absent.
+    if metrics.get("direction_events", 0) == 0:
+        metrics.pop("veto_rate", None)
+        metrics["direction_applied_rate"] = 0.0
+
+    # Trim latency nulls and collapse if empty.
+    latencies = metrics.get("latencies", {}) or {}
+    latencies = {k: v for k, v in latencies.items() if v is not None}
+    if latencies:
+        metrics["latencies"] = latencies
+    else:
+        metrics.pop("latencies", None)
+
+    # Prune experimental bucket if empty after cleanup.
+    experimental = metrics.get("experimental") or {}
+    experimental = {k: v for k, v in experimental.items() if v is not None}
+    if experimental.get("learn_kinds") == {}:
+        experimental.pop("learn_kinds", None)
+    if experimental:
+        metrics["experimental"] = experimental
+    else:
+        metrics.pop("experimental", None)
+
     return metrics

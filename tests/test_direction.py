@@ -71,6 +71,16 @@ class VetoPolicy(DirectedIntuition):
         return self.veto(advice="Unsafe task")
 
 
+class RewritePolicy(DirectedIntuition):
+    def advise(self, state):
+        text = state["task"]
+        return self.intervene(
+            advice="Rewrite input",
+            patch={"rewrite": f"{text} LIMIT 5"},
+            confidence=0.9,
+        )
+
+
 # Helpers
 
 @dataclass
@@ -109,6 +119,8 @@ def test_direction_applied(tmp_path):
     assert mets.get("direction_events", 0) >= 1
     assert mets.get("direction_applied", 0) >= 1
     assert mets.get("direction_vetoed", 0) == 0
+    assert mets.get("act_count") == mets.get("steps")
+    assert mets.get("interpret_count") >= 1
 
     # both intuition and direction events exist
     phases = {e.get("phase") for e in art.events}
@@ -140,9 +152,17 @@ def test_direction_low_confidence(tmp_path):
 def test_direction_not_dict_input(tmp_path):
     art = _run(tmp_path, graph=StringGraph(), policy=AppliedPolicy())
     payload = art.direction_payloads[-1]
-    assert payload["reason"] == "not_dict_input"
+    assert payload["reason"] == "not_patchable_input"
     assert payload["applied"] is False
     assert payload.get("diff", []) == []
+
+
+def test_direction_rewrite_patch(tmp_path):
+    art = _run(tmp_path, graph=StringGraph(), policy=RewritePolicy())
+    payload = art.direction_payloads[-1]
+    assert payload["reason"] == "rewritten"
+    assert payload["applied"] is True
+    assert payload.get("diff", []) == [{"key": "rewrite", "before": "Demo task", "after": "Demo task LIMIT 5"}]
 
 
 def test_direction_multi_patch_diff(tmp_path):
@@ -169,3 +189,15 @@ def test_direction_veto(tmp_path):
 
     payloads = [e["payload"] for e in ns.events(ep) if e.get("phase") == "direction"]
     assert payloads[-1]["reason"] == "veto"
+
+
+def test_learn_event_emitted(tmp_path):
+    art = _run(tmp_path, graph=DictGraph(), policy=AppliedPolicy())
+    learn_events = [e for e in art.events if e.get("phase") == "learn"]
+    assert learn_events, "expected learn event in episode"
+    payload = learn_events[-1]["payload"]
+    assert payload.get("policy_id")
+    assert payload.get("applied") is False
+    assert payload.get("approval") == "pending"
+    assert payload.get("id", "").endswith(f":{art.episode_id}")
+    assert payload.get("proposal") == []

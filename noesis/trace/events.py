@@ -54,7 +54,7 @@ _VERB_PAYLOAD_MINIMA: dict[str, set[str]] = {
     "plan": {"steps"},
     "act": {"input_excerpt", "outcome"},
     "reflect": {"success"},
-    "learn": {"updates", "scope"},
+    "learn": {"policy_id", "basis", "proposal", "applied", "scope"},
 }
 
 # Minimal schema contract for events
@@ -108,6 +108,10 @@ def _validate_event_schema(event: Dict[str, Any]) -> None:
             )
         if phase == "act" and not {"tool", "adapter"} & payload_keys:
             raise ValueError("act payload requires either 'tool' or 'adapter'")
+        if phase == "learn":
+            payload = event["payload"]
+            if not isinstance(payload.get("proposal"), list):
+                raise ValueError("learn payload 'proposal' must be a list")
 
 
 def write_event(dir_path: Path, event: Dict[str, Any], *, validate: bool = True) -> None:

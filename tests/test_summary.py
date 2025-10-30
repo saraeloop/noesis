@@ -20,17 +20,19 @@ def test_metrics_keys_dedup(tmp_path):
     metrics = ns.summary(episode_id)["metrics"]
 
     assert metrics["success"] == 1  # baseline run() now terminates with status 'ok'
-    assert "veto_rate" in metrics
+    assert "veto_rate" not in metrics
     assert "top_reasons" in metrics
     assert "plan_count" in metrics
     assert "reflect_count" in metrics
-    assert isinstance(metrics.get("latencies"), dict)
+    assert metrics.get("act_count") == metrics.get("steps")
+    assert "interpret_count" in metrics
+    assert isinstance(metrics.get("latencies", {}), dict)
+    assert metrics.get("learn_proposals") == 0
+    assert metrics.get("learn_applied") == 0
+    assert "experimental" not in metrics
     assert "direction_veto_rate" not in metrics
     assert "direction_top_reasons" not in metrics
     assert "action_efficiency" not in metrics
-    experimental = metrics.get("experimental")
-    assert isinstance(experimental, dict)
-    assert experimental.get("coherence") is None
 
 
 def test_duration_and_mode_flags(tmp_path):
@@ -107,7 +109,9 @@ def test_latency_metrics_positive(tmp_path):
     episode_id = ns.list_runs(limit=1)[0]["episode_id"]
 
     metrics = ns.summary(episode_id)["metrics"]
-    assert metrics["time_to_veto_ms"] is not None
-    assert metrics["time_to_veto_ms"] >= 1
-    if metrics["first_action_latency_ms"] is not None:
-        assert metrics["first_action_latency_ms"] >= 1
+    latencies = metrics.get("latencies", {})
+    assert latencies.get("time_to_veto_ms") is not None
+    assert latencies["time_to_veto_ms"] >= 1
+    first_action = latencies.get("first_action_ms")
+    if first_action is not None:
+        assert first_action >= 1

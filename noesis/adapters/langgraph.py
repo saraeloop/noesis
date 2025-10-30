@@ -153,16 +153,21 @@ class LangGraphAdapter:
         input_obj: Any,
         patch: Dict[str, Any],
     ) -> tuple[Any, bool, list[Dict[str, Any]], str]:
-        if not isinstance(input_obj, dict):
-            return input_obj, False, [], "not_dict_input"
+        if isinstance(input_obj, dict):
+            updated = deepcopy(input_obj)
+            diff: list[Dict[str, Any]] = []
+            for key, value in patch.items():
+                before = input_obj.get(key)
+                diff.append({"key": key, "before": before, "after": value})
+                updated[key] = value
+            return updated, True, diff, "applied"
 
-        updated = deepcopy(input_obj)
-        diff: list[Dict[str, Any]] = []
-        for key, value in patch.items():
-            before = input_obj.get(key)
-            diff.append({"key": key, "before": before, "after": value})
-            updated[key] = value
-        return updated, True, diff, "applied"
+        if isinstance(input_obj, str) and "rewrite" in patch:
+            rewritten = str(patch["rewrite"])
+            diff = [{"key": "rewrite", "before": input_obj, "after": rewritten}]
+            return rewritten, True, diff, "rewritten"
+
+        return input_obj, False, [], "not_patchable_input"
 
     def execute(
         self,

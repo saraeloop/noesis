@@ -18,19 +18,28 @@ Schema
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional, List
-import json
+from typing import Any, Dict, Optional, List, Final, Protocol
 
 from . import config as _cfg
-from .state.episode import EpisodeSummary, new_episode_id, begin_episode
-from .trace.events import read_events, write_event
-from .trace.summary import write_summary
+from .state.episode import new_episode_id, begin_episode
+from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
-from .insight import compute_metrics
+from .runtime.utils import now as _now
+from .runtime.events import (
+    act_event as _act_event,
+    ensure_act_event as _ensure_act_event,
+    interpret_event as _interpret_event,
+    observe_event as _observe_event,
+    plan_event as _plan_event,
+    reflect_event as _reflect_event,
+    start_event as _start_event,
+    terminate_event as _terminate_event,
+)
+from .runtime.summary import finalize_summary as _finalize_summary
 
 # Soft-depend on adapters
 try:
@@ -38,64 +47,13 @@ try:
 except Exception:  # noqa: BLE001
     LangGraphAdapter = None  # type: ignore[assignment]
 
-SCHEMA_VERSION = "1.1.0"
-
-
-# shared helpers (module scope) 
-
-def _fmt_value(val: Any) -> str:
-    if isinstance(val, bool):
-        return "true" if val else "false"
-    if val is None:
-        return "null"
-    if isinstance(val, (int, float)):
-        return str(val)
-    if isinstance(val, str):
-        return repr(val)
-    return json.dumps(val)
-
-
-def _format_diff_item(item: Dict[str, Any]) -> str:
-    before = _fmt_value(item.get("before"))
-    after = _fmt_value(item.get("after"))
-    return f"{item.get('key')}: {before}→{after}"
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_iso8601(ts: str) -> datetime | None:
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-
-def _compute_duration(events: list[Dict[str, Any]]) -> float:
-    start_at: datetime | None = None
-    end_at: datetime | None = None
-    for evt in events:
-        ts = evt.get("timestamp")
-        if not isinstance(ts, str):
-            continue
-        parsed = _parse_iso8601(ts)
-        if parsed is None:
-            continue
-        if start_at is None and evt.get("phase") == "start":
-            start_at = parsed
-        if evt.get("phase") in {"terminate", "error"}:
-            end_at = parsed
-    if start_at and end_at and end_at >= start_at:
-        return (end_at - start_at).total_seconds()
-    return 0.0
+SCHEMA_VERSION: Final[str] = "1.1.0"
+EXCERPT_IN_LEN: Final[int] = 120
+EXCERPT_OUT_LEN: Final[int] = 400
 
 
 def _normalize_intuition(intuition: bool | Intuition | None) -> tuple[Intuition, bool]:
-    """
-    Respect global string config for intuition mode. Users set it via:
-        ns.set(intuition_mode="advisory" | "interventive" | "hybrid")
-    """
+    """Normalize intuition argument without mutating caller-supplied policies."""
     mode_str = _cfg.get()["intuition_mode"]  # string
     mode = IntuitionMode(mode_str)           # Enum (internal only)
 
@@ -108,214 +66,8 @@ def _normalize_intuition(intuition: bool | Intuition | None) -> tuple[Intuition,
         i.mode = mode
         return i, False
     # Caller supplied a concrete policy; keep its own .mode.
+    assert hasattr(intuition, "advise"), "Intuition implementations must define advise()"
     return intuition, True
-
-
-def _start_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> None:
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "start",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _observe_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    task: str,
-    tags: Optional[Dict[str, Any]],
-    snapshot: Optional[Dict[str, Any]] = None,
-) -> None:
-    ts = _now()
-    payload: Dict[str, Any] = {
-        "task": task,
-        "tags": tags or {},
-        "timestamp": ts,
-    }
-    if snapshot:
-        payload["experimental"] = {"snapshot": snapshot}
-    write_event(
-        run_dir,
-        {
-            "timestamp": ts,
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "observe",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _interpret_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    signals: List[str],
-    reasons: Optional[List[str]] = None,
-    source: str = "system",
-) -> None:
-    payload: Dict[str, Any] = {"signals": signals}
-    if reasons:
-        payload["reasons"] = reasons
-    payload["experimental"] = {"source": source}
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": source,
-            "phase": "interpret",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _plan_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    steps: List[str],
-    rationale: Optional[str] = None,
-    source: str = "system",
-) -> None:
-    payload: Dict[str, Any] = {"steps": steps}
-    if rationale:
-        payload["rationale"] = rationale
-    payload["experimental"] = {"source": source}
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": source,
-            "phase": "plan",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _act_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    adapter: Optional[str] = None,
-    tool: Optional[str] = None,
-    input_excerpt: str,
-    outcome: str,
-    error: Optional[str] = None,
-) -> None:
-    payload: Dict[str, Any] = {
-        "input_excerpt": input_excerpt,
-        "outcome": outcome,
-    }
-    if adapter:
-        payload["adapter"] = adapter
-    if tool:
-        payload["tool"] = tool
-    if error:
-        payload["error"] = error
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": adapter or tool or "system",
-            "phase": "act",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _reflect_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    success: bool,
-    deltas: Optional[List[str]] = None,
-    reasons: Optional[List[str]] = None,
-) -> None:
-    payload: Dict[str, Any] = {"success": success}
-    if deltas:
-        payload["deltas"] = deltas
-    if reasons:
-        payload["reasons"] = reasons
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "reflect",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _learn_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    updates: List[Dict[str, Any]],
-    scope: str,
-) -> None:
-    payload: Dict[str, Any] = {"updates": updates, "scope": scope}
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "learn",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
-
-
-def _ensure_act_event(
-    run_dir: Path,
-    episode_id: str,
-    *,
-    adapter_label: str,
-    input_excerpt: str,
-    outcome: str,
-) -> None:
-    events = read_events(run_dir)
-    if any(evt.get("phase") == "act" for evt in events):
-        return
-    _act_event(
-        run_dir,
-        episode_id,
-        adapter=adapter_label,
-        input_excerpt=input_excerpt,
-        outcome=outcome,
-    )
-
-
-def _terminate_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> None:
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "terminate",
-            "payload": payload,
-            "evidence_ids": [],
-        },
-    )
 
 
 def _maybe_intuition(
@@ -346,7 +98,7 @@ def _maybe_intuition(
                 "evidence_ids": evt.evidence_ids,
                 # (mode is visible on policy; adapters may also echo it)
             },
-            "evidence_ids": evt.evidence_ids,
+            "evidence_ids": [],
         },
     )
     signals: List[str] = [f"directive:{evt.kind}", evt.advice]
@@ -375,16 +127,33 @@ def _maybe_intuition(
 def _safe_using_label(using: GraphSource) -> str:
     if isinstance(using, str):
         return using
-    if callable(using):
-        return getattr(using, "__name__", "callable")
-    return using.__class__.__name__
+    target = getattr(using, "func", using)
+    if callable(target):
+        name = getattr(target, "__name__", None)
+        if name:
+            return name
+    return target.__class__.__name__
 
 
 def _load_graph(source: GraphSource) -> Any:
     return load_graph(source)
 
 
-def _select_adapter(graph_obj: Any, min_confidence: float):
+class _Adapter(Protocol):
+    def execute(
+        self,
+        *,
+        task: str,
+        episode_id: str,
+        run_dir: Path,
+        intuition: Optional[Intuition] = None,
+        seed: int = 0,
+        tags: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        ...
+
+
+def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
     # Wrap LangGraph-like objects that use .invoke OR .run
     if LangGraphAdapter is not None and (hasattr(graph_obj, "invoke") or hasattr(graph_obj, "run")):
         return LangGraphAdapter(graph_obj, min_confidence=min_confidence)
@@ -403,6 +172,8 @@ def _select_adapter(graph_obj: Any, min_confidence: float):
             seed: int = 0,
             tags: Optional[Dict[str, Any]] = None,
         ) -> Any:
+            if hasattr(self.obj, "invoke"):
+                return self.obj.invoke(task)
             if hasattr(self.obj, "run"):
                 return self.obj.run(task)
             if callable(self.obj):
@@ -410,89 +181,6 @@ def _select_adapter(graph_obj: Any, min_confidence: float):
             raise TypeError("object is neither runnable nor callable")
 
     return _CallableAdapter(graph_obj)
-
-
-def _finalize_summary(
-    *,
-    run_dir: Path,
-    episode_id: str,
-    task: str,
-    seed: int,
-    started_at: str,
-    intuition_enabled: bool,
-    intuition_mode: IntuitionMode,
-    using_label: Optional[str],
-    tags: Optional[Dict[str, Any]],
-) -> None:
-    ev = read_events(run_dir)
-    duration_sec = _compute_duration(ev)
-
-    flags: Dict[str, Any] = {
-        "intuition": intuition_enabled,
-        "mode": intuition_mode.value if intuition_enabled else "off",
-    }
-    if using_label is not None:
-        flags["using"] = using_label
-
-    summ = EpisodeSummary(
-        schema_version=SCHEMA_VERSION,
-        episode_id=episode_id,
-        task=task,
-        seed=seed,
-        started_at=started_at,
-        duration_sec=duration_sec,
-        flags=flags,
-        agents_config_hash="sha256:TODO",
-        answer={},
-        metrics=compute_metrics({}, ev),
-        tags=tags or {},
-    ).__dict__
-
-    metrics_bucket = summ.setdefault("metrics", {})
-    metrics_bucket["intuition_events"] = sum(1 for e in ev if e.get("phase") == "intuition")
-
-    direction_events = [e for e in ev if e.get("phase") == "direction"]
-    metrics_bucket["direction_events"] = len(direction_events)
-    metrics_bucket["direction_applied"] = sum(
-        1
-        for e in direction_events
-        if e.get("payload", {}).get("applied") and e.get("payload", {}).get("status") != "blocked"
-    )
-    metrics_bucket["direction_vetoed"] = sum(
-        1 for e in direction_events if e.get("payload", {}).get("status") == "blocked"
-    )
-
-    last_payload = direction_events[-1].get("payload", {}) if direction_events else {}
-    diff_strings = []
-    for d in last_payload.get("diff", []) or []:
-        try:
-            diff_strings.append(_format_diff_item(d))
-        except Exception:
-            continue
-
-    write_event(
-        run_dir,
-        {
-            "timestamp": _now(),
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "insight",
-            "payload": summ.get("metrics", {}),
-            "evidence_ids": [],
-        },
-    )
-
-    direction_flags = {
-        "applied": metrics_bucket["direction_applied"],
-        "vetoed": metrics_bucket["direction_vetoed"],
-        "last_diff": diff_strings,
-        "threshold": _cfg.get()["direction_min_confidence"],
-    }
-    policy_tag = last_payload.get("policy")
-    if policy_tag:
-        direction_flags["policy"] = policy_tag
-    summ.setdefault("flags", {})["direction"] = direction_flags
-    write_summary(run_dir, summ)
 
 
 # Public API 
@@ -512,6 +200,124 @@ def solve(
     return run_using(using=using, task=task, seed=seed, intuition=intuition, tags=tags)
 
 
+@dataclass(slots=True)
+class _EpCtx:
+    episode_id: str
+    run_dir: Path
+    started_at: str
+
+
+def _run_impl(
+    *,
+    task: str,
+    seed: int,
+    intuition: bool | Intuition,
+    tags: Optional[Dict[str, Any]],
+    using: Optional[GraphSource],
+) -> str:
+    cfg = _cfg.get()
+    runs_dir = cfg["runs_dir"]
+    dir_min = cfg["direction_min_confidence"]
+
+    episode_id = new_episode_id(seed)
+    run_dir = begin_episode(runs_dir, episode_id)
+    ctx = _EpCtx(episode_id=episode_id, run_dir=run_dir, started_at=_now())
+
+    intuition_impl, intuition_enabled = _normalize_intuition(intuition)
+
+    using_label: Optional[str] = _safe_using_label(using) if using is not None else None
+    snapshot = {
+        "task": task,
+        "seed": seed,
+        "history": [],
+        "tools_seen": [],
+        "tags": tags or {},
+    }
+    if using_label is not None:
+        snapshot["using"] = using_label
+
+    start_payload = {"task": task, "seed": seed}
+    if using_label is not None:
+        start_payload["using"] = using_label
+
+    _start_event(ctx.run_dir, ctx.episode_id, start_payload)
+    _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
+    _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
+
+    if using_label is None:
+        plan_steps = ["emit-summary-only"]
+        plan_rationale = "Core run without adapter"
+    else:
+        plan_steps = [f"adapter:{using_label}"]
+        plan_rationale = "Execute adapter"
+    _plan_event(ctx.run_dir, ctx.episode_id, steps=plan_steps, rationale=plan_rationale, source="system")
+
+    status_payload: Dict[str, Any] = {"status": "ok"}
+    reflect_reasons: List[str] = []
+    result_excerpt = ""
+    success = True
+    veto_error: Optional[NoesisVeto] = None
+
+    adapter_label = f"adapter:{using_label or 'core.null'}"
+    input_excerpt = task[:EXCERPT_IN_LEN]
+
+    if using is None:
+        result_excerpt = "no_adapter"
+        reflect_reasons.append("no_adapter")
+    else:
+        graph = _load_graph(using)
+        adapter = _select_adapter(graph, dir_min)
+        try:
+            result = adapter.execute(
+                task=task,
+                episode_id=ctx.episode_id,
+                run_dir=ctx.run_dir,
+                intuition=intuition_impl if intuition_enabled else None,
+                seed=seed,
+                tags=tags,
+            )
+            result_excerpt = str(result)[:EXCERPT_OUT_LEN]
+            reflect_reasons.append("adapter_ok")
+        except NoesisVeto as err:
+            success = False
+            status_payload = {"status": "blocked", "message": str(err)}
+            veto_error = err
+            reflect_reasons.append("veto")
+        except Exception as err:  # noqa: BLE001
+            success = False
+            status_payload = {"status": "error", "message": str(err)}
+            reflect_reasons.append("error")
+
+    _ensure_act_event(
+        ctx.run_dir,
+        ctx.episode_id,
+        adapter_label=adapter_label,
+        input_excerpt=input_excerpt,
+        outcome=result_excerpt or status_payload["status"],
+    )
+
+    _reflect_event(ctx.run_dir, ctx.episode_id, success=success, reasons=reflect_reasons or None)
+    _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
+
+    _finalize_summary(
+        run_dir=ctx.run_dir,
+        episode_id=ctx.episode_id,
+        task=task,
+        seed=seed,
+        started_at=ctx.started_at,
+        intuition_enabled=intuition_enabled,
+        intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
+        using_label=using_label,
+        tags=tags,
+        intuition=intuition_impl,
+        schema_version=SCHEMA_VERSION,
+    )
+
+    if veto_error is not None:
+        raise veto_error
+    return ctx.episode_id
+
+
 def run(
     task: str,
     *,
@@ -519,52 +325,7 @@ def run(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
 ) -> str:
-    cfg = _cfg.get()
-    episode_id = new_episode_id(seed)
-    run_dir = begin_episode(cfg["runs_dir"], episode_id)
-    started_at = _now()
-
-    intuition_impl, intuition_enabled = _normalize_intuition(intuition)
-    snapshot = {"task": task, "seed": seed, "history": [], "tools_seen": [], "tags": tags or {}}
-
-    _start_event(run_dir, episode_id, {"task": task, "seed": seed})
-    _observe_event(run_dir, episode_id, task=task, tags=tags, snapshot=snapshot)
-    _maybe_intuition(
-        run_dir,
-        episode_id,
-        intuition_enabled,
-        intuition_impl,
-        snapshot,
-    )
-    _plan_event(
-        run_dir,
-        episode_id,
-        steps=["emit-summary-only"],
-        rationale="Core run without adapter",
-        source="system",
-    )
-    _act_event(
-        run_dir,
-        episode_id,
-        adapter="core.null",
-        input_excerpt=task[:120],
-        outcome="no_adapter",
-    )
-    _reflect_event(run_dir, episode_id, success=True, reasons=["no_adapter"])
-    _terminate_event(run_dir, episode_id, {"status": "ok"})
-
-    _finalize_summary(
-        run_dir=run_dir,
-        episode_id=episode_id,
-        task=task,
-        seed=seed,
-        started_at=started_at,
-        intuition_enabled=intuition_enabled,
-        intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
-        using_label=None,
-        tags=tags,
-    )
-    return episode_id
+    return _run_impl(task=task, seed=seed, intuition=intuition, tags=tags, using=None)
 
 
 def run_using(
@@ -575,116 +336,7 @@ def run_using(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
 ) -> str:
-    cfg = _cfg.get()
-    episode_id = new_episode_id(seed)
-    run_dir = begin_episode(cfg["runs_dir"], episode_id)
-    started_at = _now()
-
-    intuition_impl, intuition_enabled = _normalize_intuition(intuition)
-    using_label = _safe_using_label(using)
-    snapshot = {
-        "task": task,
-        "seed": seed,
-        "history": [],
-        "tools_seen": [],
-        "tags": tags or {},
-        "using": using_label,
-    }
-
-    _start_event(
-        run_dir,
-        episode_id,
-        {"task": task, "seed": seed, "using": using_label},
-    )
-    _observe_event(run_dir, episode_id, task=task, tags=tags, snapshot=snapshot)
-    _maybe_intuition(
-        run_dir,
-        episode_id,
-        intuition_enabled,
-        intuition_impl,
-        snapshot,
-    )
-    _plan_event(
-        run_dir,
-        episode_id,
-        steps=[f"adapter:{using_label}"],
-        rationale="Execute adapter",
-        source="system",
-    )
-
-    graph = _load_graph(using)
-    adapter = _select_adapter(graph, _cfg.get()["direction_min_confidence"])
-
-    veto_error: NoesisVeto | None = None
-    status_payload: Dict[str, Any] = {"status": "ok"}
-    reflect_reasons: List[str] = []
-    result_excerpt = ""
-    success = True
-
-    try:
-        result = adapter.execute(
-            task=task,
-            episode_id=episode_id,
-            run_dir=run_dir,
-            intuition=intuition_impl if intuition_enabled else None,
-            seed=seed,
-            tags=tags,
-        )
-
-        # Only core-log for the simple callable shim; real adapters log themselves.
-        if type(adapter).__name__ == "_CallableAdapter":
-            result_excerpt = str(result)[:400]
-            _act_event(
-                run_dir,
-                episode_id,
-                adapter=using_label,
-                input_excerpt=task[:120],
-                outcome=result_excerpt,
-            )
-        else:
-            result_excerpt = str(result)[:200]
-        reflect_reasons.append("adapter_ok")
-
-    except NoesisVeto as e:
-        success = False
-        status_payload = {"status": "blocked", "message": str(e)}
-        veto_error = e
-        reflect_reasons.append("veto")
-    except Exception as e:  # noqa: BLE001
-        success = False
-        status_payload = {"status": "error", "message": str(e)}
-        reflect_reasons.append(e.__class__.__name__)
-
-    _ensure_act_event(
-        run_dir,
-        episode_id,
-        adapter_label=f"adapter:{using_label}",
-        input_excerpt=task[:120],
-        outcome=result_excerpt or status_payload["status"],
-    )
-    _reflect_event(
-        run_dir,
-        episode_id,
-        success=success,
-        reasons=reflect_reasons or None,
-    )
-    _terminate_event(run_dir, episode_id, status_payload)
-
-    _finalize_summary(
-        run_dir=run_dir,
-        episode_id=episode_id,
-        task=task,
-        seed=seed,
-        started_at=started_at,
-        intuition_enabled=intuition_enabled,
-        intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
-        using_label=using_label,
-        tags=tags,
-    )
-
-    if veto_error is not None:
-        raise veto_error
-    return episode_id
+    return _run_impl(task=task, seed=seed, intuition=intuition, tags=tags, using=using)
 
 
 def run_graph(

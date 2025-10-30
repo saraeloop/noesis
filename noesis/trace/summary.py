@@ -46,9 +46,26 @@ def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
 
 # Public API
 
+def _prune_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove empty optional sections to keep artifacts tidy."""
+    for key in ("hints", "risk_forecast"):
+        if not summary.get(key):
+            summary.pop(key, None)
+
+    if not summary.get("answer"):
+        summary.pop("answer", None)
+
+    metrics = summary.get("metrics")
+    if isinstance(metrics, dict):
+        experimental = metrics.get("experimental")
+        if not experimental:
+            metrics.pop("experimental", None)
+    return summary
+
+
 def write_summary(dir_path: Path, summary: Dict[str, Any]) -> None:
     """Atomically write `summary.json` under the given episode directory."""
-    _atomic_write_json(dir_path / SUMMARY_FILE, summary)
+    _atomic_write_json(dir_path / SUMMARY_FILE, _prune_summary(summary))
 
 
 def read_summary(dir_path: Path) -> Dict[str, Any]:

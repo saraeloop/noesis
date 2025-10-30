@@ -8,6 +8,7 @@ dist/
 build/
 .eggs/
 runs/
+.noesis/
 .pytest_cache/
 .coverage
 htmlcov/
