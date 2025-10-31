@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "state_schema_version": "1.0.0",
+  "episode": {
+    "id": "ep_20250101_120000_123456_abcd_s0",
+    "seed": 0,
+    "started_at": "2025-01-01T12:00:00+00:00",
+    "tags": {
+      "env": "demo"
+    },
+    "using": "adapter:demo"
+  },
+  "goal": {
+    "task": "Investigate incident impact",
+    "type": "task",
+    "context": "Service latency alerts from region us-east-1"
+  },
+  "beliefs": [
+    {
+      "statement": "Latency spike correlates with deploy v2025.1.0",
+      "confidence": 0.7,
+      "source": "detector",
+      "timestamp": "2025-01-01T12:00:05+00:00"
+    }
+  ],
+  "plan": {
+    "steps": [
+      {
+        "id": "step-1",
+        "kind": "detector",
+        "description": "Collect recent deploy metadata",
+        "status": "completed"
+      },
+      {
+        "id": "step-2",
+        "kind": "action",
+        "description": "Compare latency pre/post deploy",
+        "status": "completed",
+        "depends_on": [
+          "step-1"
+        ]
+      },
+      {
+        "id": "step-3",
+        "kind": "verify",
+        "description": "Confirm mitigation plan",
+        "status": "pending",
+        "depends_on": [
+          "step-2"
+        ]
+      }
+    ],
+    "source": "system",
+    "updated_at": "2025-01-01T12:00:07+00:00",
+    "rationale": "Minimal planner (detector → action → verify)"
+  },
+  "memory": {
+    "facts": [
+      {
+        "timestamp": "2025-01-01T12:00:08+00:00",
+        "kind": "metric_snapshot",
+        "latency_p99_ms": 840
+      }
+    ],
+    "scratchpad": "Deploy rollback in progress."
+  },
+  "outcomes": {
+    "status": "ok",
+    "summary": "Rollback reduced latency below threshold.",
+    "actions": [
+      {
+        "timestamp": "2025-01-01T12:00:10+00:00",
+        "name": "adapter:demo",
+        "step_id": "step-2",
+        "outcome": "mitigation_started"
+      }
+    ],
+    "metrics": {
+      "task_score": 0.85
+    },
+    "artifacts": [
+      {
+        "type": "report",
+        "path": "runs/ep_20250101_120000_123456_abcd_s0/report.md"
+      }
+    ]
+  }
+}

@@ -23,7 +23,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional, List, Final, Protocol
 
 from . import _config as _cfg
+from .state import NoesisState, PlanStep
 from .state.episode import new_episode_id, begin_episode
+from .state.store import EpisodeStore
 from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
@@ -51,6 +53,24 @@ except Exception:  # noqa: BLE001
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EXCERPT_IN_LEN: Final[int] = 120
 EXCERPT_OUT_LEN: Final[int] = 400
+EPISODE_STORE_TTL_DAYS: Final[int] = 30
+
+
+def _plan_steps_from_labels(labels: List[str]) -> List[PlanStep]:
+    steps: List[PlanStep] = []
+    for idx, label in enumerate(labels, start=1):
+        if ":" in label:
+            kind, description = label.split(":", 1)
+        else:
+            kind, description = "task", label
+        steps.append(
+            PlanStep(
+                id=f"step-{idx}",
+                kind=kind.strip() or "task",
+                description=description.strip(),
+            )
+        )
+    return steps
 
 
 def _normalize_intuition(intuition: bool | Intuition | None) -> tuple[Intuition, bool]:
@@ -227,12 +247,25 @@ def _run_impl(
     intuition_impl, intuition_enabled = _normalize_intuition(intuition)
 
     using_label: Optional[str] = _safe_using_label(using) if using is not None else None
+    state = NoesisState.new(
+        episode_id=ctx.episode_id,
+        seed=seed,
+        task=task,
+        started_at=ctx.started_at,
+        tags=tags,
+        using=using_label,
+    )
+    state_path = ctx.run_dir / "state.json"
+    state.write(state_path)
+
     snapshot = {
         "task": task,
         "seed": seed,
         "history": [],
         "tools_seen": [],
         "tags": tags or {},
+        "state_path": str(state_path),
+        "state": state.to_dict(),
     }
     if using_label is not None:
         snapshot["using"] = using_label
@@ -251,6 +284,10 @@ def _run_impl(
     else:
         plan_steps = [f"adapter:{using_label}"]
         plan_rationale = "Execute adapter"
+    plan_step_objs = _plan_steps_from_labels(plan_steps)
+    state.set_plan(steps=plan_step_objs, rationale=plan_rationale, source="system")
+    state.write(state_path)
+    snapshot["state"] = state.to_dict()
     _plan_event(ctx.run_dir, ctx.episode_id, steps=plan_steps, rationale=plan_rationale, source="system")
 
     status_payload: Dict[str, Any] = {"status": "ok"}
@@ -289,16 +326,33 @@ def _run_impl(
             status_payload = {"status": "error", "message": str(err)}
             reflect_reasons.append("error")
 
+    action_outcome = result_excerpt or status_payload["status"]
+
     _ensure_act_event(
         ctx.run_dir,
         ctx.episode_id,
         adapter_label=adapter_label,
         input_excerpt=input_excerpt,
-        outcome=result_excerpt or status_payload["status"],
+        outcome=action_outcome,
+    )
+
+    state.record_action(
+        {
+            "name": adapter_label,
+            "step_id": plan_step_objs[-1].id if plan_step_objs else None,
+            "input_excerpt": input_excerpt,
+            "outcome_excerpt": action_outcome,
+        }
     )
 
     _reflect_event(ctx.run_dir, ctx.episode_id, success=success, reasons=reflect_reasons or None)
     _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
+
+    if state.plan.steps:
+        state.plan.steps[-1].status = "completed" if success else status_payload["status"]
+    state.set_outcome(status=status_payload["status"], summary=result_excerpt or None)
+    state.write(state_path)
+    snapshot["state"] = state.to_dict()
 
     _finalize_summary(
         run_dir=ctx.run_dir,
@@ -313,6 +367,25 @@ def _run_impl(
         intuition=intuition_impl,
         schema_version=SCHEMA_VERSION,
     )
+
+    try:
+        store_root = Path(runs_dir) / "_episodes"
+        summary_path = ctx.run_dir / "summary.json"
+        EpisodeStore(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
+            episode_id=ctx.episode_id,
+            summary_path=summary_path,
+            state_path=state_path,
+            status=status_payload["status"],
+            task=task,
+            using=using_label,
+            provenance={
+                "schema_version": state.version,
+                "state_schema_version": state.state_schema_version,
+            },
+        )
+    except Exception:
+        # Episode registry should never break execution; failures are logged via events.
+        pass
 
     if veto_error is not None:
         raise veto_error

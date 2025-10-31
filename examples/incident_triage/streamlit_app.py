@@ -16,12 +16,12 @@ try:
 except ImportError as exc:  # pragma: no cover - executed only when missing extra
     raise RuntimeError(
         "Streamlit is not installed. Install the optional UI extras with "
-        "`uv pip install 'noesis[ui]'` to run this demo."
+        "`uv sync --extra ui'` to run this demo."
     ) from exc
 
 import noesis as ns
-from .app_incident_triage import incident_graph
-from .prod_guard import ProdGuardPolicy
+from examples.incident_triage.app_incident_triage import incident_graph
+from examples.incident_triage.prod_guard import ProdGuardPolicy
 
 
 def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
@@ -84,7 +84,7 @@ tags = {"risk": "high"} if risk_tag else None
 if run_button:
     with st.spinner("Executing Noēsis loop…"):
         episode_id = ns.run_using(
-            using=incident_graph,
+            using=lambda: incident_graph,
             task=incident,
             seed=int(seed),
             intuition=ProdGuardPolicy(),

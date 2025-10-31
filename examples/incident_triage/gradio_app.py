@@ -23,8 +23,8 @@ except ImportError as exc:  # pragma: no cover - executed only when missing extr
 
 import noesis as ns
 
-from .app_incident_triage import incident_graph
-from .prod_guard import ProdGuardPolicy
+from examples.incident_triage.app_incident_triage import incident_graph
+from examples.incident_triage.prod_guard import ProdGuardPolicy
 
 # Local sample run so the dashboard has meaningful content before the first run.
 SAMPLE_RUN_DIR = Path(__file__).with_name("demo_run")
@@ -251,7 +251,7 @@ def run_demo(
         tags["require_approval"] = True
 
     episode_id = ns.run_using(
-        using=incident_graph,
+        using=lambda: incident_graph,
         task=prompt,
         seed=int(seed),
         intuition=ProdGuardPolicy(),
@@ -278,11 +278,9 @@ def run_demo(
         summary_text,
         events_text,
         f"Artifacts written to `{run_dir}`",
-        gr.CheckboxGroup.update(choices=phases, value=phases),
-        gr.Dropdown.update(choices=["All"] + agents, value="All"),
-        run_dir,
-        gr.DownloadButton.update(data=summary_text, file_name=f"{episode_id}_summary.json"),
-        gr.DownloadButton.update(data=events_text, file_name=f"{episode_id}_events.jsonl"),
+        gr.update(choices=phases, value=phases),
+        gr.update(choices=["All"] + agents, value="All"),
+        str(run_dir),
     )
 
 
@@ -397,17 +395,6 @@ def build_interface() -> gr.Blocks:
             show_copy_button=True,
             interactive=False,
         )
-        download_summary = gr.DownloadButton(
-            label="Download summary.json",
-            data=json.dumps(SAMPLE_SUMMARY, indent=2) if SAMPLE_SUMMARY else None,
-            file_name="demo_incident_summary.json",
-        )
-        download_events = gr.DownloadButton(
-            label="Download events.jsonl",
-            data="\n".join(json.dumps(evt) for evt in SAMPLE_EVENTS) if SAMPLE_EVENTS else None,
-            file_name="demo_incident_events.jsonl",
-        )
-
         events_state = gr.State(SAMPLE_EVENTS)
 
         run_button.click(
@@ -427,8 +414,6 @@ def build_interface() -> gr.Blocks:
                 phase_filter,
                 agent_filter,
                 run_dir_box,
-                download_summary,
-                download_events,
             ],
         )
 

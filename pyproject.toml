@@ -10,7 +10,7 @@ readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "Sara Loera" }]
-keywords = ["agents", "ai", "langgraph", "intuition", "reasoning"]
+keywords = ["agents", "ai", "intuition", "reasoning", "langgraph", "crewai"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3",
@@ -39,6 +39,20 @@ ui = [
   "gradio>=4.40",
   "streamlit>=1.39",
 ]
+
+[dependency-groups]
+dev = [
+  "pytest>=7.4",
+  "ruff>=0.5",
+  "import-linter>=2.0",
+]
+ui = [
+  "gradio>=4.40",
+  "streamlit>=1.39",
+]
+
+[tool.uv]
+default-groups = ["dev"]
 
 [project.scripts]
 noesis = "noesis.cli:main"

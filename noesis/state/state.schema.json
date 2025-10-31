@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://noesis.ai/schema/state/1.0",
+  "title": "Noēsis State v1",
+  "type": "object",
+  "required": ["version", "episode", "goal", "beliefs", "plan", "memory", "outcomes"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "episode": {
+      "type": "object",
+      "required": ["id", "seed", "started_at", "tags"],
+      "properties": {
+        "id": { "type": "string" },
+        "seed": { "type": "integer" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "tags": { "type": "object", "additionalProperties": true },
+        "using": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "goal": {
+      "type": "object",
+      "required": ["task", "type"],
+      "properties": {
+        "task": { "type": "string" },
+        "type": { "type": "string" },
+        "context": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "beliefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["statement", "confidence", "source", "timestamp"],
+        "properties": {
+          "statement": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "source": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "plan": {
+      "type": "object",
+      "required": ["steps", "source", "updated_at"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "description", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "type": "string" },
+              "description": { "type": "string" },
+              "status": { "type": "string" },
+              "rationale": { "type": "string" },
+              "inputs": { "type": "object", "additionalProperties": true },
+              "outputs": { "type": "object", "additionalProperties": true },
+              "depends_on": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "rationale": { "type": "string" },
+        "source": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "memory": {
+      "type": "object",
+      "required": ["facts"],
+      "properties": {
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": { "type": "string", "format": "date-time" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "scratchpad": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "outcomes": {
+      "type": "object",
+      "required": ["status", "actions"],
+      "properties": {
+        "status": { "type": "string" },
+        "summary": { "type": "string" },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": { "type": "string", "format": "date-time" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "metrics": { "type": "object", "additionalProperties": true },
+        "artifacts": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

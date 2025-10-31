@@ -20,7 +20,7 @@ __version__ = "0.4.3"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API
-from .core import solve, run, set
+from .core import solve, run, run_using, set
 from ._config import get
 
 # Read/inspect API 
@@ -34,6 +34,7 @@ __all__ = (
     # core
     "solve",
     "run",
+    "run_using",
     "set",
     "get",
     "summary",
