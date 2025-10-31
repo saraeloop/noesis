@@ -28,8 +28,8 @@ from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
-from .runtime.utils import now as _now
-from .runtime.events import (
+from .runtime._utils import now as _now
+from .runtime._events import (
     act_event as _act_event,
     ensure_act_event as _ensure_act_event,
     interpret_event as _interpret_event,
@@ -39,7 +39,8 @@ from .runtime.events import (
     start_event as _start_event,
     terminate_event as _terminate_event,
 )
-from .runtime.summary import finalize_summary as _finalize_summary
+from .runtime._summary import finalize_summary as _finalize_summary
+from .trace.schema import SUMMARY_SCHEMA_VERSION
 
 # Soft-depend on adapters
 try:
@@ -47,7 +48,7 @@ try:
 except Exception:  # noqa: BLE001
     LangGraphAdapter = None  # type: ignore[assignment]
 
-SCHEMA_VERSION: Final[str] = "1.1.0"
+SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EXCERPT_IN_LEN: Final[int] = 120
 EXCERPT_OUT_LEN: Final[int] = 400
 

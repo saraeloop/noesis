@@ -1,6 +1,11 @@
-"""Internal core helpers (events, summary, utils)."""
+"""Internal runtime helpers.
 
-from .events import (
+The modules in this package are implementation details. They are prefixed with
+an underscore to discourage external imports; prefer public APIs from
+``noesis`` instead.
+"""
+
+from ._events import (
     act_event,
     ensure_act_event,
     interpret_event,
@@ -10,8 +15,8 @@ from .events import (
     start_event,
     terminate_event,
 )
-from .summary import finalize_summary
-from .utils import now
+from ._summary import finalize_summary
+from ._utils import now
 
 __all__ = [
     "act_event",

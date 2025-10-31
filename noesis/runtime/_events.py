@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..trace.events import read_events, write_event
-from .utils import now
+from ._utils import now
 
 __all__ = [
     "start_event",

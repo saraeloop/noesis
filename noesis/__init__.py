@@ -13,9 +13,11 @@ Stable public API (v0.3.0):
 
 from __future__ import annotations
 
+from .trace.schema import SUMMARY_SCHEMA_VERSION
+
 # Package metadata
 __version__ = "0.4.1"
-__schema_version__ = "1.1.0"
+__schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API
 from .core import solve, run, set

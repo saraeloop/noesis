@@ -11,8 +11,8 @@ from ..trace.events import read_events, write_event
 from ..trace.summary import write_summary
 from ..insight import compute_metrics
 from ..intuition import Intuition, IntuitionMode
-from .utils import compute_duration, format_diff_item, now
-from .learning import maybe_emit_learn_event
+from ._utils import compute_duration, format_diff_item, now
+from ._learning import maybe_emit_learn_event
 
 __all__ = ["finalize_summary"]
 

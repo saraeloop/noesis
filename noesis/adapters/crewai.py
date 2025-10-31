@@ -9,14 +9,15 @@ Contract:
 
 from __future__ import annotations
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from os import PathLike
 from copy import deepcopy
+
 from ..trace.events import write_event
 from ..intuition import Intuition, IntuitionEvent
 from ..direction import DirectiveKind
 from ..exceptions import NoesisVeto
-from datetime import datetime, timezone
+from .protocols import AdapterPath, DEFAULT_MIN_CONFIDENCE, STATE_HISTORY_LIMIT
 
 __all__ = ["CrewAIAdapter"]
 
@@ -29,17 +30,23 @@ class _State:
     tools_seen: list
 
 class CrewAIAdapter:
-    def __init__(self, crew: Any, *, input_mapper=None, min_confidence: float = 0.5) -> None:
+    def __init__(
+        self,
+        crew: Any,
+        *,
+        input_mapper=None,
+        min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    ) -> None:
         self.crew = crew
         self.input_mapper = input_mapper or (lambda t: {"task": t})
         self._state = _State(history=[], tools_seen=[])
         self._min_conf = float(min_confidence)
 
-    def _log(self, run_dir: PathLike[str] | str, episode: str, phase: str, payload: Dict[str, Any]) -> None:
+    def _log(self, run_dir: AdapterPath, episode: str, phase: str, payload: Dict[str, Any]) -> None:
         write_event(run_dir, {"timestamp": _ts(), "episode_id": episode, "agent_id": "adapter.crewai", "phase": phase, "payload": payload, "evidence_ids": []})
         if phase in {"intuition", "direction", "reason", "interpret", "plan", "act", "observe", "reflect", "error"}:
             self._state.history.append({"phase": phase, "payload": payload})
-            if len(self._state.history) > 50:
+            if len(self._state.history) > STATE_HISTORY_LIMIT:
                 del self._state.history[0]
 
     def _policy_tag(self, intuition: Optional[Intuition]) -> str:
@@ -63,7 +70,7 @@ class CrewAIAdapter:
         *,
         task: str,
         episode_id: str,
-        run_dir: PathLike[str] | str,
+        run_dir: AdapterPath,
         intuition: Optional[Intuition] = None,
         seed: int = 0,
         tags: Optional[Dict[str, Any]] = None,

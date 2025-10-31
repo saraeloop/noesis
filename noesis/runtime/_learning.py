@@ -12,8 +12,8 @@ from ..learn import (
     update_policy_snapshot,
 )
 from ..trace.events import write_event
-from .utils import now
-from .events import last_event_of_phase
+from ._utils import now
+from ._events import last_event_of_phase
 
 __all__ = ["maybe_emit_learn_event"]
 

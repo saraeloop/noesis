@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import noesis as ns
 from noesis.trace.events import read_events, write_event
 from noesis import DirectedIntuition
+from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 import pytest
 
 
@@ -69,6 +70,10 @@ def test_success_metric(tmp_path):
     metrics = ns.summary(episode_id)["metrics"]
 
     assert metrics["success"] == 1
+
+
+def test_schema_version_export():
+    assert ns.__schema_version__ == SUMMARY_SCHEMA_VERSION
 
 
 def test_insight_phase_validates(tmp_path):

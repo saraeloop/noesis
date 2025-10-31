@@ -1,0 +1,12 @@
+{
+  "index": {
+    "title": "Overview",
+    "display": "hidden"
+  },
+  "guides": {
+    "title": "Get started"
+  },
+  "reference": {
+    "title": "Reference"
+  }
+}

@@ -20,30 +20,21 @@ Purpose
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Optional, Protocol
+from typing import Any, Callable, Dict, Optional
 from copy import deepcopy
-from os import PathLike
 
 from ..trace.events import write_event
 from ..intuition import Intuition, IntuitionEvent
 from ..direction import DirectiveKind
 from ..exceptions import NoesisVeto
+from .protocols import (
+    AdapterPath,
+    Executor,
+    DEFAULT_MIN_CONFIDENCE,
+    STATE_HISTORY_LIMIT,
+)
 
 __all__ = ["LangGraphAdapter", "Executor"]
-
-
-class Executor(Protocol):
-    """Backend execution contract expected by Noēsis."""
-    def execute(
-        self,
-        *,
-        task: str,
-        episode_id: str,
-        run_dir: PathLike[str] | str,
-        intuition: Optional[Intuition] = None,
-        seed: int = 0,
-        tags: Optional[Dict[str, Any]] = None,
-    ) -> Any: ...
 
 
 @dataclass
@@ -65,7 +56,7 @@ class _State:
             "error",
         }:
             self.history.append({"phase": phase, "payload": payload})
-            if len(self.history) > 50:
+            if len(self.history) > STATE_HISTORY_LIMIT:
                 del self.history[0]
 
     def note_tool(self, payload: Dict[str, Any]) -> None:
@@ -110,7 +101,13 @@ class LangGraphAdapter:
         The explicit constructor argument takes precedence over the attribute.
     """
 
-    def __init__(self, graph: Any, *, input_mapper: Optional[Callable[[str], Any]] = None, min_confidence: float = 0.5) -> None:
+    def __init__(
+        self,
+        graph: Any,
+        *,
+        input_mapper: Optional[Callable[[str], Any]] = None,
+        min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    ) -> None:
         self.graph = graph
         # precedence: explicit arg > graph attribute > identity
         discovered = getattr(graph, "__noesis_input_mapper__", None)
@@ -118,7 +115,7 @@ class LangGraphAdapter:
         self._state = _State(history=[], tools_seen=[])
         self._min_confidence = float(min_confidence)
 
-    def _log(self, run_dir: PathLike[str] | str, episode_id: str, phase: str, payload: Dict[str, Any]) -> None:
+    def _log(self, run_dir: AdapterPath, episode_id: str, phase: str, payload: Dict[str, Any]) -> None:
         body = {
             "timestamp": _ts(),
             "episode_id": episode_id,
@@ -174,7 +171,7 @@ class LangGraphAdapter:
         *,
         task: str,
         episode_id: str,
-        run_dir: PathLike[str] | str,
+        run_dir: AdapterPath,
         intuition: Optional[Intuition] = None,
         seed: int = 0,
         tags: Optional[Dict[str, Any]] = None,
@@ -263,7 +260,7 @@ class LangGraphAdapter:
         self,
         directive: IntuitionEvent,
         input_obj: Any,
-        run_dir: PathLike[str] | str,
+        run_dir: AdapterPath,
         episode_id: str,
         policy_tag: str,
     ) -> Any:
