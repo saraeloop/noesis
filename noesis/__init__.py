@@ -16,14 +16,15 @@ from __future__ import annotations
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 
 # Package metadata
-__version__ = "0.4.1"
+__version__ = "0.4.3"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API
 from .core import solve, run, set
+from ._config import get
 
 # Read/inspect API 
-from .io import summary, events, list_runs
+from .io import summary, events, list_runs, paths
 # Ergonomic intuition surface 
 from .intuition import Intuition
 from .direction import DirectedIntuition
@@ -34,9 +35,11 @@ __all__ = (
     "solve",
     "run",
     "set",
+    "get",
     "summary",
     "events",
     "list_runs",
+    "paths",
     # intuition
     "Intuition",
     "DirectedIntuition",

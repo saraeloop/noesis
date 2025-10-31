@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, List
 import hashlib
 import json
 
-from .. import config as _cfg
+from .. import _config as _cfg
 from ..state.episode import EpisodeSummary
 from ..trace.events import read_events, write_event
 from ..trace.summary import write_summary

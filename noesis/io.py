@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from . import config as _cfg
+from . import _config as _cfg
 from .trace.events import EVENTS_FILE, read_events
 from .trace.summary import SUMMARY_FILE, read_summary
 

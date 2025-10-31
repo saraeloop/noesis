@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "0.4.1"
+version = "0.4.3"
 description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -33,6 +33,11 @@ langgraph = [
 dev = [
   "pytest>=7.4",
   "ruff>=0.5",
+  "import-linter>=2.0",
+]
+ui = [
+  "gradio>=4.40",
+  "streamlit>=1.39",
 ]
 
 [project.scripts]
@@ -50,17 +55,67 @@ exclude = ["tests", "tests/**"]
 # Include only the package and selected top-level files
 include = [
   "noesis/**",
+  "examples/**",
   "LICENSE",
   "README.md",
   "pyproject.toml",
 ]
-# If you want to ship examples/docs in sdists but not wheels:
 [tool.hatch.build.targets.sdist]
 include = [
   "noesis/**",
+  "examples/**",
   "docs/**",
   "flows/**",
   "README.md",
   "LICENSE",
   "pyproject.toml",
+]
+
+[tool.importlinter]
+root_package = "noesis"
+
+[[tool.importlinter.contracts]]
+name = "Runtime must not import adapters"
+type = "forbidden"
+source_modules = [
+  "noesis.runtime",
+]
+forbidden_modules = [
+  "noesis.adapters",
+]
+
+[[tool.importlinter.contracts]]
+name = "Adapters must not import runtime internals"
+type = "forbidden"
+source_modules = [
+  "noesis.adapters",
+]
+forbidden_modules = [
+  "noesis.runtime",
+]
+
+[[tool.importlinter.contracts]]
+name = "Internal modules avoid legacy config shim"
+type = "forbidden"
+source_modules = [
+  "noesis.adapters",
+  "noesis.cli",
+  "noesis.core",
+  "noesis.direction",
+  "noesis.exceptions",
+  "noesis.insight",
+  "noesis.intuition",
+  "noesis.io",
+  "noesis.learn",
+  "noesis.loader",
+  "noesis.runtime",
+  "noesis.state",
+  "noesis.tools",
+  "noesis.trace",
+]
+forbidden_modules = [
+  "noesis.config",
+]
+ignore_imports = [
+  "noesis.config -> noesis._config",
 ]

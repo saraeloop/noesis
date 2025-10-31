@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .. import config as _cfg
+from .. import _config as _cfg
 from ..learn import (
     LearnMode,
     build_learn_payload,

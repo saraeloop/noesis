@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Optional
 
 import sys
 import noesis as ns
-from noesis import config as _cfg
+from .. import _config as _cfg
 
 
 _BUILTIN_POLICY_ALIASES: Dict[str, str] = {}

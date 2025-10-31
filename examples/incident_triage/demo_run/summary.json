@@ -1,0 +1,43 @@
+{
+  "episode_id": "demo_incident",
+  "schema_version": "1.1.0",
+  "task": "Purge cache in ALL regions for product-catalog; users seeing stale data",
+  "tags": {
+    "env": "prod",
+    "service": "catalog"
+  },
+  "metrics": {
+    "success": 1,
+    "steps": 5,
+    "plan_count": 1,
+    "act_count": 1,
+    "reflect_count": 1,
+    "veto_rate": 0.0,
+    "latencies": {
+      "time_to_first_action_ms": 1200,
+      "time_to_veto_ms": null
+    },
+    "learn_proposals": [
+      {
+        "id": "LP-demo-001",
+        "kind": "policy_tweak",
+        "status": "pending",
+        "path": "direction_min_confidence",
+        "from": 0.55,
+        "to": 0.6
+      }
+    ]
+  },
+  "flags": {
+    "intuition": true,
+    "mode": "hybrid",
+    "direction": {
+      "applied": 1,
+      "vetoed": 0,
+      "last_diff": [
+        "plan: added requires_approval flag"
+      ],
+      "threshold": 0.55
+    }
+  }
+}

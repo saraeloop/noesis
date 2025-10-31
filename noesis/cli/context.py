@@ -5,7 +5,7 @@ from typing import Any, Dict
 import sys
 
 import noesis as ns
-from noesis import config as _cfg
+from .. import _config as _cfg
 
 
 @dataclass

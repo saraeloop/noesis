@@ -1,0 +1,1 @@
+{"id": "LP-demo-001", "kind": "policy_tweak", "status": "pending", "reason": "High-risk purge requested; raise confidence floor.", "proposal": {"path": "direction_min_confidence", "from": 0.55, "to": 0.6}}

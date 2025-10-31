@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Final, Protocol
 
-from . import config as _cfg
+from . import _config as _cfg
 from .state.episode import new_episode_id, begin_episode
 from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode

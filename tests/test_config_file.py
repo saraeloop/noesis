@@ -14,7 +14,7 @@ def test_noesis_toml_overrides(tmp_path, monkeypatch):
             sys.modules.pop(name, None)
 
     importlib.import_module("noesis")
-    from noesis import config as cfg_module
+    from noesis import _config as cfg_module
 
     settings = cfg_module.get()
     assert settings["runs_dir"].endswith("logs")

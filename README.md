@@ -102,6 +102,8 @@ runs = ns.list_runs(limit=10)
 > 🧪 The helper `noesis.insight.compute_metrics()` is experimental and may change between releases.
 > New metrics land under `metrics.experimental` until they graduate into the stable set below.
 
+> ℹ️ Configure Noēsis via `noesis.set(...)`. The legacy `noesis.config` module will be removed in v0.6.
+
 ---
 
 ## 🧠 Intuition Layer
@@ -215,6 +217,29 @@ noesis version
 | `noesis events` | Stream events across phases |
 | `noesis insight` | Shortcut for `events --phase insight` |
 | `noesis version` | CLI and core version info |
+
+### 🎛 Incident triage control room (demo)
+
+Showcase Noēsis in an SRE-friendly workflow with the bundled Gradio dashboard:
+
+```bash
+# optional UI dependencies
+uv pip install "noesis[ui]"
+
+# Gradio control room (recommended)
+uv run python -m examples.incident_triage.gradio_app
+
+# Streamlit variant
+uv run streamlit run examples/incident_triage/streamlit_app.py
+```
+
+What you get:
+
+- **ProdGuardPolicy** that vetoes destructive ops, scopes global actions, and nudges safer defaults.
+- **Deterministic incident graph** (Detector → Responder → Reviewer) that mirrors how you’d wrap LangGraph.
+- **Dashboard panels** for event timelines, metrics, interventions, and learn proposals in `runs/<episode>/`.
+
+Flip the “High risk” checkbox in the UI to watch the policy block unsafe instructions and record a learn proposal recommending a higher confidence gate.
 
 ### 🎚️ Verbosity controls
 
