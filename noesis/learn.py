@@ -1,20 +1,19 @@
-"""
-Helper utilities for Noēsis.
-
-Encodes the learn-mode lifecycle (off|record|apply), proposal
-representation, scoring hooks, and persistence helpers for snapshots
-and per-episode logs. Core orchestrates when to call into these helpers.
-"""
+"""Learning utilities wrapping domain models with persistence helpers."""
 
 from __future__ import annotations
 
+import json
 from collections import Counter
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
-import json
+
+from noesis.domain.learning.model import (
+    LearnMode,
+    LearnProposal,
+    LearnStatus,
+    derive_target_key,
+)
 
 __all__ = [
     "LearnMode",
@@ -29,90 +28,12 @@ __all__ = [
 ]
 
 
-class LearnMode(str, Enum):
-    OFF = "off"
-    RECORD = "record"
-    APPLY = "apply"
-
-
-class LearnStatus(str, Enum):
-    RECORDED = "recorded"
-    SCORED = "scored"
-    APPROVED = "approved"
-    APPLIED = "applied"
-    REJECTED = "rejected"
-
-
-@dataclass(slots=True)
-class LearnProposal:
-    """
-    Structured learn proposal emitted per episode.
-    """
-
-    proposal_id: str
-    policy_id: Optional[str]
-    policy_version: Optional[str]
-    kind: str
-    target: Dict[str, Any]
-    rationale: Optional[str] = None
-    evidence_ids: List[str] = field(default_factory=list)
-    score_fn: str = "heuristic"
-    score: Optional[float] = None
-    confidence: float = 0.0
-    status: str = LearnStatus.RECORDED.value
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    revert_handle: Optional[Dict[str, Any]] = None
-    accepted: bool = False
-
-    def mark_scored(self, *, score: float, confidence: float, scorer: str) -> None:
-        self.score = float(score)
-        self.confidence = max(0.0, min(1.0, float(confidence)))
-        self.metadata.setdefault("scorer", scorer)
-        if self.status == LearnStatus.RECORDED.value:
-            self.status = LearnStatus.SCORED.value
-
-    def approve(self) -> None:
-        if self.status not in (LearnStatus.APPLIED.value, LearnStatus.REJECTED.value):
-            self.status = LearnStatus.APPROVED.value
-
-    def mark_applied(self, revert_handle: Dict[str, Any]) -> None:
-        self.status = LearnStatus.APPLIED.value
-        self.accepted = True
-        self.revert_handle = revert_handle
-
-    def to_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "proposal_id": self.proposal_id,
-            "policy_version": self.policy_version,
-            "kind": self.kind,
-            "target": self.target,
-            "rationale": self.rationale,
-            "evidence_ids": self.evidence_ids,
-            "score_fn": self.score_fn,
-            "score": self.score,
-            "confidence": self.confidence,
-            "status": self.status,
-            "metadata": self.metadata or {},
-            "accepted": self.accepted,
-        }
-        if self.revert_handle:
-            payload["revert_handle"] = self.revert_handle
-        return payload
-
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _sanitize_policy_id(policy_id: str) -> str:
     return policy_id.replace("/", "_").replace(" ", "_")
-
-
-def derive_target_key(target: Dict[str, Any], *, fallback: str) -> str:
-    path = target.get("path")
-    if path:
-        return str(path)
-    return fallback
 
 
 def build_learn_payload(
@@ -147,15 +68,14 @@ def build_learn_payload(
 
 
 def persist_episode_learning(run_dir: Path, payload: Dict[str, Any]) -> None:
-    """Write per-episode learn proposals under the episode directory."""
     path = run_dir / "learn.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"timestamp": _now(), "payload": payload}
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"timestamp": _now(), "payload": payload}, ensure_ascii=False) + "\n")
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def load_policy_snapshot(learn_home: Path, policy_id: str) -> Dict[str, Any]:
-    """Load existing policy snapshot if present; returns a default skeleton otherwise."""
     policies_dir = learn_home / "policies"
     snapshot_path = policies_dir / f"{_sanitize_policy_id(policy_id)}.json"
     if snapshot_path.exists():
@@ -177,7 +97,6 @@ def update_policy_snapshot(
     *,
     gate_updates: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> None:
-    """Persist cumulative learn state per policy."""
     if not policy_id:
         return
     policies_dir = learn_home / "policies"
@@ -185,7 +104,6 @@ def update_policy_snapshot(
     snapshot_path = policies_dir / f"{_sanitize_policy_id(policy_id)}.json"
 
     snapshot = load_policy_snapshot(learn_home, policy_id)
-
     snapshot["updated_at"] = _now()
     stats = snapshot.setdefault("stats", {})
     stats["episodes"] = int(stats.get("episodes", 0)) + 1
@@ -215,8 +133,7 @@ def update_policy_snapshot(
 
     if gate_updates:
         for key, info in gate_updates.items():
-            gate_entry = gates.setdefault(key, {})
-            gate_entry.update(info)
+            gates.setdefault(key, {}).update(info)
 
     with snapshot_path.open("w", encoding="utf-8") as handle:
         json.dump(snapshot, handle, ensure_ascii=False, indent=2)

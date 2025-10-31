@@ -26,8 +26,9 @@ from . import _config as _cfg
 from .state import (
     NoesisState,
     PlanStep,
+    PlanKind,
+    StepStatus,
     PLAN_KINDS_DEFAULT,
-    PLAN_STATUS_DONE,
     OUTCOME_STATUS_OK,
     OUTCOME_STATUS_ERROR,
     OUTCOME_STATUS_VETOED,
@@ -36,6 +37,10 @@ from .state import (
 )
 from .state.episode import new_episode_id, begin_episode
 from .state.store import EpisodeStore
+# Domain / use-case layer imports
+from .domain.planner.minimal import MinimalActuator, MinimalPlanner
+from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
+from .interfaces.observability import RuntimeEventBus
 from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
@@ -53,6 +58,7 @@ from .runtime._events import (
 )
 from .runtime._summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
+from .usecases.episode_runner import EpisodeDependencies, EpisodeRequest, EpisodeRunner
 
 # Soft-depend on adapters
 try:
@@ -86,8 +92,9 @@ def _plan_steps_from_labels(labels: List[str]) -> List[PlanStep]:
         steps.append(
             PlanStep(
                 id=f"step-{idx}",
-                kind=PLAN_KINDS_DEFAULT,
+                kind=PlanKind.DEFAULT,
                 description=label.strip(),
+                status=StepStatus.PENDING,
             )
         )
     return steps
@@ -266,19 +273,99 @@ def _run_impl(
 
     intuition_impl, intuition_enabled = _normalize_intuition(intuition)
 
-    raw_using_label: Optional[str] = _safe_using_label(using) if using is not None else None
-    adapter_label = f"adapter:{raw_using_label or 'core.null'}"
-    state = NoesisState.new(
+    minimal_mode = using is None
+    raw_using_label: Optional[str]
+    if minimal_mode:
+        raw_using_label = "core.minimal"
+    else:
+        raw_using_label = _safe_using_label(using) if using is not None else "core.null"
+    adapter_label = f"adapter:{raw_using_label}"
+    episode_ctx = EpisodeContext(
+        run_dir=ctx.run_dir,
         episode_id=ctx.episode_id,
         seed=seed,
         task=task,
+        tags=tags or {},
+        adapter_label=adapter_label,
         started_at=ctx.started_at,
-        tags=tags,
-        using=adapter_label,
     )
+    state_repo = RuntimeStateRepository(context=episode_ctx)
+    state = state_repo.init()
     state_path = ctx.run_dir / "state.json"
-    state.write(state_path)
 
+    start_payload = {"task": task, "seed": seed, "using": raw_using_label}
+    _start_event(ctx.run_dir, ctx.episode_id, start_payload)
+
+    if minimal_mode:
+        snapshot = {
+            "task": task,
+            "seed": seed,
+            "history": [],
+            "tools_seen": [],
+            "tags": tags or {},
+            "state_path": str(state_path),
+            "state": state.to_dict(),
+            "using": raw_using_label,
+        }
+        _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
+        _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
+
+        event_bus = RuntimeEventBus(run_dir=ctx.run_dir, episode_id=ctx.episode_id)
+        deps = EpisodeDependencies(
+            planner=MinimalPlanner(),
+            actuator=MinimalActuator(tool_label=adapter_label),
+            event_bus=event_bus,
+            state_repository=state_repo,
+        )
+        runner = EpisodeRunner(deps)
+        episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=episode_ctx)
+        result = runner.run(episode_request)
+
+        status_payload: Dict[str, Any] = {"status": result.outcome.status}
+        if result.outcome.summary:
+            status_payload["message"] = result.outcome.summary
+
+        _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
+
+        state = result.state
+        state.set_links(events="events.jsonl", summary="summary.json", learn="learn.jsonl")
+        state_repo.persist(state)
+
+        _finalize_summary(
+            run_dir=ctx.run_dir,
+            episode_id=ctx.episode_id,
+            task=task,
+            seed=seed,
+            started_at=ctx.started_at,
+            intuition_enabled=intuition_enabled,
+            intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
+            using_label=raw_using_label,
+            tags=tags,
+            intuition=intuition_impl,
+            schema_version=SCHEMA_VERSION,
+        )
+
+        try:
+            store_root = Path(runs_dir) / "_episodes"
+            summary_path = ctx.run_dir / "summary.json"
+            EpisodeStore(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
+                episode_id=ctx.episode_id,
+                summary_path=summary_path,
+                state_path=state_path,
+                status=status_payload["status"],
+                task=task,
+                using=adapter_label,
+                provenance={
+                    "schema_version": state.version,
+                    "state_schema_version": state.state_schema_version,
+                },
+            )
+        except Exception:
+            pass
+
+        return ctx.episode_id
+
+    # External adapter path continues below.
     snapshot = {
         "task": task,
         "seed": seed,
@@ -287,27 +374,17 @@ def _run_impl(
         "tags": tags or {},
         "state_path": str(state_path),
         "state": state.to_dict(),
+        "using": raw_using_label,
     }
-    if raw_using_label is not None:
-        snapshot["using"] = raw_using_label
 
-    start_payload = {"task": task, "seed": seed}
-    if raw_using_label is not None:
-        start_payload["using"] = raw_using_label
-
-    _start_event(ctx.run_dir, ctx.episode_id, start_payload)
     _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
     _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
 
-    if raw_using_label is None:
-        plan_steps = ["emit-summary-only"]
-        plan_rationale = "Core run without adapter"
-    else:
-        plan_steps = [adapter_label]
-        plan_rationale = "Execute adapter"
+    plan_steps = [adapter_label]
+    plan_rationale = "Execute adapter"
     plan_step_objs = _plan_steps_from_labels(plan_steps)
     state.set_plan(steps=plan_step_objs, rationale=plan_rationale, source="system")
-    state.write(state_path)
+    state_repo.persist(state)
     snapshot["state"] = state.to_dict()
     _plan_event(ctx.run_dir, ctx.episode_id, steps=plan_steps, rationale=plan_rationale, source="system")
 
@@ -368,17 +445,17 @@ def _run_impl(
     _reflect_event(ctx.run_dir, ctx.episode_id, success=success, reasons=reflect_reasons or None)
     _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
 
-    if state.plan.steps:
+    if state.plan_steps:
         if not success and status_payload["status"] == "blocked":
-            state.plan.steps[-1].status = "vetoed"
+            state.plan_steps[-1].status = StepStatus.VETOED
         elif not success:
-            state.plan.steps[-1].status = "failed"
+            state.plan_steps[-1].status = StepStatus.FAILED
         else:
-            state.plan.steps[-1].status = PLAN_STATUS_DONE
+            state.plan_steps[-1].status = StepStatus.DONE
 
     normalized_outcome_status = _normalize_outcome_status(status_payload["status"], success=success)
-    state.set_outcome(status=normalized_outcome_status, summary=result_excerpt or None)
-    state.write(state_path)
+    state.set_outcome(status=normalized_outcome_status, summary=result_excerpt or None, metrics=None)
+    state_repo.persist(state)
     snapshot["state"] = state.to_dict()
 
     _finalize_summary(
@@ -419,7 +496,7 @@ def _run_impl(
         summary="summary.json",
         learn="learn.jsonl",
     )
-    state.write(state_path)
+    state_repo.persist(state)
 
     if veto_error is not None:
         raise veto_error

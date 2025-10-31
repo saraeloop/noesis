@@ -22,6 +22,7 @@ __schema_version__ = SUMMARY_SCHEMA_VERSION
 # Core execution API
 from .core import solve, run, run_using, set
 from ._config import get
+from .domain.planner.minimal import MinimalPlanner
 
 # Read/inspect API 
 from .io import summary, events, list_runs, paths
@@ -41,6 +42,7 @@ __all__ = (
     "events",
     "list_runs",
     "paths",
+    "MinimalPlanner",
     # intuition
     "Intuition",
     "DirectedIntuition",
