@@ -23,7 +23,17 @@ from pathlib import Path
 from typing import Any, Dict, Optional, List, Final, Protocol
 
 from . import _config as _cfg
-from .state import NoesisState, PlanStep
+from .state import (
+    NoesisState,
+    PlanStep,
+    PLAN_KINDS_DEFAULT,
+    PLAN_STATUS_DONE,
+    OUTCOME_STATUS_OK,
+    OUTCOME_STATUS_ERROR,
+    OUTCOME_STATUS_VETOED,
+    OUTCOME_STATUS_ABORTED,
+    OUTCOME_STATUS_PARTIAL,
+)
 from .state.episode import new_episode_id, begin_episode
 from .state.store import EpisodeStore
 from .trace.events import write_event
@@ -56,18 +66,28 @@ EXCERPT_OUT_LEN: Final[int] = 400
 EPISODE_STORE_TTL_DAYS: Final[int] = 30
 
 
+def _normalize_outcome_status(raw_status: str, *, success: bool) -> str:
+    if raw_status == "ok":
+        return OUTCOME_STATUS_OK
+    if raw_status == "blocked":
+        return OUTCOME_STATUS_VETOED
+    if raw_status == "error":
+        return OUTCOME_STATUS_ERROR
+    if raw_status == "aborted":
+        return OUTCOME_STATUS_ABORTED
+    if raw_status == "partial":
+        return OUTCOME_STATUS_PARTIAL
+    return OUTCOME_STATUS_OK if success else OUTCOME_STATUS_ERROR
+
+
 def _plan_steps_from_labels(labels: List[str]) -> List[PlanStep]:
     steps: List[PlanStep] = []
     for idx, label in enumerate(labels, start=1):
-        if ":" in label:
-            kind, description = label.split(":", 1)
-        else:
-            kind, description = "task", label
         steps.append(
             PlanStep(
                 id=f"step-{idx}",
-                kind=kind.strip() or "task",
-                description=description.strip(),
+                kind=PLAN_KINDS_DEFAULT,
+                description=label.strip(),
             )
         )
     return steps
@@ -246,14 +266,15 @@ def _run_impl(
 
     intuition_impl, intuition_enabled = _normalize_intuition(intuition)
 
-    using_label: Optional[str] = _safe_using_label(using) if using is not None else None
+    raw_using_label: Optional[str] = _safe_using_label(using) if using is not None else None
+    adapter_label = f"adapter:{raw_using_label or 'core.null'}"
     state = NoesisState.new(
         episode_id=ctx.episode_id,
         seed=seed,
         task=task,
         started_at=ctx.started_at,
         tags=tags,
-        using=using_label,
+        using=adapter_label,
     )
     state_path = ctx.run_dir / "state.json"
     state.write(state_path)
@@ -267,22 +288,22 @@ def _run_impl(
         "state_path": str(state_path),
         "state": state.to_dict(),
     }
-    if using_label is not None:
-        snapshot["using"] = using_label
+    if raw_using_label is not None:
+        snapshot["using"] = raw_using_label
 
     start_payload = {"task": task, "seed": seed}
-    if using_label is not None:
-        start_payload["using"] = using_label
+    if raw_using_label is not None:
+        start_payload["using"] = raw_using_label
 
     _start_event(ctx.run_dir, ctx.episode_id, start_payload)
     _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
     _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
 
-    if using_label is None:
+    if raw_using_label is None:
         plan_steps = ["emit-summary-only"]
         plan_rationale = "Core run without adapter"
     else:
-        plan_steps = [f"adapter:{using_label}"]
+        plan_steps = [adapter_label]
         plan_rationale = "Execute adapter"
     plan_step_objs = _plan_steps_from_labels(plan_steps)
     state.set_plan(steps=plan_step_objs, rationale=plan_rationale, source="system")
@@ -296,7 +317,6 @@ def _run_impl(
     success = True
     veto_error: Optional[NoesisVeto] = None
 
-    adapter_label = f"adapter:{using_label or 'core.null'}"
     input_excerpt = task[:EXCERPT_IN_LEN]
 
     if using is None:
@@ -336,21 +356,28 @@ def _run_impl(
         outcome=action_outcome,
     )
 
+    action_status = _normalize_outcome_status(status_payload["status"], success=success)
     state.record_action(
-        {
-            "name": adapter_label,
-            "step_id": plan_step_objs[-1].id if plan_step_objs else None,
-            "input_excerpt": input_excerpt,
-            "outcome_excerpt": action_outcome,
-        }
+        kind="adapter",
+        tool=adapter_label,
+        input_excerpt=input_excerpt,
+        result_status=action_status,
+        step_id=plan_step_objs[-1].id if plan_step_objs else None,
     )
 
     _reflect_event(ctx.run_dir, ctx.episode_id, success=success, reasons=reflect_reasons or None)
     _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
 
     if state.plan.steps:
-        state.plan.steps[-1].status = "completed" if success else status_payload["status"]
-    state.set_outcome(status=status_payload["status"], summary=result_excerpt or None)
+        if not success and status_payload["status"] == "blocked":
+            state.plan.steps[-1].status = "vetoed"
+        elif not success:
+            state.plan.steps[-1].status = "failed"
+        else:
+            state.plan.steps[-1].status = PLAN_STATUS_DONE
+
+    normalized_outcome_status = _normalize_outcome_status(status_payload["status"], success=success)
+    state.set_outcome(status=normalized_outcome_status, summary=result_excerpt or None)
     state.write(state_path)
     snapshot["state"] = state.to_dict()
 
@@ -362,7 +389,7 @@ def _run_impl(
         started_at=ctx.started_at,
         intuition_enabled=intuition_enabled,
         intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
-        using_label=using_label,
+        using_label=raw_using_label,
         tags=tags,
         intuition=intuition_impl,
         schema_version=SCHEMA_VERSION,
@@ -377,7 +404,7 @@ def _run_impl(
             state_path=state_path,
             status=status_payload["status"],
             task=task,
-            using=using_label,
+            using=adapter_label,
             provenance={
                 "schema_version": state.version,
                 "state_schema_version": state.state_schema_version,
@@ -386,6 +413,13 @@ def _run_impl(
     except Exception:
         # Episode registry should never break execution; failures are logged via events.
         pass
+
+    state.set_links(
+        events="events.jsonl",
+        summary="summary.json",
+        learn="learn.jsonl",
+    )
+    state.write(state_path)
 
     if veto_error is not None:
         raise veto_error

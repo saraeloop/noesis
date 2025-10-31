@@ -8,19 +8,30 @@ or mutating an agent’s plan, beliefs, or memory.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+import itertools
 import json
 
 STATE_VERSION = "1.0"
 STATE_SCHEMA_VERSION = "1.0.0"
 
+PLAN_KINDS_DEFAULT = "plan"
+PLAN_STATUS_PENDING = "pending"
+PLAN_STATUS_DONE = "done"
+OUTCOME_STATUS_PENDING = "pending"
+OUTCOME_STATUS_OK = "ok"
+OUTCOME_STATUS_ERROR = "error"
+OUTCOME_STATUS_VETOED = "vetoed"
+OUTCOME_STATUS_ABORTED = "aborted"
+OUTCOME_STATUS_PARTIAL = "partial"
+
 __all__ = [
     "STATE_VERSION",
-    "PlanStep",
     "STATE_SCHEMA_VERSION",
+    "PlanStep",
     "NoesisState",
 ]
 
@@ -29,35 +40,137 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _filter_extensions(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep `x-` extension keys while dropping empty mappings."""
+    return {k: v for k, v in data.items() if k.startswith("x-")}
+
+
+@dataclass(slots=True)
+class Provenance:
+    source: str
+    evidence_ids: List[str] = field(default_factory=list)
+    policy_id: Optional[str] = None
+    adapter_id: Optional[str] = None
+    extensions: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"source": self.source}
+        if self.evidence_ids:
+            payload["evidence_ids"] = list(self.evidence_ids)
+        if self.policy_id:
+            payload["policy_id"] = self.policy_id
+        if self.adapter_id:
+            payload["adapter_id"] = self.adapter_id
+        payload.update(_filter_extensions(self.extensions))
+        return payload
+
+
 @dataclass(slots=True)
 class PlanStep:
     """
     Canonical plan step structure.
-
-    `kind` can be used by planners to differentiate detector/action/verify
-    patterns. `status` reflects runtime progress.
     """
 
     id: str
     kind: str
     description: str
-    status: str = "pending"
+    status: str = PLAN_STATUS_PENDING
     rationale: Optional[str] = None
     inputs: Dict[str, Any] = field(default_factory=dict)
     outputs: Dict[str, Any] = field(default_factory=dict)
     depends_on: List[str] = field(default_factory=list)
+    extensions: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        data = asdict(self)
-        if not data.get("depends_on"):
-            data.pop("depends_on", None)
-        if not data.get("inputs"):
-            data.pop("inputs", None)
-        if not data.get("outputs"):
-            data.pop("outputs", None)
-        if self.rationale is None:
-            data.pop("rationale", None)
-        return data
+        payload: Dict[str, Any] = {
+            "id": self.id,
+            "kind": self.kind,
+            "description": self.description,
+            "status": self.status,
+        }
+        if self.rationale:
+            payload["rationale"] = self.rationale
+        if self.inputs:
+            payload["inputs"] = self.inputs
+        if self.outputs:
+            payload["outputs"] = self.outputs
+        if self.depends_on:
+            payload["depends_on"] = list(dict.fromkeys(self.depends_on))
+        payload.update(_filter_extensions(self.extensions))
+        return payload
+
+
+@dataclass(slots=True)
+class MemoryFact:
+    type: str
+    key: str
+    value: Any
+    provenance: Optional[Provenance] = None
+    timestamp: Optional[str] = None
+    ttl_sec: Optional[int] = None
+    extensions: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "type": self.type,
+            "key": self.key,
+            "value": self.value,
+        }
+        if self.provenance:
+            payload["provenance"] = self.provenance.to_dict()
+        if self.timestamp:
+            payload["timestamp"] = self.timestamp
+        if self.ttl_sec is not None:
+            payload["ttl_sec"] = int(self.ttl_sec)
+        payload.update(_filter_extensions(self.extensions))
+        return payload
+
+
+@dataclass(slots=True)
+class ActionArtifact:
+    type: str
+    uri: str
+    sha256: Optional[str] = None
+    extensions: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"type": self.type, "uri": self.uri}
+        if self.sha256:
+            payload["sha256"] = self.sha256
+        payload.update(_filter_extensions(self.extensions))
+        return payload
+
+
+@dataclass(slots=True)
+class ActionRecord:
+    id: str
+    kind: str
+    tool: str
+    input_excerpt: str
+    result_status: str
+    timestamp: str
+    step_id: Optional[str] = None
+    provenance: Optional[Provenance] = None
+    result_artifacts: List[ActionArtifact] = field(default_factory=list)
+    extensions: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "id": self.id,
+            "kind": self.kind,
+            "tool": self.tool,
+            "input_excerpt": self.input_excerpt,
+            "result_status": self.result_status,
+            "timestamp": self.timestamp,
+        }
+        if self.step_id:
+            payload["step_id"] = self.step_id
+        if self.provenance:
+            payload["provenance"] = self.provenance.to_dict()
+        if self.result_artifacts:
+            payload["result_artifacts"] = [artifact.to_dict() for artifact in self.result_artifacts]
+        payload.update(_filter_extensions(self.extensions))
+        return payload
 
 
 @dataclass(slots=True)
@@ -66,50 +179,58 @@ class _Plan:
     rationale: Optional[str] = None
     source: str = "system"
     updated_at: str = field(default_factory=_now_iso)
+    extensions: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "steps": [step.to_dict() for step in self.steps],
             "source": self.source,
             "updated_at": self.updated_at,
         }
         if self.rationale:
-            data["rationale"] = self.rationale
-        return data
+            payload["rationale"] = self.rationale
+        payload.update(_filter_extensions(self.extensions))
+        return payload
 
 
 @dataclass(slots=True)
 class _Memory:
-    facts: List[Dict[str, Any]] = field(default_factory=list)
+    facts: List[MemoryFact] = field(default_factory=list)
     scratchpad: str = ""
+    extensions: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        data = {"facts": self.facts}
+        payload: Dict[str, Any] = {
+            "facts": [fact.to_dict() for fact in self.facts],
+        }
         if self.scratchpad:
-            data["scratchpad"] = self.scratchpad
-        return data
+            payload["scratchpad"] = self.scratchpad
+        payload.update(_filter_extensions(self.extensions))
+        return payload
 
 
 @dataclass(slots=True)
 class _Outcomes:
-    status: str = "pending"
+    status: str = OUTCOME_STATUS_PENDING
     summary: Optional[str] = None
-    actions: List[Dict[str, Any]] = field(default_factory=list)
+    actions: List[ActionRecord] = field(default_factory=list)
     metrics: Dict[str, Any] = field(default_factory=dict)
-    artifacts: List[Dict[str, Any]] = field(default_factory=list)
+    artifacts: List[ActionArtifact] = field(default_factory=list)
+    extensions: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "status": self.status,
-            "actions": self.actions,
+            "actions": [action.to_dict() for action in self.actions],
         }
         if self.summary:
-            data["summary"] = self.summary
+            payload["summary"] = self.summary
         if self.metrics:
-            data["metrics"] = self.metrics
+            payload["metrics"] = self.metrics
         if self.artifacts:
-            data["artifacts"] = self.artifacts
-        return data
+            payload["artifacts"] = [artifact.to_dict() for artifact in self.artifacts]
+        payload.update(_filter_extensions(self.extensions))
+        return payload
 
 
 @dataclass(slots=True)
@@ -119,17 +240,19 @@ class _EpisodeInfo:
     started_at: str
     tags: Dict[str, Any] = field(default_factory=dict)
     using: Optional[str] = None
+    extensions: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "id": self.episode_id,
             "seed": self.seed,
             "started_at": self.started_at,
             "tags": self.tags,
         }
         if self.using:
-            data["using"] = self.using
-        return data
+            payload["using"] = self.using
+        payload.update(_filter_extensions(self.extensions))
+        return payload
 
 
 @dataclass(slots=True)
@@ -137,21 +260,19 @@ class _Goal:
     task: str
     context: Optional[str] = None
     type: str = "task"
+    extensions: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        data: Dict[str, Any] = {"task": self.task, "type": self.type}
+        payload: Dict[str, Any] = {"task": self.task, "type": self.type}
         if self.context:
-            data["context"] = self.context
-        return data
+            payload["context"] = self.context
+        payload.update(_filter_extensions(self.extensions))
+        return payload
 
 
 class NoesisState:
     """
     Lightweight container for the Noēsis cognitive state.
-
-    The structure mirrors the public schema ({episode, goal, beliefs, plan,
-    memory, outcomes}). Methods mutate the in-memory representation and persist
-    it to disk.
     """
 
     def __init__(
@@ -172,6 +293,8 @@ class NoesisState:
         self.plan = plan or _Plan()
         self.memory = memory or _Memory()
         self.outcomes = outcomes or _Outcomes()
+        self.links: Dict[str, str] = {}
+        self._action_counter = itertools.count(1)
 
     @classmethod
     def new(
@@ -204,11 +327,81 @@ class NoesisState:
     ) -> None:
         self.plan = _Plan(steps=list(steps), rationale=rationale, source=source, updated_at=_now_iso())
 
-    def record_action(self, action: Dict[str, Any]) -> None:
-        action = dict(action)
-        if "timestamp" not in action:
-            action["timestamp"] = _now_iso()
+    def add_belief(
+        self,
+        *,
+        statement: str,
+        confidence: float,
+        provenance: Provenance | Dict[str, Any],
+    ) -> None:
+        prov_obj = provenance if isinstance(provenance, Provenance) else Provenance(**provenance)
+        self.beliefs.append(
+            {
+                "statement": statement,
+                "confidence": max(0.0, min(1.0, float(confidence))),
+                "timestamp": _now_iso(),
+                "provenance": prov_obj.to_dict(),
+            }
+        )
+
+    def set_scratchpad(self, text: str) -> None:
+        self.memory.scratchpad = text
+
+    def add_memory_fact(
+        self,
+        *,
+        type: str,
+        key: str,
+        value: Any,
+        provenance: Optional[Provenance | Dict[str, Any]] = None,
+        ttl_sec: Optional[int] = None,
+        timestamp: Optional[str] = None,
+    ) -> None:
+        prov_obj = None
+        if provenance:
+            prov_obj = provenance if isinstance(provenance, Provenance) else Provenance(**provenance)
+        fact = MemoryFact(
+            type=type,
+            key=key,
+            value=value,
+            provenance=prov_obj,
+            ttl_sec=ttl_sec,
+            timestamp=timestamp or _now_iso(),
+        )
+        self.memory.facts.append(fact)
+
+    def record_action(
+        self,
+        *,
+        kind: str,
+        tool: str,
+        input_excerpt: str,
+        result_status: str,
+        step_id: Optional[str] = None,
+        provenance: Optional[Provenance | Dict[str, Any]] = None,
+        result_artifacts: Optional[List[Dict[str, Any]]] = None,
+    ) -> ActionRecord:
+        action_id = f"act-{next(self._action_counter)}"
+        prov_obj = None
+        if provenance:
+            prov_obj = provenance if isinstance(provenance, Provenance) else Provenance(**provenance)
+        artifacts = [
+            ActionArtifact(**artifact) if not isinstance(artifact, ActionArtifact) else artifact
+            for artifact in (result_artifacts or [])
+        ]
+        action = ActionRecord(
+            id=action_id,
+            kind=kind,
+            tool=tool,
+            input_excerpt=input_excerpt,
+            result_status=result_status,
+            timestamp=_now_iso(),
+            step_id=step_id,
+            provenance=prov_obj,
+            result_artifacts=artifacts,
+        )
         self.outcomes.actions.append(action)
+        return action
 
     def set_outcome(
         self,
@@ -222,26 +415,18 @@ class NoesisState:
         if metrics:
             self.outcomes.metrics = dict(metrics)
 
-    def add_belief(self, *, statement: str, confidence: float, source: str) -> None:
-        self.beliefs.append(
-            {
-                "statement": statement,
-                "confidence": max(0.0, min(1.0, float(confidence))),
-                "source": source,
-                "timestamp": _now_iso(),
-            }
-        )
-
-    def set_scratchpad(self, text: str) -> None:
-        self.memory.scratchpad = text
-
-    def add_memory_fact(self, fact: Dict[str, Any]) -> None:
-        payload = dict(fact)
-        payload.setdefault("timestamp", _now_iso())
-        self.memory.facts.append(payload)
+    def set_links(self, *, events: Optional[str] = None, summary: Optional[str] = None, learn: Optional[str] = None) -> None:
+        links: Dict[str, str] = {}
+        if events:
+            links["events"] = events
+        if summary:
+            links["summary"] = summary
+        if learn:
+            links["learn"] = learn
+        self.links = links
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "version": self.version,
             "state_schema_version": self.state_schema_version,
             "episode": self.episode.to_dict(),
@@ -251,6 +436,9 @@ class NoesisState:
             "memory": self.memory.to_dict(),
             "outcomes": self.outcomes.to_dict(),
         }
+        if self.links:
+            payload["links"] = self.links
+        return payload
 
     def write(self, path: Path) -> None:
         payload = self.to_dict()

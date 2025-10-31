@@ -34,6 +34,8 @@ State is authored in raw JSON (no prompt formatting) and is scoped to a single e
 | `plan.steps[].inputs|outputs` | Optional payloads adapters may store for richer replay. |
 | `outcomes.actions[]` | Individual decision points, including tool invocations. |
 
+Plan steps use a controlled vocabulary (`kind ∈ {detect, analyze, plan, act, verify, review}`, `status ∈ {pending, running, done, skipped, failed, vetoed}`) so dashboards can render intent and execution consistently. Outcome statuses map to `{ok, error, vetoed, aborted, partial}` plus the transient `pending` state while a run is in flight.
+
 <Callout type="warning" emoji="📄">
 Schema migration note: v1 is the initial release. Fields may expand, but existing keys will remain stable. Use the `state_schema_version` field to gate parser upgrades.
 </Callout>

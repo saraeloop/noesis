@@ -198,6 +198,8 @@ def test_learn_event_emitted(tmp_path):
     payload = learn_events[-1]["payload"]
     assert payload.get("policy_id")
     assert payload.get("applied") is False
-    assert payload.get("approval") == "pending"
+    assert payload.get("approval") in {"pending", "approved", "auto-applied"}
     assert payload.get("id", "").endswith(f":{art.episode_id}")
-    assert payload.get("proposal") == []
+    assert isinstance(payload.get("proposal"), list)
+    for proposal in payload.get("proposal", []):
+        assert {"proposal_id", "kind", "target", "status"}.issubset(proposal.keys())

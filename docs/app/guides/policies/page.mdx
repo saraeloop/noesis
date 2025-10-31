@@ -58,3 +58,15 @@ Import your policy class in unit tests and feed synthetic events to assert inter
 <Callout type="info" emoji="🛠️">
 Policies are pure Python—no hidden thread pools or async requirements. Keep state on the class if you need short-term memory.
 </Callout>
+
+## Learning from policy outcomes
+
+Noēsis records every directional decision and runs the learn loop after an episode finishes. When recurring signals appear (for example, repeated vetoes), the framework proposes a policy adjustment and scores it with a heuristic.
+
+- Proposals include the target (e.g. `direction_min_confidence`), score function, confidence, and a revert handle when auto-applied.
+- Configure the auto-apply gate via `learn_auto_apply_min_confidence` and `learn_auto_apply_min_successes`; the default requires three successful high-confidence triggers before applying.
+- Switching `learn_mode` to `"apply"` lets Noēsis promote approved proposals automatically while still emitting a diff and revert handle inside `learn.jsonl` and the policy snapshot.
+
+<Callout type="warning" emoji="⚙️">
+Policies never mutate `state.json` directly. They emit proposals; the core loop applies them only after the safety gate fires.
+</Callout>

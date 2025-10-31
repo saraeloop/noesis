@@ -45,6 +45,8 @@ DEFAULT_TIMEOUT_SEC = 60
 DEFAULT_POLICY_ALIASES: Dict[str, str] = {}
 DEFAULT_LEARN_MODE = LearnMode.RECORD
 DEFAULT_LEARN_HOME = Path.home() / ".noesis" / "state"
+DEFAULT_LEARN_AUTO_APPLY_MIN_SUCCESSES = 3
+DEFAULT_LEARN_AUTO_APPLY_MIN_CONFIDENCE = 0.75
 
 CONFIG_FILE_CANDIDATES = ("noesis.toml", ".noesis.toml")
 
@@ -58,6 +60,8 @@ ALLOWED_KEYS = {
     "policy_aliases",
     "learn_mode",
     "learn_home",
+    "learn_auto_apply_min_successes",
+    "learn_auto_apply_min_confidence",
 }
 
 
@@ -72,6 +76,8 @@ class Config:
     policy_aliases: Dict[str, str] = field(default_factory=dict)
     learn_mode: LearnMode = DEFAULT_LEARN_MODE
     learn_home: Path = DEFAULT_LEARN_HOME
+    learn_auto_apply_min_successes: int = DEFAULT_LEARN_AUTO_APPLY_MIN_SUCCESSES
+    learn_auto_apply_min_confidence: float = DEFAULT_LEARN_AUTO_APPLY_MIN_CONFIDENCE
 
 
 _config: Config = Config()
@@ -152,6 +158,8 @@ def get() -> Dict[str, Any]:
     c["policy_aliases"] = dict(_config.policy_aliases)
     c["learn_mode"] = _config.learn_mode.value
     c["learn_home"] = str(_config.learn_home)
+    c["learn_auto_apply_min_successes"] = int(_config.learn_auto_apply_min_successes)
+    c["learn_auto_apply_min_confidence"] = float(_config.learn_auto_apply_min_confidence)
     return c
 
 
@@ -208,6 +216,18 @@ def set(**overrides: Any) -> None:
         home = Path(overrides["learn_home"]).expanduser()
         home.mkdir(parents=True, exist_ok=True)
         new = replace(new, learn_home=home)
+
+    if "learn_auto_apply_min_successes" in overrides:
+        successes = int(overrides["learn_auto_apply_min_successes"])
+        if successes < 1:
+            raise ValueError("learn_auto_apply_min_successes must be >= 1")
+        new = replace(new, learn_auto_apply_min_successes=successes)
+
+    if "learn_auto_apply_min_confidence" in overrides:
+        conf = float(overrides["learn_auto_apply_min_confidence"])
+        if not (0.0 <= conf <= 1.0):
+            raise ValueError("learn_auto_apply_min_confidence must be within [0.0, 1.0]")
+        new = replace(new, learn_auto_apply_min_confidence=conf)
 
     _config = new
 

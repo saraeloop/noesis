@@ -19,9 +19,17 @@ def test_state_artifact_written(tmp_path) -> None:
         assert payload["episode"]["id"] == episode
         assert payload["goal"]["task"] == "hello state"
         assert payload["plan"]["steps"], "plan steps absent"
+        step = payload["plan"]["steps"][0]
+        assert step["kind"] == "plan"
+        assert step["status"] in {"pending", "done", "failed", "vetoed", "running", "skipped"}
         assert payload["outcomes"]["status"] == "ok"
+        actions = payload["outcomes"]["actions"]
+        assert actions and {"id", "kind", "tool", "result_status"}.issubset(actions[0].keys())
+        assert payload["episode"]["using"] == "adapter:core.null"
         assert payload["version"] == "1.0"
         assert payload["state_schema_version"] == "1.0.0"
+        assert payload["links"]["events"] == "events.jsonl"
+        assert payload["links"]["summary"] == "summary.json"
     finally:
         _cfg.reset()
 
@@ -39,8 +47,8 @@ def test_episode_store_ttl_and_search(tmp_path) -> None:
         state_path=state_path,
         status="ok",
         task="demo",
-        using=None,
-        provenance={"schema_version": "1.0"},
+        using="adapter:test",
+        provenance={"schema_version": "1.0", "state_schema_version": "1.0.0"},
         embedding=[0.1, 0.2, 0.3],
     )
 

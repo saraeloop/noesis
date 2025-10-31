@@ -19,23 +19,29 @@
     {
       "statement": "Latency spike correlates with deploy v2025.1.0",
       "confidence": 0.7,
-      "source": "detector",
-      "timestamp": "2025-01-01T12:00:05+00:00"
+      "timestamp": "2025-01-01T12:00:05+00:00",
+      "provenance": {
+        "source": "detector",
+        "evidence_ids": [
+          "evt-deploy-signal"
+        ],
+        "adapter_id": "adapter:demo"
+      }
     }
   ],
   "plan": {
     "steps": [
       {
         "id": "step-1",
-        "kind": "detector",
+        "kind": "detect",
         "description": "Collect recent deploy metadata",
-        "status": "completed"
+        "status": "done"
       },
       {
         "id": "step-2",
-        "kind": "action",
+        "kind": "act",
         "description": "Compare latency pre/post deploy",
-        "status": "completed",
+        "status": "done",
         "depends_on": [
           "step-1"
         ]
@@ -57,9 +63,14 @@
   "memory": {
     "facts": [
       {
+        "type": "metric",
+        "key": "latency_p99_ms",
+        "value": 840,
         "timestamp": "2025-01-01T12:00:08+00:00",
-        "kind": "metric_snapshot",
-        "latency_p99_ms": 840
+        "provenance": {
+          "source": "telemetry",
+          "adapter_id": "adapter:demo"
+        }
       }
     ],
     "scratchpad": "Deploy rollback in progress."
@@ -69,10 +80,19 @@
     "summary": "Rollback reduced latency below threshold.",
     "actions": [
       {
+        "id": "act-1",
+        "kind": "adapter",
+        "tool": "adapter:demo",
+        "input_excerpt": "rollback deploy v2025.1.0",
+        "result_status": "ok",
         "timestamp": "2025-01-01T12:00:10+00:00",
-        "name": "adapter:demo",
         "step_id": "step-2",
-        "outcome": "mitigation_started"
+        "result_artifacts": [
+          {
+            "type": "log",
+            "uri": "runs/ep_20250101_120000_123456_abcd_s0/rollback.log"
+          }
+        ]
       }
     ],
     "metrics": {
@@ -81,8 +101,13 @@
     "artifacts": [
       {
         "type": "report",
-        "path": "runs/ep_20250101_120000_123456_abcd_s0/report.md"
+        "uri": "runs/ep_20250101_120000_123456_abcd_s0/report.md"
       }
     ]
+  },
+  "links": {
+    "events": "events.jsonl",
+    "summary": "summary.json",
+    "learn": "learn.jsonl"
   }
 }
