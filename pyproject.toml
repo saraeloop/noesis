@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "v0.5.3"
+version = "v0.6.1"
 description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }

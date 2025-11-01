@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 
 
@@ -16,7 +16,7 @@ class NewCommand:
         parser.add_argument("-j", "--json", action="store_true", help="JSON output")
         parser.add_argument("-q", "--quiet", action="store_true", help="Suppress message")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
         message = (
             f"Scaffolding for '{args.kind} {args.name}' is coming soon. "
             "Create flows/ or policies manually for now."

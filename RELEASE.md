@@ -19,7 +19,7 @@ It assumes you are working from a clean branch, targeting a tagged semantic vers
 - [ ] Exercise the Observe → Interpret → Plan → Act → Reflect → Learn loop with
       representative adapters. Capture event logs for at least one minimal run
       and one external adapter run.
-- [ ] Stress the runtime container resolution (CLI `--port`, `noesis.toml`,
+- [ ] Stress the runtime context resolution (CLI `--port`, `noesis.toml`,
       entry-point plugins) in isolated environments.
 - [ ] Verify crash recovery by inspecting partially written runs (terminate a
       run mid-flight and confirm summaries remain well-formed).

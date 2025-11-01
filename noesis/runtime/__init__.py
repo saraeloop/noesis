@@ -17,12 +17,7 @@ from ._events import (
 )
 from ._summary import finalize_summary
 from ._utils import now
-from .config_provider import (
-    RuntimeContainer,
-    create_runtime_container,
-    get_container,
-    set_container,
-)
+from .config_provider import RuntimeContext, create_runtime_context, get_context, set_context
 
 __all__ = [
     "act_event",
@@ -35,8 +30,8 @@ __all__ = [
     "terminate_event",
     "finalize_summary",
     "now",
-    "RuntimeContainer",
-    "create_runtime_container",
-    "get_container",
-    "set_container",
+    "RuntimeContext",
+    "create_runtime_context",
+    "get_context",
+    "set_context",
 ]

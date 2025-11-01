@@ -20,30 +20,30 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from .trace.events import EVENTS_FILE, read_events
 from .trace.summary import SUMMARY_FILE, read_summary
-from .runtime.config_provider import RuntimeContainer, get_config_snapshot
+from .runtime.config_provider import RuntimeContext, get_config_snapshot
 
 
-def _config_snapshot(container: RuntimeContainer | None):
-    if container is None:
+def _config_snapshot(context: RuntimeContext | None):
+    if context is None:
         return get_config_snapshot()
-    config_port = container.require("config", getattr(container.config_port, "__api_version__", "config/1.0-rc1"))
+    config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
     return config_port.get()
 
 
 # Public Read API
 
-def summary(episode_id: str, *, container: RuntimeContainer | None = None) -> Dict[str, Any]:
+def summary(episode_id: str, *, context: RuntimeContext | None = None) -> Dict[str, Any]:
     """Return the parsed summary JSON for a given episode."""
-    return read_summary(_run_dir(episode_id, container=container))
+    return read_summary(_run_dir(episode_id, context=context))
 
 
-def events(episode_id: str, *, stream: bool = False, container: RuntimeContainer | None = None):
+def events(episode_id: str, *, stream: bool = False, context: RuntimeContext | None = None):
     """
     Load event logs for a given episode.
 
     If `stream=True`, returns an iterator for on-the-fly consumption.
     """
-    run_dir = _run_dir(episode_id, container=container)
+    run_dir = _run_dir(episode_id, context=context)
     if stream:
         def _it() -> Iterator[Dict[str, Any]]:
             for e in read_events(run_dir):
@@ -61,7 +61,7 @@ def list_runs(
     limit: int = 50,
     since: Optional[str] = None,
     *,
-    container: RuntimeContainer | None = None,
+    context: RuntimeContext | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Return a list of recent runs with brief metadata.
@@ -73,7 +73,7 @@ def list_runs(
         - flags
         - success metric (if available)
     """
-    base = _config_snapshot(container).runs_dir
+    base = _config_snapshot(context).runs_dir
     rows: List[Dict[str, Any]] = []
 
     if not base.exists():
@@ -99,15 +99,15 @@ def list_runs(
     return rows[:limit]
 
 
-def last(*, container: RuntimeContainer | None = None) -> Optional[str]:
+def last(*, context: RuntimeContext | None = None) -> Optional[str]:
     """Return the ID of the most recent episode, if any."""
-    rows = list_runs(limit=1, container=container)
+    rows = list_runs(limit=1, context=context)
     return rows[0]["episode_id"] if rows else None
 
 
-def paths(episode_id: str, *, container: RuntimeContainer | None = None) -> Dict[str, str]:
+def paths(episode_id: str, *, context: RuntimeContext | None = None) -> Dict[str, str]:
     """Return canonical file paths for the given episode."""
-    d = _run_dir(episode_id, container=container)
+    d = _run_dir(episode_id, context=context)
     return {
         "dir": str(d),
         "events": str(d / EVENTS_FILE),
@@ -118,6 +118,6 @@ def paths(episode_id: str, *, container: RuntimeContainer | None = None) -> Dict
 
 # Internal Helpers
 
-def _run_dir(episode_id: str, *, container: RuntimeContainer | None = None) -> Path:
+def _run_dir(episode_id: str, *, context: RuntimeContext | None = None) -> Path:
     """Resolve the filesystem directory for a given episode."""
-    return _config_snapshot(container).runs_dir / episode_id
+    return _config_snapshot(context).runs_dir / episode_id

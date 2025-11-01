@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 
 
@@ -13,7 +13,7 @@ class VersionCommand:
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument("-j", "--json", action="store_true", help="JSON output")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
         adapters = []
         for name, module, label in [
             ("langgraph", "noesis.adapters.langgraph", "on"),

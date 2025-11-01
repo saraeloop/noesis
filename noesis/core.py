@@ -58,7 +58,7 @@ from .runtime._events import (
 from .runtime._summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .usecases.episode_runner import EpisodeDependencies, EpisodeRequest, EpisodeRunner
-from .runtime.config_provider import RuntimeContainer, get_container
+from .runtime.config_provider import RuntimeContext, get_context
 
 # Soft-depend on adapters
 try:
@@ -234,8 +234,8 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
 
 # Public API 
 
-def set(*, container: RuntimeContainer | None = None, **overrides: Any) -> None:
-    app = container or get_container()
+def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
+    app = context or get_context()
     config_port = app.require("config", getattr(app.config_port, "__api_version__", "config/1.0-rc1"))
     config_port.set(**overrides)
 
@@ -247,16 +247,16 @@ def solve(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
-    container: RuntimeContainer | None = None,
+    context: RuntimeContext | None = None,
 ) -> str:
-    app = container or get_container()
+    app = context or get_context()
     return run_using(
         using=using,
         task=task,
         seed=seed,
         intuition=intuition,
         tags=tags,
-        container=app,
+        context=app,
     )
 
 
@@ -274,11 +274,11 @@ def _run_impl(
     intuition: bool | Intuition,
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
-    container: RuntimeContainer,
+    context: RuntimeContext,
 ) -> str:
-    config_port = container.require("config", getattr(container.config_port, "__api_version__", "config/1.0-rc1"))
+    config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
     cfg = config_port.get()
-    port_versions = container.list_ports()
+    port_versions = context.list_ports()
     runs_dir = str(cfg.runs_dir)
     dir_min = cfg.direction_min_confidence
 
@@ -528,16 +528,16 @@ def run(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
-    container: RuntimeContainer | None = None,
+    context: RuntimeContext | None = None,
 ) -> str:
-    app = container or get_container()
+    app = context or get_context()
     return _run_impl(
         task=task,
         seed=seed,
         intuition=intuition,
         tags=tags,
         using=None,
-        container=app,
+        context=app,
     )
 
 
@@ -548,16 +548,16 @@ def run_using(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
-    container: RuntimeContainer | None = None,
+    context: RuntimeContext | None = None,
 ) -> str:
-    app = container or get_container()
+    app = context or get_context()
     return _run_impl(
         task=task,
         seed=seed,
         intuition=intuition,
         tags=tags,
         using=using,
-        container=app,
+        context=app,
     )
 
 
@@ -568,7 +568,7 @@ def run_graph(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
-    container: RuntimeContainer | None = None,
+    context: RuntimeContext | None = None,
 ) -> str:
     return run_using(
         using=kind,
@@ -576,5 +576,5 @@ def run_graph(
         seed=seed,
         intuition=intuition,
         tags=tags,
-        container=container,
+        context=context,
     )

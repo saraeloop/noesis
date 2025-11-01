@@ -13,7 +13,7 @@ import tomllib
 
 from noesis.domain.config import CONFIG_FILE_CANDIDATES
 from noesis.infrastructure.config.utils import find_config_path
-from noesis.runtime.config_provider import RuntimeContainer, create_runtime_container
+from noesis.runtime.config_provider import RuntimeContext, create_runtime_context
 
 PORT_ENTRYPOINT_GROUP = "noesis.plugins"
 
@@ -85,19 +85,19 @@ def load_ports(specs: Mapping[str, str]) -> Dict[str, Tuple[Any, str]]:
     return loaded
 
 
-def build_container_from_sources(
+def build_context_from_sources(
     *,
     config_port=None,
     cli_specs: Sequence[str] | None = None,
     config_specs: Mapping[str, str] | None = None,
     entrypoint_specs: Mapping[str, str] | None = None,
-) -> RuntimeContainer:
+) -> RuntimeContext:
     cli_map = dict(parse_assignment(spec) for spec in (cli_specs or []))
     config_map = dict(config_specs or {})
     entry_map = dict(entrypoint_specs or {})
     merged_specs = merge_port_specs(entry_map, config_map, cli_map)
     loaded_ports = load_ports(merged_specs)
-    return create_runtime_container(config_port=config_port, ports=loaded_ports)
+    return create_runtime_context(config_port=config_port, ports=loaded_ports)
 
 
 def load_toml_port_specs() -> Dict[str, str]:

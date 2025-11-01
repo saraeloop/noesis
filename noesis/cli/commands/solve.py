@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 from ..utils import apply_dir_min, parse_tags, read_task, resolve_policy_spec
 
@@ -24,7 +24,7 @@ class SolveCommand:
         parser.add_argument("-j", "--json", action="store_true", help="JSON output (episode id)")
         parser.add_argument("-q", "--quiet", action="store_true", help="Suppress human-friendly output")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
         apply_dir_min(getattr(args, "dir_min", None))
 
         policy = resolve_policy_spec(args.policy)
@@ -46,7 +46,7 @@ class SolveCommand:
             seed=args.seed,
             intuition=intuition,
             tags=tags,
-            container=ctx.container,
+            context=ctx.runtime_context,
         )
 
         if getattr(args, "json", False):

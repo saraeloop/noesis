@@ -15,7 +15,7 @@ from noesis.interfaces.config import ConfigSnapshot
 from noesis.runtime.config_provider import get_config_snapshot
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 
 SENSITIVE_KEYS = {"api_key", "token", "secret", "password", "auth", "bearer"}
@@ -53,10 +53,10 @@ class DiagnosticsCommand:
         parser.add_argument("--strict", action="store_true", help="Exit non-zero on warnings")
         parser.add_argument("--checks", help="Comma-separated list of checks to run")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
         snapshot = ctx.config_snapshot
         selected_checks = self._parse_checks(args.checks)
-        port_map = ctx.container.list_ports()
+        port_map = ctx.runtime_context.list_ports()
 
         all_checks = list(self._run_checks(snapshot, port_map))
         checks = [check for check in all_checks if not selected_checks or check.name in selected_checks]

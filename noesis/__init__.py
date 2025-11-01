@@ -2,12 +2,12 @@
 Noēsis — a cognitive framework for observable, adaptive reasoning.
 
 Stable public API (v0.5.0):
-    run(task, *, seed=0, intuition=True, tags=None) -> str
-    solve(task, *, using, seed=0, intuition=True, tags=None) -> str
-    summary(episode_id) -> dict
-    events(episode_id, *, stream=False) -> list[dict] | Iterator[dict]
-    list_runs(limit=50, since=None) -> list[dict]
-    set(**overrides) -> None
+    run(task, *, seed=0, intuition=True, tags=None, context=None) -> str
+    solve(task, *, using, seed=0, intuition=True, tags=None, context=None) -> str
+    summary(episode_id, *, context=None) -> dict
+    events(episode_id, *, stream=False, context=None) -> list[dict] | Iterator[dict]
+    list_runs(limit=50, since=None, *, context=None) -> list[dict]
+    set(*, context=None, **overrides) -> None
     Intuition, DirectedIntuition, NoesisVeto, MinimalPlanner
 """
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 
 # Package metadata
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API

@@ -5,7 +5,7 @@ import sys
 
 import noesis as ns
 
-from noesis.runtime.config_provider import create_runtime_container
+from noesis.runtime.config_provider import create_runtime_context
 from noesis.runtime.port_loader import instantiate_port, merge_port_specs
 
 
@@ -51,11 +51,11 @@ def test_merge_port_precedence():
     assert merged == {"memory": "mod:Cli", "insight": "mod:ConfigInsight"}
 
 
-def test_container_lists_ports(tmp_path):
+def test_runtime_context_lists_ports(tmp_path):
     ns.set(runs_dir=str(tmp_path / "runs"))
-    container = create_runtime_container()
-    ports = container.list_ports()
+    runtime_context = create_runtime_context()
+    ports = runtime_context.list_ports()
     assert "config" in ports
-    episode_id = ns.run(task="port summary", intuition=False, container=container)
-    summary = ns.summary(episode_id, container=container)
+    episode_id = ns.run(task="port summary", intuition=False, context=runtime_context)
+    summary = ns.summary(episode_id, context=runtime_context)
     assert summary.get("ports", {}).get("config") == ports["config"]

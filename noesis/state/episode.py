@@ -5,7 +5,7 @@ Purpose
 -------
 - Generate collision-resistant, human-readable episode IDs.
 - Create a per-episode run directory atomically (`begin_episode`).
-- Provide a typed container (`EpisodeSummary`) for final summaries
+- Provide a typed context (`EpisodeSummary`) for final summaries
   that serialize cleanly to JSON and remain schema-friendly.
 
 ID Format

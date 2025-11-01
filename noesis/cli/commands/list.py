@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 
 
@@ -15,8 +15,8 @@ class ListCommand:
         parser.add_argument("-j", "--json", action="store_true", help="JSON output")
         parser.add_argument("-q", "--quiet", action="store_true", help="Show episode ids only")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
-        rows = ctx.ns.list_runs(limit=args.limit, container=ctx.container)
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
+        rows = ctx.ns.list_runs(limit=args.limit, context=ctx.runtime_context)
         if args.json:
             renderer.json(rows)
             return 0

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 
 
@@ -14,8 +14,8 @@ class ValidatePortsCommand:
         parser.add_argument("-j", "--json", action="store_true", help="JSON output")
         parser.add_argument("-q", "--quiet", action="store_true", help="Suppress human output")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
-        ports = ctx.container.list_ports()
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
+        ports = ctx.runtime_context.list_ports()
         if args.json:
             renderer.json({"ports": ports})
             return 0

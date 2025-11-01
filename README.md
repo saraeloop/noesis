@@ -99,31 +99,31 @@ runs = ns.list_runs(limit=10)
 | `DirectedIntuition` | Helper base for hints/interventions/vetoes |
 | `NoesisVeto` | Exception raised on policy veto |
 
-> 🧩 Need dependency injection? Pass a custom container.
+> 🧩 Need dependency injection? Pass a custom context.
 
 ```python
 from noesis import run, summary
-from noesis.runtime import create_runtime_container
+from noesis.runtime import create_runtime_context
 
-container = create_runtime_container()
-episode = run("hello", container=container)
-print(summary(episode, container=container)["ports"])  # {'config': 'config/1.0-rc1'}
+context = create_runtime_context()
+episode = run("hello", context=context)
+print(summary(episode, context=context)["ports"])  # {'config': 'config/1.0-rc1'}
 
 # Add memory/insight adapters when you're ready
 from myproject.memory import VectorMemory
 from myproject.insight import RiskScorer
 
-container.register("memory", VectorMemory(index_dir="./mem"), api="memory/1.0-rc1")
-container.register("insight", RiskScorer(), api="insight/1.0-rc1")
-container.require("memory", "memory/1.0-rc1")
-container.require("insight", "insight/1.0-rc1")
+context.register("memory", VectorMemory(index_dir="./mem"), api="memory/1.0-rc1")
+context.register("insight", RiskScorer(), api="insight/1.0-rc1")
+context.require("memory", "memory/1.0-rc1")
+context.require("insight", "insight/1.0-rc1")
 
-memory_port = container.resolve("memory")
+memory_port = context.resolve("memory")
 if hasattr(memory_port, "supports") and not memory_port.supports("semantic-search"):
     raise RuntimeError("Memory adapter must support semantic-search")
 
-episode_id = run("triage email: refund for invoice #1234", intuition=False, container=container)
-print(summary(episode_id, container=container)["ports"])
+episode_id = run("triage email: refund for invoice #1234", intuition=False, context=context)
+print(summary(episode_id, context=context)["ports"])
 ```
 
 > 🧪 The helper `noesis.domain.faculties.insight.compute_metrics()` is experimental and may change between releases.

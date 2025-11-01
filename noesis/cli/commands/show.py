@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..context import RuntimeContext
+from ..context import CLIContext
 from ..render.base import OutputRenderer
 
 
@@ -15,8 +15,8 @@ class ShowCommand:
         parser.add_argument("-j", "--json", action="store_true", help="JSON output")
         parser.add_argument("-q", "--quiet", action="store_true", help="Print id only")
 
-    def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
-        summary = ctx.ns.summary(args.episode_id, container=ctx.container)
+    def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
+        summary = ctx.ns.summary(args.episode_id, context=ctx.runtime_context)
         if args.json:
             renderer.json(summary)
             return 0

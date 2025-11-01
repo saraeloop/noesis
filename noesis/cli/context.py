@@ -6,8 +6,8 @@ import sys
 
 import noesis as ns
 from noesis.interfaces.config import ConfigSnapshot
-from noesis.runtime.config_provider import RuntimeContainer
-from .container import build_cli_container
+from noesis.runtime.config_provider import RuntimeContext
+from .runtime_context import load_runtime_context
 
 
 @dataclass
@@ -26,12 +26,12 @@ class GlobalOptions:
 
 
 @dataclass
-class RuntimeContext:
+class CLIContext:
     options: GlobalOptions
     config: Dict[str, Any]
     isatty: bool
     version: str
-    container: RuntimeContainer
+    runtime_context: RuntimeContext
     config_snapshot: ConfigSnapshot
 
     @property
@@ -39,18 +39,18 @@ class RuntimeContext:
         return ns
 
 
-def build_context(options: GlobalOptions, port_specs: Sequence[str]) -> RuntimeContext:
-    container = build_cli_container(port_specs)
-    config_port = container.require("config", getattr(container.config_port, "__api_version__", "config/1.0-rc1"))
+def build_context(options: GlobalOptions, port_specs: Sequence[str]) -> CLIContext:
+    runtime_ctx = load_runtime_context(port_specs)
+    config_port = runtime_ctx.require("config", getattr(runtime_ctx.config_port, "__api_version__", "config/1.0-rc1"))
     snapshot = config_port.get()
     config = snapshot.to_mapping()
     is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
     version = getattr(ns, "__version__", "unknown")
-    return RuntimeContext(
+    return CLIContext(
         options=options,
         config=config,
         isatty=is_tty,
         version=version,
-        container=container,
+        runtime_context=runtime_ctx,
         config_snapshot=snapshot,
     )

@@ -1,25 +1,47 @@
 # Changelog
 
 ## Unreleased
+- _Nothing yet._
+
+## v0.6.1 – 2025-10-31
+### Changed
+- Runtime “container” terminology is now `RuntimeContext`, aligning APIs (`run`, `solve`, `summary`, CLI commands) and helpers (`create_runtime_context`, `load_runtime_context`) around a cognition-focused metaphor.
+- Documentation, release checklists, and tests now reference contexts, clarifying how to pass custom runtime minds through CLI and Python surfaces.
+
+### Removed
+- Legacy CLI plumbing (`noesis.cli.container`) was replaced with `noesis.cli.runtime_context`.
+
+## v0.6.0 – 2025-10-30
+### Added
+- Domain-level `ConfigSettings` value object with validated overrides ensuring config diffs remain declarative (`noesis/domain/config/settings.py`).
+- CI-oriented diagnostics: `noesis diagnostics --strict` now validates port contracts, redacts secrets, and emits machine-readable JSON (`noesis/cli/commands/diagnostics.py`).
+
 ### Changed
 - Insight metrics now live under `noesis.domain.faculties.insight`; the legacy `noesis.insight` module issues a deprecation warning.
-- Configuration plumbing no longer relies on `_config`; `EnvTomlConfig` manages a typed domain `RuntimeConfig` and all modules resolve configuration via injected ports.
+- Configuration plumbing no longer relies on `_config`; `EnvTomlConfig` composes defaults → TOML → env overrides without side effects, and all modules resolve configuration through injected ports.
+- README, CHANGELOG, pyproject metadata, and release checklist document the new configuration boundary and migration steps.
 
 ### Removed
 - Deprecated `noesis.config` shim and the `_config` module.
 
+### Tests
+- Suites now reset through the `ConfigPort`, and new coverage exercises diagnostics flows plus port validation.
+
+### Breaking Changes
+- Removed legacy config APIs; adopters must migrate to `EnvTomlConfig` or supply a runtime context.
+
 ## v0.5.3 – 2025-10-30
 ### Added
-- Runtime container (`noesis.runtime.create_runtime_container`) with an extensible, versioned port registry.
+- Runtime context (`noesis.runtime.create_runtime_context`) with an extensible, versioned port registry.
 - Memory and insight port protocols (`noesis.interfaces.memory`, `noesis.interfaces.insight`) ship as `1.0-rc1` contracts with capability checks.
   - Note: these stabilize to `1.0` next minor; `rc1` adapters remain supported for one transition release.
 - CLI `--port` flag, `[ports]` config stanza, and plugin discovery (`noesis.plugins`) power deterministic adapter loading.
 - Episode summaries include the active port manifest under `ports` for auditability.
-- Tests covering env/TOML precedence, container-aware learning flows, and CLI JSON output.
+- Tests covering env/TOML precedence, context-aware learning flows, and CLI JSON output.
 
 ### Changed
 - Runtime components resolve configuration through injected ports, removing lingering `_config` dependencies from the execution path.
-- README documents port registration, container usage, and the `--port` CLI flow.
+- README documents port registration, context usage, and the `--port` CLI flow.
 
 ## v0.4.3 – 2025-10-30
 ### Added
