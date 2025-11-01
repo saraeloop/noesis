@@ -106,7 +106,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if options.compact is None:
         options.compact = True
 
-    ctx = build_context(options)
+    port_specs = getattr(args, "port", []) or []
+    ctx = build_context(options, port_specs)
     renderer = _select_renderer(ctx, options)
 
     command = args.command_obj

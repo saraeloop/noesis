@@ -24,7 +24,7 @@ class EventsCommand:
         parser.add_argument("-q", "--quiet", action="store_true", help="Suppress banner")
 
     def run(self, args: argparse.Namespace, ctx: RuntimeContext, renderer: OutputRenderer) -> int:
-        events: List[Dict[str, any]] = list(ctx.ns.events(args.episode_id))
+        events: List[Dict[str, any]] = list(ctx.ns.events(args.episode_id, container=ctx.container))
         if args.phase:
             events = [e for e in events if e.get("phase") == args.phase]
 

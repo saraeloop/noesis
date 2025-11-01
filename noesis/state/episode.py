@@ -69,6 +69,7 @@ class EpisodeSummary:
     answer: Dict[str, Any] = field(default_factory=dict)
     metrics: Dict[str, Any] = field(default_factory=dict)
     tags: Dict[str, Any] = field(default_factory=dict)
+    ports: Dict[str, str] = field(default_factory=dict)
 
 
 def hash_config(blob: bytes) -> str:

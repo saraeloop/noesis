@@ -4,13 +4,15 @@
 
 ## v0.5.1 – 2025-10-30
 ### Added
-- Runtime container (`noesis.runtime.create_runtime_container`) with an extensible port registry so services can share injected infrastructure.
-- Public API now accepts `container=` across `run`, `solve`, and related helpers for explicit dependency wiring.
-- Tests covering mixed env/TOML precedence and container-aware learning flows.
+- Runtime container (`noesis.runtime.create_runtime_container`) with an extensible, versioned port registry.
+- Memory and insight port protocols (`noesis.interfaces.memory`, `noesis.interfaces.insight`) ship as `1.0-rc1` contracts with capability checks.
+- CLI `--port` flag, `[ports]` config stanza, and plugin discovery (`noesis.plugins`) power deterministic adapter loading.
+- Episode summaries include the active port manifest under `ports` for auditability.
+- Tests covering env/TOML precedence, container-aware learning flows, and CLI JSON output.
 
 ### Changed
 - Runtime components resolve configuration through injected ports, removing lingering `_config` dependencies from the execution path.
-- README documents the container hook and port extension pattern so CLI users can opt in quickly.
+- README documents port registration, container usage, and the `--port` CLI flow.
 
 ## v0.4.3 – 2025-10-30
 ### Added

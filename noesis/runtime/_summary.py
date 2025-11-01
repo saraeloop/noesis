@@ -46,6 +46,7 @@ def finalize_summary(
     intuition: Optional[Intuition],
     schema_version: str,
     config: ConfigSnapshot,
+    ports: Dict[str, str],
 ) -> None:
     snapshot = config
     events = read_events(run_dir)
@@ -70,6 +71,7 @@ def finalize_summary(
         answer={},
         metrics=compute_metrics({}, events),
         tags=tags or {},
+        ports=ports,
     ).__dict__
 
     metrics_bucket = summary.setdefault("metrics", {})

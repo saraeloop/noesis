@@ -12,6 +12,7 @@ from .commands.events import COMMAND as EVENTS_COMMAND
 from .commands.insight import COMMAND as INSIGHT_COMMAND
 from .commands.version import COMMAND as VERSION_COMMAND
 from .commands.new import COMMAND as NEW_COMMAND
+from .commands.validate_ports import COMMAND as VALIDATE_COMMAND
 
 
 COMMANDS: Dict[str, Command] = {cmd.name: cmd for cmd in (
@@ -23,6 +24,7 @@ COMMANDS: Dict[str, Command] = {cmd.name: cmd for cmd in (
     INSIGHT_COMMAND,
     VERSION_COMMAND,
     NEW_COMMAND,
+    VALIDATE_COMMAND,
 )}
 
 

@@ -93,6 +93,8 @@ class ConfigSnapshot:
 class ConfigPort(Protocol):
     """Boundary for retrieving and updating runtime configuration."""
 
+    __api_version__: str = "config/1.0-rc1"
+
     def get(self) -> ConfigSnapshot:
         """Return the current configuration snapshot."""
 
@@ -101,3 +103,6 @@ class ConfigPort(Protocol):
 
     def reload(self) -> ConfigSnapshot:
         """Reload configuration from persistence layers."""
+
+    def supports(self, capability: str) -> bool:
+        """Return True if the port exposes a named capability."""

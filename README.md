@@ -108,7 +108,7 @@ import noesis as ns
 container = create_runtime_container()
 # register additional ports (memory, tooling, etc.) as they land
 # memory_port = YourMemoryPort(...)
-# container = container.with_port("memory", memory_port)
+# container.register("memory", memory_port, api="memory/1.0-rc1")
 ns.run("Assess incident", container=container)
 ```
 
@@ -229,6 +229,7 @@ noesis version
 | `noesis show` | Episode summary snapshot |
 | `noesis events` | Stream events across phases |
 | `noesis insight` | Shortcut for `events --phase insight` |
+| `noesis validate-ports` | Load + verify configured port bindings |
 | `noesis version` | CLI and core version info |
 
 ### 🎛 Incident triage control room (demo)

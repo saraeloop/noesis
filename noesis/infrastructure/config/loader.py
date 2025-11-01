@@ -27,6 +27,8 @@ def _default_toml_loader(path: Path) -> Mapping[str, object]:
 class EnvTomlConfig(ConfigPort):
     """Compose environment + TOML sources into the runtime configuration."""
 
+    __api_version__: str = "config/1.0-rc1"
+
     env: _EnvMap | None = None
     cwd: Path | None = None
     config_candidates: Sequence[str] | None = None
@@ -61,6 +63,9 @@ class EnvTomlConfig(ConfigPort):
             legacy_config.set(**env_overrides)
 
         return self.get()
+
+    def supports(self, capability: str) -> bool:
+        return capability in {"reload", "env_overrides"}
 
     # Internal helpers -----------------------------------------------------
     def _load_file_overrides(self) -> Dict[str, object]:

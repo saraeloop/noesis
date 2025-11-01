@@ -235,8 +235,9 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
 # Public API 
 
 def set(*, container: RuntimeContainer | None = None, **overrides: Any) -> None:
-    port = (container.config_port if container else get_container().config_port)
-    port.set(**overrides)
+    app = container or get_container()
+    config_port = app.require("config", getattr(app.config_port, "__api_version__", "config/1.0-rc1"))
+    config_port.set(**overrides)
 
 
 def solve(
@@ -275,7 +276,9 @@ def _run_impl(
     using: Optional[GraphSource],
     container: RuntimeContainer,
 ) -> str:
-    cfg = container.config_port.get()
+    config_port = container.require("config", getattr(container.config_port, "__api_version__", "config/1.0-rc1"))
+    cfg = config_port.get()
+    port_versions = container.list_ports()
     runs_dir = str(cfg.runs_dir)
     dir_min = cfg.direction_min_confidence
 
@@ -356,6 +359,7 @@ def _run_impl(
             intuition=intuition_impl,
             schema_version=SCHEMA_VERSION,
             config=cfg,
+            ports=port_versions,
         )
 
         try:
@@ -484,6 +488,7 @@ def _run_impl(
         intuition=intuition_impl,
         schema_version=SCHEMA_VERSION,
         config=cfg,
+        ports=port_versions,
     )
 
     try:

@@ -11,6 +11,13 @@ def _build_global_parser() -> argparse.ArgumentParser:
     global_parser.add_argument("--compact", action="store_true", default=None, help="Compact output (summary only)")
     global_parser.add_argument("--verbose", action="store_true", default=None, help="Verbose output (detailed reasoning)")
     global_parser.add_argument("--debug", action="store_true", default=None, help="Debug mode (trace internals)")
+    global_parser.add_argument(
+        "--port",
+        action="append",
+        default=[],
+        metavar="NAME=SPEC",
+        help="Register a runtime port (e.g. memory=acme.memory:FaissMemory(index_path='./mem'))",
+    )
     return global_parser
 
 

@@ -59,3 +59,16 @@ def test_cli_insight_command(tmp_path, capsys):
         found += 1
         assert obj.get("phase") == "insight"
     assert found >= 1
+
+
+def test_cli_validate_ports_json(tmp_path, capsys):
+    runs_dir = tmp_path / "runs"
+    ns.set(runs_dir=str(runs_dir))
+
+    code = cli.main(["validate-ports", "--json"])
+    output = capsys.readouterr().out.strip()
+
+    assert code == 0
+    payload = json.loads(output)
+    assert "ports" in payload
+    assert payload["ports"]["config"].startswith("config/")

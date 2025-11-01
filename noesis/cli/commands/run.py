@@ -45,6 +45,7 @@ class RunCommand:
             seed=args.seed,
             intuition=intuition,
             tags=tags,
+            container=ctx.container,
         )
 
         if getattr(args, "json", False):
