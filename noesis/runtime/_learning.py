@@ -18,7 +18,7 @@ from ..trace.events import write_event
 from ._utils import now
 from ._events import last_event_of_phase
 from ..interfaces.config import ConfigSnapshot
-from .config_provider import get_config_port, get_config_snapshot
+from .config_provider import get_config_port
 
 __all__ = ["maybe_emit_learn_event"]
 
@@ -29,10 +29,9 @@ def maybe_emit_learn_event(
     episode_id: str,
     events: List[Dict[str, Any]],
     metrics: Dict[str, Any],
-    config: ConfigSnapshot | None = None,
+    config: ConfigSnapshot,
 ) -> Optional[Dict[str, Any]]:
-    cfg: ConfigSnapshot = config or get_config_snapshot()
-    mode = cfg.learn_mode
+    mode = config.learn_mode
     if mode is LearnMode.OFF:
         return None
 
@@ -54,7 +53,7 @@ def maybe_emit_learn_event(
 
     proposals: List[LearnProposal] = []
     direction_vetoed = metrics.get("direction_vetoed", 0)
-    current_threshold = float(cfg.direction_min_confidence)
+    current_threshold = float(config.direction_min_confidence)
     if direction_vetoed:
         proposed_threshold = min(1.0, round(current_threshold + 0.05, 2))
         if proposed_threshold > current_threshold:
@@ -78,14 +77,14 @@ def maybe_emit_learn_event(
     gate_updates: Dict[str, Dict[str, Any]] = {}
     proposal_dicts: List[Dict[str, Any]] = []
 
-    learn_home = cfg.learn_home.expanduser()
+    learn_home = config.learn_home.expanduser()
 
     if proposals:
         learn_home.mkdir(parents=True, exist_ok=True)
         policy_snapshot = load_policy_snapshot(learn_home, policy_id)
 
-        min_conf = float(cfg.learn_auto_apply_min_confidence)
-        min_successes = int(cfg.learn_auto_apply_min_successes)
+        min_conf = float(config.learn_auto_apply_min_confidence)
+        min_successes = int(config.learn_auto_apply_min_successes)
 
         total_direction_events = max(metrics.get("direction_events", 0), 1)
         veto_rate = direction_vetoed / total_direction_events

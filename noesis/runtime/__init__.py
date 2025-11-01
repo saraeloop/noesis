@@ -17,6 +17,12 @@ from ._events import (
 )
 from ._summary import finalize_summary
 from ._utils import now
+from .config_provider import (
+    RuntimeContainer,
+    create_runtime_container,
+    get_container,
+    set_container,
+)
 
 __all__ = [
     "act_event",
@@ -29,4 +35,8 @@ __all__ = [
     "terminate_event",
     "finalize_summary",
     "now",
+    "RuntimeContainer",
+    "create_runtime_container",
+    "get_container",
+    "set_container",
 ]

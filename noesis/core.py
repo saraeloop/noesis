@@ -58,7 +58,7 @@ from .runtime._events import (
 from .runtime._summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .usecases.episode_runner import EpisodeDependencies, EpisodeRequest, EpisodeRunner
-from .runtime.config_provider import get_config_port, get_config_snapshot
+from .runtime.config_provider import RuntimeContainer, get_container
 
 # Soft-depend on adapters
 try:
@@ -234,8 +234,9 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
 
 # Public API 
 
-def set(**overrides: Any) -> None:
-    get_config_port().set(**overrides)
+def set(*, container: RuntimeContainer | None = None, **overrides: Any) -> None:
+    port = (container.config_port if container else get_container().config_port)
+    port.set(**overrides)
 
 
 def solve(
@@ -245,8 +246,17 @@ def solve(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
+    container: RuntimeContainer | None = None,
 ) -> str:
-    return run_using(using=using, task=task, seed=seed, intuition=intuition, tags=tags)
+    app = container or get_container()
+    return run_using(
+        using=using,
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+        container=app,
+    )
 
 
 @dataclass(slots=True)
@@ -263,8 +273,9 @@ def _run_impl(
     intuition: bool | Intuition,
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
+    container: RuntimeContainer,
 ) -> str:
-    cfg = get_config_snapshot()
+    cfg = container.config_port.get()
     runs_dir = str(cfg.runs_dir)
     dir_min = cfg.direction_min_confidence
 
@@ -512,8 +523,17 @@ def run(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
+    container: RuntimeContainer | None = None,
 ) -> str:
-    return _run_impl(task=task, seed=seed, intuition=intuition, tags=tags, using=None)
+    app = container or get_container()
+    return _run_impl(
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+        using=None,
+        container=app,
+    )
 
 
 def run_using(
@@ -523,8 +543,17 @@ def run_using(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
+    container: RuntimeContainer | None = None,
 ) -> str:
-    return _run_impl(task=task, seed=seed, intuition=intuition, tags=tags, using=using)
+    app = container or get_container()
+    return _run_impl(
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+        using=using,
+        container=app,
+    )
 
 
 def run_graph(
@@ -534,5 +563,13 @@ def run_graph(
     seed: int = 0,
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
+    container: RuntimeContainer | None = None,
 ) -> str:
-    return run_using(using=kind, task=task, seed=seed, intuition=intuition, tags=tags)
+    return run_using(
+        using=kind,
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+        container=container,
+    )

@@ -4,6 +4,7 @@ from pathlib import Path
 import noesis as ns
 from noesis import _config as _cfg
 from noesis.runtime._learning import maybe_emit_learn_event
+from noesis.runtime.config_provider import get_config_port
 
 
 def _direction_events(policy_id: str, policy_version: str | None = None) -> list[dict]:
@@ -59,6 +60,7 @@ def test_learn_auto_apply_gate(tmp_path):
                 episode_id=f"ep_{idx}",
                 events=list(events),
                 metrics=dict(metrics),
+                config=get_config_port().get(),
             )
             assert result is not None
 

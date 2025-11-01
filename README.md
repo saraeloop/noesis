@@ -99,6 +99,19 @@ runs = ns.list_runs(limit=10)
 | `DirectedIntuition` | Helper base for hints/interventions/vetoes |
 | `NoesisVeto` | Exception raised on policy veto |
 
+> 🧩 Need dependency injection? Pass a custom container.
+
+```python
+from noesis.runtime import create_runtime_container
+import noesis as ns
+
+container = create_runtime_container()
+# register additional ports (memory, tooling, etc.) as they land
+# memory_port = YourMemoryPort(...)
+# container = container.with_port("memory", memory_port)
+ns.run("Assess incident", container=container)
+```
+
 > 🧪 The helper `noesis.insight.compute_metrics()` is experimental and may change between releases.
 > New metrics land under `metrics.experimental` until they graduate into the stable set below.
 

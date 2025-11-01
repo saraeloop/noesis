@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.5.1 – 2025-10-30
+### Added
+- Runtime container (`noesis.runtime.create_runtime_container`) with an extensible port registry so services can share injected infrastructure.
+- Public API now accepts `container=` across `run`, `solve`, and related helpers for explicit dependency wiring.
+- Tests covering mixed env/TOML precedence and container-aware learning flows.
+
+### Changed
+- Runtime components resolve configuration through injected ports, removing lingering `_config` dependencies from the execution path.
+- README documents the container hook and port extension pattern so CLI users can opt in quickly.
+
 ## v0.4.3 – 2025-10-30
 ### Added
 - **Incident-triage demo dashboards** now include seeded artifacts, timeline filters, learn badges, approval simulation, download buttons, and pure public-API reads.

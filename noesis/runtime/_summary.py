@@ -12,7 +12,6 @@ from ..insight import compute_metrics
 from ..intuition import Intuition, IntuitionMode
 from ._utils import compute_duration, format_diff_item, now
 from ._learning import maybe_emit_learn_event
-from .config_provider import get_config_snapshot
 from ..interfaces.config import ConfigSnapshot
 
 __all__ = ["finalize_summary"]
@@ -46,9 +45,9 @@ def finalize_summary(
     tags: Optional[Dict[str, Any]],
     intuition: Optional[Intuition],
     schema_version: str,
-    config: ConfigSnapshot | None = None,
+    config: ConfigSnapshot,
 ) -> None:
-    snapshot = config or get_config_snapshot()
+    snapshot = config
     events = read_events(run_dir)
     duration_sec = compute_duration(events)
 
