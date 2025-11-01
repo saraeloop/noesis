@@ -7,6 +7,87 @@ It adds layers of Intuition, Direction, and Insight, forming a cognitive loop yo
 
 ---
 
+## 🧠 Noēsis — Cognitive Framework 
+
+If you keep expanding faculties (memory, insight, learning) and maintain the instrumentation, Noēsis gives agents more than execution—it gives them a mind. Expanding faculties means wiring new ports (e.g., vector memories, evaluators, policy stores) into the runtime context so the agent can recall, judge, and adapt. Maintaining instrumentation means the cognitive loop stays observable: every phase emits events, summaries stay schema-aligned, diagnostics stay green, and new capabilities surface measurable signals rather than hidden side effects.
+
+- **Expanding faculties**: add memory/insight/learning providers with declared APIs, register them in the runtime context, and expose their behavior through direction or intuition policies.
+- **Maintaining instrumentation**: ensure events, summaries, and learn artifacts remain complete; extend diagnostics/tests whenever a new faculty or port is introduced so regressions surface immediately.
+
+Noēsis models reasoning as a complete cognitive loop:
+Observe → Interpret → Plan → Act → Reflect → Learn, extended with cross-phase faculties: Intuition, Direction, Insight.
+
+Each verb represents a measurable phase of cognition; each faculty embodies a reusable mental capability.
+Together, they make agents observable, steerable, and self-improving — not just reactive.
+
+---
+
+### ⚙️ Cognitive Phases (verbs)
+
+| Phase     | Description                                        | Example Responsibility            |
+|-----------|----------------------------------------------------|-----------------------------------|
+| Observe   | Capture external input, task request, and context. | Initialize `state.json`           |
+| Interpret | Turn observations into structured beliefs.         | Intuition-driven parsing or heuristics |
+| Plan      | Generate a sequence of actions toward the goal.    | Direction’s planner               |
+| Act       | Execute planned steps using adapters/tools.        | Action logging in `outcomes.actions[]` |
+| Reflect   | Evaluate what happened and why.                    | Insight scoring + metrics         |
+| Learn     | Incorporate reflections into future reasoning.     | Record `learn.jsonl` events       |
+
+---
+
+### 🧩 Faculties (cognitive capabilities)
+
+| Faculty | Function                                                                 | Phase Links                 |
+|---------|--------------------------------------------------------------------------|-----------------------------|
+| 🧩 Intuition | Interpret ambiguous inputs, provide hints, or veto unsafe behavior (`NoesisVeto`). | Observe → Interpret, Reflect → Learn |
+| 🧭 Direction | Drive goal-oriented behavior, manage planning confidence, and control re-planning/veto logic. | Plan ↔ Act ↔ Reflect        |
+| 🔍 Insight   | Evaluate outcomes, compute `task_score`, and feed back learnings into long-term memory. | Reflect ↔ Learn             |
+
+---
+
+### 🧱 Architectural Principles
+
+Follow Clean Architecture (Uncle Bob) with strict boundaries and dependency inversion:
+- **Domain layer**: pure logic (faculties, models, cognitive contracts).
+- **Use cases layer**: orchestrates the cognitive flow (learning, summary, runner).
+- **Infrastructure layer**: implements adapters (config loader, memory stores).
+- **Interfaces layer**: typed ports and contracts (`ConfigPort`, `MemoryPort`, `InsightPort`).
+- **Presentation layer (CLI)**: command entry points, diagnostics, and rendering.
+
+---
+
+### 🧩 Core Concepts
+
+- **Runtime Context**: the active “mind” of an agent — holds config, memory, and insight ports for a given run (`context=...`).
+- **Ports**: explicitly declared contracts with versioned APIs (e.g., `config/1.0-rc1`, `memory/1.0-rc1`).
+- **State Artifacts**: every episode produces immutable outputs:
+  - `state.json` — full cognitive state
+  - `summary.json` — phase metrics
+  - `events.jsonl` — step-by-step trace
+  - `learn.jsonl` — learn proposals or applied policies
+- **Diagnostics**: CLI command `noesis diagnostics` validates stability, config integrity, and port health.
+
+---
+
+### 🧩 Development Guidelines
+
+- Produce senior-level, production-grade code — strongly typed, modular, testable.
+- Enforce separation of concerns (domain ↔ use case ↔ infrastructure).
+- Use dependency injection (`context=...`) instead of global lookups.
+- Prefer pure functions, dataclasses, and protocol-based ports.
+- Ensure every feature emits or consumes cognitive artifacts — no side-effect drift.
+- Maintain semantic versioning and schema-version locks.
+- Write tests for each port, phase, and artifact compatibility.
+
+---
+
+### 🧭 In Summary
+
+Noēsis doesn’t just run agents — it gives them a mind: context, introspection, and memory.
+The framework’s purpose is to make every reasoning step observable, explainable, and improvable over time.
+
+---
+
 ## 🚀 Quickstart (uv)
 
 Install and go:
@@ -102,6 +183,8 @@ runs = ns.list_runs(limit=10)
 > 🧩 Need dependency injection? Pass a custom context.
 
 ```python
+from pathlib import Path
+
 from noesis import run, summary
 from noesis.runtime import create_runtime_context
 
@@ -109,13 +192,13 @@ context = create_runtime_context()
 episode = run("hello", context=context)
 print(summary(episode, context=context)["ports"])  # {'config': 'config/1.0-rc1'}
 
-# Add memory/insight adapters when you're ready
-from myproject.memory import VectorMemory
+# Plug in persistent memory and insight adapters when you're ready
+from noesis.infrastructure.memory.sqlite import SQLiteMemory
 from myproject.insight import RiskScorer
 
-context.register("memory", VectorMemory(index_dir="./mem"), api="memory/1.0-rc1")
+context.register("memory", SQLiteMemory(db_path=Path("./memory/long_term.db")), api="memory/1.1")
 context.register("insight", RiskScorer(), api="insight/1.0-rc1")
-context.require("memory", "memory/1.0-rc1")
+context.require("memory", "memory/1.1")
 context.require("insight", "insight/1.0-rc1")
 
 memory_port = context.resolve("memory")

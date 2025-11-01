@@ -58,6 +58,7 @@ from .runtime._events import (
 from .runtime._summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .usecases.episode_runner import EpisodeDependencies, EpisodeRequest, EpisodeRunner
+from .usecases.memory_sync import persist_episode_memory
 from .runtime.config_provider import RuntimeContext, get_context
 
 # Soft-depend on adapters
@@ -362,6 +363,8 @@ def _run_impl(
             ports=port_versions,
         )
 
+        persist_episode_memory(run_dir=ctx.run_dir, context=context)
+
         try:
             store_root = Path(runs_dir) / "_episodes"
             summary_path = ctx.run_dir / "summary.json"
@@ -490,6 +493,8 @@ def _run_impl(
         config=cfg,
         ports=port_versions,
     )
+
+    persist_episode_memory(run_dir=ctx.run_dir, context=context)
 
     try:
         store_root = Path(runs_dir) / "_episodes"

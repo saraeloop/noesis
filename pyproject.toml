@@ -65,11 +65,10 @@ Documentation = ""
 
 # Control build contents 
 [tool.hatch.build]
-exclude = ["tests", "tests/**"]
+exclude = ["tests", "tests/**", "examples", "examples/**"]
 # Include only the package and selected top-level files
 include = [
   "noesis/**",
-  "examples/**",
   "LICENSE",
   "README.md",
   "pyproject.toml",
@@ -77,7 +76,6 @@ include = [
 [tool.hatch.build.targets.sdist]
 include = [
   "noesis/**",
-  "examples/**",
   "docs/**",
   "flows/**",
   "README.md",
@@ -106,4 +104,25 @@ source_modules = [
 ]
 forbidden_modules = [
   "noesis.runtime",
+]
+
+[[tool.importlinter.contracts]]
+name = "Runtime must not import CLI"
+type = "forbidden"
+source_modules = [
+  "noesis.runtime",
+]
+forbidden_modules = [
+  "noesis.cli",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain stays decoupled"
+type = "forbidden"
+source_modules = [
+  "noesis.domain",
+]
+forbidden_modules = [
+  "noesis.runtime",
+  "noesis.cli",
 ]

@@ -1,7 +1,12 @@
 # Changelog
 
 ## Unreleased
-- _Nothing yet._
+### Added
+- Long-term memory persistence pipeline: episode summaries now feed memory ports declaring the `long_term_memory` capability, with dedicated `memory` events for observability.
+- Built-in SQLite-backed memory adapter (`noesis.infrastructure.memory.SQLiteMemory`) for easy persistent knowledge bases in development and testing.
+
+### Changed
+- README documents the cognitive framework in depth and showcases the new persistent memory workflow.
 
 ## v0.6.1 – 2025-10-31
 ### Changed
