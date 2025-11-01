@@ -6,11 +6,6 @@ from typing import Mapping
 import pytest
 
 from noesis.infrastructure.config import EnvTomlConfig
-from noesis import _config as legacy_config
-
-
-def teardown_module() -> None:
-    legacy_config.reset()
 
 
 def test_env_overrides_toml(tmp_path):

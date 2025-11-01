@@ -2,12 +2,13 @@ import json
 from pathlib import Path
 
 import noesis as ns
-from noesis import _config as _cfg
+from noesis.runtime.config_provider import get_config_port
 from noesis.state.store import EpisodeStore
 
 
 def test_state_artifact_written(tmp_path) -> None:
-    _cfg.reset()
+    cfg_port = get_config_port()
+    baseline = cfg_port.get()
     try:
         runs_dir = tmp_path / "runs"
         ns.set(runs_dir=str(runs_dir))
@@ -31,7 +32,7 @@ def test_state_artifact_written(tmp_path) -> None:
         assert payload["links"]["events"] == "events.jsonl"
         assert payload["links"]["summary"] == "summary.json"
     finally:
-        _cfg.reset()
+        cfg_port.set(**baseline.to_mapping())
 
 
 def test_episode_store_ttl_and_search(tmp_path) -> None:
@@ -41,7 +42,7 @@ def test_episode_store_ttl_and_search(tmp_path) -> None:
     state_path.write_text("{}", encoding="utf-8")
 
     store = EpisodeStore(tmp_path / "store", ttl_days=0, enable_faiss=True)
-    record = store.append(
+    store.append(
         episode_id="ep_test",
         summary_path=summary_path,
         state_path=state_path,

@@ -17,20 +17,17 @@ from __future__ import annotations
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 
 # Package metadata
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API
 from .core import solve, run, run_using, set
+from .runtime.config_provider import get_config_port
 
-try:  # v0.5+ forward-compatibility
-    from .runtime.config_provider import get_config_port
 
-    def get() -> dict[str, object]:
-        """Public accessor returning legacy dict-based payloads."""
-        return get_config_port().get().to_mapping()
-except Exception:  # pragma: no cover - fallback until new config lands
-    from ._config import get  # type: ignore
+def get() -> dict[str, object]:
+    """Public accessor returning a mapping of the current runtime configuration."""
+    return get_config_port().get().to_mapping()
 from .domain.planner.minimal import MinimalPlanner
 
 # Read/inspect API 

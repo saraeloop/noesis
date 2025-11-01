@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import noesis as ns
-from noesis import _config as _cfg
 from noesis.runtime._learning import maybe_emit_learn_event
 from noesis.runtime.config_provider import get_config_port
 
@@ -35,7 +34,8 @@ def _metrics(direction_vetoed: int = 1, direction_events: int = 1) -> dict:
 
 
 def test_learn_auto_apply_gate(tmp_path):
-    _cfg.reset()
+    cfg_port = get_config_port()
+    baseline = cfg_port.get()
     try:
         runs_dir = tmp_path / "runs"
         learn_home = tmp_path / "learn"
@@ -64,7 +64,7 @@ def test_learn_auto_apply_gate(tmp_path):
             )
             assert result is not None
 
-        cfg_after = _cfg.get()
+        cfg_after = cfg_port.get().to_mapping()
         assert float(cfg_after["direction_min_confidence"]) > 0.3
 
         policy_snapshot_path = Path(learn_home) / "policies" / "unit.Policy.json"
@@ -83,4 +83,4 @@ def test_learn_auto_apply_gate(tmp_path):
         assert proposal["revert_handle"]["previous"] == 0.3
         assert payload["approval"] == "auto-applied"
     finally:
-        _cfg.reset()
+        cfg_port.set(**baseline.to_mapping())

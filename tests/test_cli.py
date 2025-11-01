@@ -4,6 +4,7 @@ import json
 
 import noesis as ns
 from noesis import cli
+from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 
 
 def test_cli_events_help_mentions_insight(capsys):
@@ -72,3 +73,64 @@ def test_cli_validate_ports_json(tmp_path, capsys):
     payload = json.loads(output)
     assert "ports" in payload
     assert payload["ports"]["config"].startswith("config/")
+
+
+def test_cli_diagnostics_json(tmp_path, capsys):
+    runs_dir = tmp_path / "runs"
+    learn_home = tmp_path / "learn"
+    runs_dir.mkdir()
+    learn_home.mkdir()
+
+    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_home))
+
+    code = cli.main(["diagnostics", "--json"])
+    output = capsys.readouterr().out.strip()
+
+    assert code == 0
+    assert output
+
+    payload = json.loads(output)
+    assert payload["summary_schema_version"] == SUMMARY_SCHEMA_VERSION
+    assert payload["selected_checks"] == ["all"]
+    assert isinstance(payload["timestamp"], int)
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["runs_dir"]["status"] == "ok"
+    assert checks["learn_home"]["status"] == "ok"
+    assert checks["latest_summary"]["status"] == "ok"
+
+
+def test_cli_diagnostics_strict_warn(tmp_path, capsys):
+    runs_dir = tmp_path / "runs"
+    learn_home = tmp_path / "learn"
+    runs_dir.mkdir()
+
+    ns.set(
+        runs_dir=str(runs_dir),
+        learn_home=str(learn_home),
+    )
+    # remove learn_home after configuration to trigger warn
+    learn_home.rmdir()
+
+    code = cli.main(["diagnostics", "--strict"])
+    capsys.readouterr()
+    assert code == 1
+
+
+def test_cli_diagnostics_checks_filter(tmp_path, capsys):
+    runs_dir = tmp_path / "runs"
+    learn_home = tmp_path / "learn"
+    runs_dir.mkdir()
+    learn_home.mkdir()
+
+    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_home))
+
+    code = cli.main(["diagnostics", "--json", "--checks", "runs_dir"])
+    output = capsys.readouterr().out.strip()
+
+    assert code == 0
+
+    payload = json.loads(output)
+    assert payload["selected_checks"] == ["runs_dir"]
+    check_names = {item["name"] for item in payload["checks"]}
+    assert "runs_dir" in check_names
+    assert "learn_home" not in check_names

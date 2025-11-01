@@ -102,20 +102,56 @@ runs = ns.list_runs(limit=10)
 > 🧩 Need dependency injection? Pass a custom container.
 
 ```python
+from noesis import run, summary
 from noesis.runtime import create_runtime_container
-import noesis as ns
 
 container = create_runtime_container()
-# register additional ports (memory, tooling, etc.) as they land
-# memory_port = YourMemoryPort(...)
-# container.register("memory", memory_port, api="memory/1.0-rc1")
-ns.run("Assess incident", container=container)
+episode = run("hello", container=container)
+print(summary(episode, container=container)["ports"])  # {'config': 'config/1.0-rc1'}
+
+# Add memory/insight adapters when you're ready
+from myproject.memory import VectorMemory
+from myproject.insight import RiskScorer
+
+container.register("memory", VectorMemory(index_dir="./mem"), api="memory/1.0-rc1")
+container.register("insight", RiskScorer(), api="insight/1.0-rc1")
+container.require("memory", "memory/1.0-rc1")
+container.require("insight", "insight/1.0-rc1")
+
+memory_port = container.resolve("memory")
+if hasattr(memory_port, "supports") and not memory_port.supports("semantic-search"):
+    raise RuntimeError("Memory adapter must support semantic-search")
+
+episode_id = run("triage email: refund for invoice #1234", intuition=False, container=container)
+print(summary(episode_id, container=container)["ports"])
 ```
 
-> 🧪 The helper `noesis.insight.compute_metrics()` is experimental and may change between releases.
+> 🧪 The helper `noesis.domain.faculties.insight.compute_metrics()` is experimental and may change between releases.
 > New metrics land under `metrics.experimental` until they graduate into the stable set below.
 
-> ℹ️ Configure Noēsis via `noesis.set(...)`. The legacy `noesis.config` module will be removed in v0.6.
+**CLI precedence:** entry points `<` `noesis.toml [ports]` `<` CLI `--port` (CLI overrides everything). In zsh, quote the spec values:
+
+```bash
+noesis --port 'memory=myproject.memory:VectorMemory(index_dir="./mem")' \
+       --port 'insight=myproject.insight:RiskScorer()' \
+       run "triage email: refund for invoice #1234"
+```
+
+**Config shortcut:**
+
+```toml
+# noesis.toml
+[ports]
+memory = "myproject.memory:VectorMemory(index_dir='./mem')"
+insight = "myproject.insight:RiskScorer()"
+```
+
+```bash
+noesis validate-ports -j
+noesis run "triage email: refund for invoice #1234"
+```
+
+> ℹ️ Configure Noēsis via `noesis.set(...)`. The legacy `noesis.config` module has been removed in favor of the runtime config port.
 
 ---
 

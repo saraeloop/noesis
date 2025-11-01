@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "0.4.5"
+version = "v0.5.3"
 description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -106,30 +106,4 @@ source_modules = [
 ]
 forbidden_modules = [
   "noesis.runtime",
-]
-
-[[tool.importlinter.contracts]]
-name = "Internal modules avoid legacy config shim"
-type = "forbidden"
-source_modules = [
-  "noesis.adapters",
-  "noesis.cli",
-  "noesis.core",
-  "noesis.direction",
-  "noesis.exceptions",
-  "noesis.insight",
-  "noesis.intuition",
-  "noesis.io",
-  "noesis.learn",
-  "noesis.loader",
-  "noesis.runtime",
-  "noesis.state",
-  "noesis.tools",
-  "noesis.trace",
-]
-forbidden_modules = [
-  "noesis.config",
-]
-ignore_imports = [
-  "noesis.config -> noesis._config",
 ]

@@ -1,31 +1,26 @@
 """
-Compatibility shim for the legacy ``noesis.config`` module.
+Public configuration facade for Noēsis.
 
-Importing this module directly is deprecated; use ``noesis.set(...)`` and
-related public APIs instead. Internal modules should import
-``noesis._config``.
+This module exposes the typed runtime configuration model and the default
+environment/TOML loader without leaking the internal infrastructure package
+structure. Applications should import from here instead of
+`noesis.infrastructure.config`.
 """
 
 from __future__ import annotations
 
-import sys
-import warnings
-
-from ._config import (  # noqa: F401
-    get,
-    set,
-    reset,
-    reload_from_disk_and_env,
+from .domain.config import (
+    CONFIG_FILE_CANDIDATES,
+    RuntimeConfig,
+    apply_runtime_overrides,
+    default_runtime_config,
 )
+from .infrastructure.config import EnvTomlConfig
 
-_parent = sys.modules.get("noesis", sys.modules[__name__])
-if not getattr(_parent, "_config_shim_warned", False):
-    warnings.warn(
-        "noesis.config is legacy and will be removed in v0.6. "
-        "Use noesis.set(...) / noesis.summary(...) etc. instead.",
-        FutureWarning,
-        stacklevel=2,
-    )
-    _parent._config_shim_warned = True
-
-__all__ = ["get", "set", "reset", "reload_from_disk_and_env"]
+__all__ = [
+    "EnvTomlConfig",
+    "RuntimeConfig",
+    "default_runtime_config",
+    "apply_runtime_overrides",
+    "CONFIG_FILE_CANDIDATES",
+]

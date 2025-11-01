@@ -13,9 +13,7 @@ def test_noesis_toml_overrides(tmp_path, monkeypatch):
         if name.startswith("noesis"):
             sys.modules.pop(name, None)
 
-    importlib.import_module("noesis")
-    from noesis import _config as cfg_module
-
-    settings = cfg_module.get()
+    module = importlib.import_module("noesis")
+    settings = module.get()
     assert settings["runs_dir"].endswith("logs")
     assert settings["direction_min_confidence"] == 0.75

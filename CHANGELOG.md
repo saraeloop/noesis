@@ -1,11 +1,18 @@
 # Changelog
 
 ## Unreleased
+### Changed
+- Insight metrics now live under `noesis.domain.faculties.insight`; the legacy `noesis.insight` module issues a deprecation warning.
+- Configuration plumbing no longer relies on `_config`; `EnvTomlConfig` manages a typed domain `RuntimeConfig` and all modules resolve configuration via injected ports.
 
-## v0.5.1 – 2025-10-30
+### Removed
+- Deprecated `noesis.config` shim and the `_config` module.
+
+## v0.5.3 – 2025-10-30
 ### Added
 - Runtime container (`noesis.runtime.create_runtime_container`) with an extensible, versioned port registry.
 - Memory and insight port protocols (`noesis.interfaces.memory`, `noesis.interfaces.insight`) ship as `1.0-rc1` contracts with capability checks.
+  - Note: these stabilize to `1.0` next minor; `rc1` adapters remain supported for one transition release.
 - CLI `--port` flag, `[ports]` config stanza, and plugin discovery (`noesis.plugins`) power deterministic adapter loading.
 - Episode summaries include the active port manifest under `ports` for auditability.
 - Tests covering env/TOML precedence, container-aware learning flows, and CLI JSON output.

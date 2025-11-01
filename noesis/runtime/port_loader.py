@@ -11,7 +11,8 @@ from urllib.parse import parse_qsl
 
 import tomllib
 
-from noesis import _config as legacy_config
+from noesis.domain.config import CONFIG_FILE_CANDIDATES
+from noesis.infrastructure.config.utils import find_config_path
 from noesis.runtime.config_provider import RuntimeContainer, create_runtime_container
 
 PORT_ENTRYPOINT_GROUP = "noesis.plugins"
@@ -100,7 +101,7 @@ def build_container_from_sources(
 
 
 def load_toml_port_specs() -> Dict[str, str]:
-    path: Path | None = legacy_config._find_config_path()  # type: ignore[attr-defined]
+    path: Path | None = find_config_path(Path.cwd(), CONFIG_FILE_CANDIDATES)
     if not path:
         return {}
     data = tomllib.loads(path.read_text(encoding="utf-8"))

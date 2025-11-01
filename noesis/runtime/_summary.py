@@ -8,7 +8,7 @@ import json
 from ..state.episode import EpisodeSummary
 from ..trace.events import read_events, write_event
 from ..trace.summary import write_summary
-from ..insight import compute_metrics
+from ..domain.faculties.insight import compute_metrics
 from ..intuition import Intuition, IntuitionMode
 from ._utils import compute_duration, format_diff_item, now
 from ._learning import maybe_emit_learn_event
