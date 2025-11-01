@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, List
 import hashlib
 import json
 
-from .. import _config as _cfg
 from ..state.episode import EpisodeSummary
 from ..trace.events import read_events, write_event
 from ..trace.summary import write_summary
@@ -13,6 +12,8 @@ from ..insight import compute_metrics
 from ..intuition import Intuition, IntuitionMode
 from ._utils import compute_duration, format_diff_item, now
 from ._learning import maybe_emit_learn_event
+from .config_provider import get_config_snapshot
+from ..interfaces.config import ConfigSnapshot
 
 __all__ = ["finalize_summary"]
 
@@ -45,7 +46,9 @@ def finalize_summary(
     tags: Optional[Dict[str, Any]],
     intuition: Optional[Intuition],
     schema_version: str,
+    config: ConfigSnapshot | None = None,
 ) -> None:
+    snapshot = config or get_config_snapshot()
     events = read_events(run_dir)
     duration_sec = compute_duration(events)
 
@@ -78,6 +81,7 @@ def finalize_summary(
         episode_id=episode_id,
         events=events,
         metrics=metrics_bucket,
+        config=snapshot,
     )
     if learn_info:
         metrics_bucket["learn_proposals"] = learn_info["proposal_count"]
@@ -121,7 +125,7 @@ def finalize_summary(
         "applied": metrics_bucket["direction_applied"],
         "vetoed": metrics_bucket["direction_vetoed"],
         "last_diff": diff_strings,
-        "threshold": _cfg.get()["direction_min_confidence"],
+        "threshold": snapshot.direction_min_confidence,
     }
     policy_tag = last_payload.get("policy")
     if policy_tag:

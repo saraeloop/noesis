@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Final, Protocol
 
-from . import _config as _cfg
 from .state import (
     NoesisState,
     PlanStep,
@@ -59,6 +58,7 @@ from .runtime._events import (
 from .runtime._summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .usecases.episode_runner import EpisodeDependencies, EpisodeRequest, EpisodeRunner
+from .runtime.config_provider import get_config_port, get_config_snapshot
 
 # Soft-depend on adapters
 try:
@@ -100,10 +100,11 @@ def _plan_steps_from_labels(labels: List[str]) -> List[PlanStep]:
     return steps
 
 
-def _normalize_intuition(intuition: bool | Intuition | None) -> tuple[Intuition, bool]:
+def _normalize_intuition(
+    intuition_mode: IntuitionMode, intuition: bool | Intuition | None
+) -> tuple[Intuition, bool]:
     """Normalize intuition argument without mutating caller-supplied policies."""
-    mode_str = _cfg.get()["intuition_mode"]  # string
-    mode = IntuitionMode(mode_str)           # Enum (internal only)
+    mode = intuition_mode
 
     if intuition is True:
         i = NullIntuition()
@@ -234,7 +235,7 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
 # Public API 
 
 def set(**overrides: Any) -> None:
-    _cfg.set(**overrides)
+    get_config_port().set(**overrides)
 
 
 def solve(
@@ -263,15 +264,15 @@ def _run_impl(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
 ) -> str:
-    cfg = _cfg.get()
-    runs_dir = cfg["runs_dir"]
-    dir_min = cfg["direction_min_confidence"]
+    cfg = get_config_snapshot()
+    runs_dir = str(cfg.runs_dir)
+    dir_min = cfg.direction_min_confidence
 
     episode_id = new_episode_id(seed)
     run_dir = begin_episode(runs_dir, episode_id)
     ctx = _EpCtx(episode_id=episode_id, run_dir=run_dir, started_at=_now())
 
-    intuition_impl, intuition_enabled = _normalize_intuition(intuition)
+    intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
 
     minimal_mode = using is None
     raw_using_label: Optional[str]
@@ -343,6 +344,7 @@ def _run_impl(
             tags=tags,
             intuition=intuition_impl,
             schema_version=SCHEMA_VERSION,
+            config=cfg,
         )
 
         try:
@@ -470,6 +472,7 @@ def _run_impl(
         tags=tags,
         intuition=intuition_impl,
         schema_version=SCHEMA_VERSION,
+        config=cfg,
     )
 
     try:

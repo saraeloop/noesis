@@ -1,27 +1,36 @@
 """
-Noēsis — intuition-guided agentic reasoning.
+Noēsis — a cognitive framework for observable, adaptive reasoning.
 
-Stable public API (v0.3.0):
+Stable public API (v0.5.0):
     run(task, *, seed=0, intuition=True, tags=None) -> str
     solve(task, *, using, seed=0, intuition=True, tags=None) -> str
     summary(episode_id) -> dict
     events(episode_id, *, stream=False) -> list[dict] | Iterator[dict]
     list_runs(limit=50, since=None) -> list[dict]
     set(**overrides) -> None
-    Intuition, DirectedIntuition, NoesisVeto
+    Intuition, DirectedIntuition, NoesisVeto, MinimalPlanner
 """
+
 
 from __future__ import annotations
 
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 
 # Package metadata
-__version__ = "0.4.3"
+__version__ = "0.5.0"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API
 from .core import solve, run, run_using, set
-from ._config import get
+
+try:  # v0.5+ forward-compatibility
+    from .runtime.config_provider import get_config_port
+
+    def get() -> dict[str, object]:
+        """Public accessor returning legacy dict-based payloads."""
+        return get_config_port().get().to_mapping()
+except Exception:  # pragma: no cover - fallback until new config lands
+    from ._config import get  # type: ignore
 from .domain.planner.minimal import MinimalPlanner
 
 # Read/inspect API 

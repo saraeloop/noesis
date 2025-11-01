@@ -5,7 +5,6 @@ from typing import Any, Dict
 import sys
 
 import noesis as ns
-from .. import _config as _cfg
 
 
 @dataclass
@@ -36,7 +35,7 @@ class RuntimeContext:
 
 
 def build_context(options: GlobalOptions) -> RuntimeContext:
-    config = _cfg.get()
+    config = ns.get()
     is_tty = bool(getattr(sys.stdout, "isatty", lambda: False)())
     version = getattr(ns, "__version__", "unknown")
     return RuntimeContext(

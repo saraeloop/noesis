@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, Optional
 
 import sys
 import noesis as ns
-from .. import _config as _cfg
 
 
 _BUILTIN_POLICY_ALIASES: Dict[str, str] = {}
@@ -14,7 +13,7 @@ _BUILTIN_POLICY_ALIASES: Dict[str, str] = {}
 
 def _policy_aliases() -> Dict[str, str]:
     merged = dict(_BUILTIN_POLICY_ALIASES)
-    cfg_aliases = _cfg.get().get("policy_aliases") or {}
+    cfg_aliases = ns.get().get("policy_aliases") or {}
     merged.update(cfg_aliases)
     return merged
 

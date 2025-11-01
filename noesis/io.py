@@ -18,9 +18,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from . import _config as _cfg
 from .trace.events import EVENTS_FILE, read_events
 from .trace.summary import SUMMARY_FILE, read_summary
+from .runtime.config_provider import get_config_snapshot
 
 
 
@@ -62,7 +62,7 @@ def list_runs(limit: int = 50, since: Optional[str] = None) -> List[Dict[str, An
         - flags
         - success metric (if available)
     """
-    base = Path(_cfg.get()["runs_dir"])
+    base = get_config_snapshot().runs_dir
     rows: List[Dict[str, Any]] = []
 
     if not base.exists():
@@ -109,4 +109,4 @@ def paths(episode_id: str) -> Dict[str, str]:
 
 def _run_dir(episode_id: str) -> Path:
     """Resolve the filesystem directory for a given episode."""
-    return Path(_cfg.get()["runs_dir"]) / episode_id
+    return get_config_snapshot().runs_dir / episode_id
