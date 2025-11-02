@@ -5,6 +5,7 @@ from .events import (  # noqa: F401
     RECOMMENDED_EVENT_KEYS,
     read_events,
     write_event,
+    write_cognitive_event,
 )
 from .summary import SUMMARY_FILE, read_summary, write_summary  # noqa: F401
 from .schema import (  # noqa: F401
@@ -23,6 +24,7 @@ __all__ = [
     "RECOMMENDED_EVENT_KEYS",
     "read_events",
     "write_event",
+    "write_cognitive_event",
     "read_summary",
     "write_summary",
     "EventRecord",

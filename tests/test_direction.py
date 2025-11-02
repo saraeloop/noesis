@@ -8,7 +8,9 @@ from typing import Any, Dict, List
 import pytest
 
 import noesis as ns
-from noesis import DirectedIntuition, NoesisVeto
+from noesis.direction import DirectedIntuition
+from noesis.exceptions import NoesisVeto
+from noesis.io import list_runs
 
 
 # Minimal graph doubles
@@ -95,8 +97,8 @@ def _run(tmpdir, *, graph, policy, min_confidence: float = 0.5) -> RunArtifacts:
     runs_dir = tmpdir / "runs"
     ns.set(runs_dir=str(runs_dir), direction_min_confidence=min_confidence)
     ep = ns.solve("Demo task", using=lambda: graph, intuition=policy)
-    summ = ns.summary(ep)
-    evs = ns.events(ep)
+    summ = ns.summary.read(ep)
+    evs = list(ns.events.read(ep))
     payloads = [e["payload"] for e in evs if e.get("phase") == "direction"]
     return RunArtifacts(ep, summ, payloads, evs)
 
@@ -181,13 +183,14 @@ def test_direction_veto(tmp_path):
         ns.solve("Danger", using=lambda: DictGraph(), intuition=VetoPolicy())
 
     # Fetch the most recent episode recorded in this isolated runs_dir
-    runs = ns.list_runs(limit=1)
+    runs = list_runs(limit=1)
     assert runs, "expected a recorded episode after veto"
     ep = runs[0]["episode_id"]
-    summ = ns.summary(ep)
+    summ = ns.summary.read(ep)
     assert summ["flags"]["direction"]["vetoed"] == 1
 
-    payloads = [e["payload"] for e in ns.events(ep) if e.get("phase") == "direction"]
+    events = list(ns.events.read(ep))
+    payloads = [e["payload"] for e in events if e.get("phase") == "direction"]
     assert payloads[-1]["reason"] == "veto"
 
 

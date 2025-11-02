@@ -25,6 +25,8 @@ __all__ = [
     "update_policy_snapshot",
     "derive_target_key",
     "summarise_learn_kinds",
+    "emit",
+    "maybe_emit_learn_event",
 ]
 
 
@@ -142,3 +144,18 @@ def update_policy_snapshot(
 def summarise_learn_kinds(proposals: List[Dict[str, Any]]) -> Dict[str, int]:
     counts = Counter(p.get("kind", "unknown") for p in proposals)
     return dict(counts)
+
+
+def maybe_emit_learn_event(*, run_dir: Path, episode_id: str, events: List[Dict[str, Any]], metrics: Dict[str, Any], config: Any) -> Optional[Dict[str, Any]]:
+    from noesis.runtime.learning import maybe_emit_learn_event as _impl
+
+    return _impl(
+        run_dir=run_dir,
+        episode_id=episode_id,
+        events=events,
+        metrics=metrics,
+        config=config,
+    )
+
+
+emit = maybe_emit_learn_event

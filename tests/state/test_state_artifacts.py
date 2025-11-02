@@ -3,7 +3,7 @@ from pathlib import Path
 
 import noesis as ns
 from noesis.episode import EpisodeIndex
-from noesis.runtime.config_provider import get_config_port
+from noesis.context import get_config_port
 
 
 def test_state_artifact_written(tmp_path) -> None:

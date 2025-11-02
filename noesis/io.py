@@ -20,7 +20,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from .trace.events import EVENTS_FILE, read_events
 from .trace.summary import SUMMARY_FILE, read_summary
-from .runtime.config_provider import RuntimeContext, get_config_snapshot
+from .context import RuntimeContext, get_config_snapshot
 
 
 def _config_snapshot(context: RuntimeContext | None):

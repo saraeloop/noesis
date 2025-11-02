@@ -16,7 +16,7 @@ class ShowCommand:
         parser.add_argument("-q", "--quiet", action="store_true", help="Print id only")
 
     def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
-        summary = ctx.ns.summary(args.episode_id, context=ctx.runtime_context)
+        summary = ctx.ns.summary.read(args.episode_id, context=ctx.runtime_context)
         if args.json:
             renderer.json(summary)
             return 0

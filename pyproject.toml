@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "v0.6.1"
+version = "v0.7.1"
 description = "Noēsis (νόησις) — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -20,9 +20,11 @@ classifiers = [
 ]
 # Runtime deps only (none yet)
 dependencies = [
+    "pillow>=11.3.0",
     "python-dateutil>=2.9.0.post0",
     "rich>=14.2.0",
     "rich-argparse>=1.7.1",
+    "streamlit>=1.51.0",
 ]
 
 [project.optional-dependencies]

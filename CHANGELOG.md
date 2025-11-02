@@ -1,13 +1,20 @@
 # Changelog
 
 ## Unreleased
+_No changes yet._
+
+## v0.7.1 – 2025-11-02
 ### Added
 - Long-term memory persistence pipeline: episode summaries now feed memory ports declaring the `long_term_memory` capability, with dedicated `memory` events for observability.
 - Built-in SQLite-backed memory adapter (`noesis.infrastructure.memory.SQLiteMemory`) for easy persistent knowledge bases in development and testing.
+- Public facades and top-level imports (`noesis.context`, `noesis.events`, `noesis.summary`, `noesis.learn`, `noesis.runtime.*`) plus a documented API surface page covering supported imports.
 
 ### Changed
 - README documents the cognitive framework in depth and showcases the new persistent memory workflow.
 - Episode index moved behind a dedicated port; import `EpisodeIndex` from `noesis.episode` (legacy `noesis.state.store` emits a deprecation warning and will be removed in v0.8.0).
+
+### Deprecated
+- `noesis.runtime._events`, `noesis.runtime._summary`, `noesis.runtime._learning`, and `noesis.runtime._utils` now emit deprecation warnings and will be removed in **v0.9.0**. Import from `noesis.events.read/start`, `noesis.summary.finalize/read`, `noesis.learn.emit`, and `noesis.runtime.utils` respectively.
 
 ## v0.7.0 – 2025-11-01
 ### Added

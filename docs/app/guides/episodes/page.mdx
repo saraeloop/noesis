@@ -49,6 +49,6 @@ Prefer Python? Call <code>noesis.run()</code> and <code>noesis.events()</code> d
 import noesis as ns
 
 ep = ns.solve("Plan the week", using="react", intuition=True)
-events = ns.events(ep)
+events = list(ns.events.read(ep))
 ```
 </Callout>

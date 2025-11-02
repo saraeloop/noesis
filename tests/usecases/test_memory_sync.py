@@ -8,7 +8,7 @@ import pytest
 
 from noesis.interfaces.config import ConfigPort, ConfigSnapshot
 from noesis.interfaces.memory import Fact, MemoryPort, MemoryQuery
-from noesis.runtime.config_provider import RuntimeContext
+from noesis.context import RuntimeContext
 from noesis.usecases.memory_sync import LONG_TERM_CAPABILITY, persist_episode_memory
 from noesis.trace.events import read_events
 

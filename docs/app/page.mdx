@@ -129,9 +129,9 @@ uv run noesis insight ep_abc123
 ```python
 import noesis as ns
 
-ep = ns.run(task="demo", intuition=True)
-summary = ns.summary(ep)
-events = ns.events(ep)
+ep = ns.run("demo", intuition=True)
+summary = ns.summary.read(ep)
+events = list(ns.events.read(ep))
 ```
 
 Explore the full surface area in the [Python reference](/reference/python) or jump to the

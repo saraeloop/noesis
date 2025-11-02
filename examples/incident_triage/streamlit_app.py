@@ -42,8 +42,8 @@ def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
 def _load_artifacts(episode_id: str) -> Dict[str, Any]:
     paths = ns.paths(episode_id)
     run_dir = Path(paths["dir"])  # pragma: no cover - simple path helper
-    summary = ns.summary(episode_id)
-    events = list(ns.events(episode_id))
+    summary = ns.summary.read(episode_id)
+    events = list(ns.events.read(episode_id))
     learns: List[Dict[str, Any]] = []
     learn_dir = run_dir / "learn"
     if learn_dir.exists():

@@ -13,10 +13,10 @@ Install Noēsis with `uv add noesis` or `pip install noesis`. Import the module 
 
 | Function | Description |
 | -------- | ----------- |
-| `ns.run(task, *, intuition=False, **kwargs)` | Execute a baseline episode without an adapter. |
+| `ns.run(goal, *, intuition=False, **kwargs)` | Execute a baseline episode without an adapter. Call as `ns.run("Draft update")`. |
 | `ns.solve(task, *, using, intuition=False, **kwargs)` | Run through an adapter (e.g. LangGraph) registered under `using`. |
-| `ns.summary(episode_id)` | Load summary JSON including metrics and insight. |
-| `ns.events(episode_id, phase=None)` | Load event stream (optionally filtered by phase). |
+| `ns.summary.read(episode_id)` | Load summary JSON including metrics and insight. |
+| `ns.events.read(episode_id)` | Load event stream (optionally filtered by phase). |
 | `ns.list_runs(limit=20)` | Return recent episodes with metadata. |
 | `ns.last()` | Convenience helper to fetch the most recent episode ID. |
 | `ns.set(**config)` | Override global config (runs dir, thresholds, adapters, etc.). |
@@ -41,7 +41,7 @@ class Guardrails(ns.DirectedIntuition):
 
 
 ep = ns.solve("Send a wire transfer", using="react", intuition=Guardrails())
-summary = ns.summary(ep)
+summary = ns.summary.read(ep)
 ```
 
 ## Insight utilities

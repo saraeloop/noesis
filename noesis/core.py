@@ -43,10 +43,10 @@ from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
-from .runtime._utils import now as _now
+from .runtime.utils import now as _now
 from .runtime.clock import RuntimeClock
 from .runtime.events_emitter import CognitiveEventEmitter
-from .runtime._events import (
+from .runtime.events import (
     act_event as _act_event,
     ensure_act_event as _ensure_act_event,
     interpret_event as _interpret_event,
@@ -56,7 +56,7 @@ from .runtime._events import (
     start_event as _start_event,
     terminate_event as _terminate_event,
 )
-from .runtime._summary import finalize_summary as _finalize_summary
+from .runtime.summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .usecases.episode_runner import (
     EpisodeDependencies,
@@ -65,7 +65,7 @@ from .usecases.episode_runner import (
     EpisodeRunner,
 )
 from .usecases.memory_sync import persist_episode_memory
-from .runtime.config_provider import RuntimeContext, get_context
+from .context import RuntimeContext, get_context
 
 # Soft-depend on adapters
 try:

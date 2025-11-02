@@ -185,8 +185,8 @@ def _intervention_summary(events: List[Dict[str, Any]]) -> str:
 def _load_run_artifacts(episode_id: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]], str]:
     paths = ns.paths(episode_id)
     run_dir = Path(paths["dir"])
-    summary = ns.summary(episode_id)
-    events = ns.events(episode_id)
+    summary = ns.summary.read(episode_id)
+    events = list(ns.events.read(episode_id))
     learns: List[Dict[str, Any]] = []
     learn_dir = run_dir / "learn"
     if learn_dir.exists():

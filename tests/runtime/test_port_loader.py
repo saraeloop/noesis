@@ -5,7 +5,7 @@ import sys
 
 import noesis as ns
 
-from noesis.runtime.config_provider import create_runtime_context
+from noesis.context import create_runtime_context
 from noesis.runtime.port_loader import instantiate_port, merge_port_specs
 
 
@@ -57,5 +57,5 @@ def test_runtime_context_lists_ports(tmp_path):
     ports = runtime_context.list_ports()
     assert "config" in ports
     episode_id = ns.run(task="port summary", intuition=False, context=runtime_context)
-    summary = ns.summary(episode_id, context=runtime_context)
+    summary = ns.summary.read(episode_id, context=runtime_context)
     assert summary.get("ports", {}).get("config") == ports["config"]

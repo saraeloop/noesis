@@ -37,7 +37,7 @@ class SqlGraph:
 
 
 def _print_banner(label: str, episode_id: str) -> None:
-    summary = ns.summary(episode_id)
+    summary = ns.summary.read(episode_id)
     flags = summary.get("flags", {}).get("direction", {})
     applied = flags.get("applied", 0)
     vetoed = flags.get("vetoed", 0)
@@ -75,7 +75,7 @@ def main() -> None:
         print("Vetoed exfiltration:", err.advice)
 
     # 4) Show insight snapshot for the first episode
-    events = ns.events(ep_limit)
+    events = list(ns.events.read(ep_limit))
     print(events[-1]["phase"])  # Should include terminate/insight
     insight_events = [event for event in events if event.get("phase") == "insight"]
     if insight_events:

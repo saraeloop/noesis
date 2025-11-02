@@ -1,0 +1,180 @@
+---
+title: API surface
+description: Supported Python imports for building on top of Noēsis.
+---
+
+import { Callout } from 'nextra/components'
+
+# Supported imports
+
+These modules are part of the **supported** Python surface. Anything outside
+this list (for example `noesis.domain.*` or `noesis.runtime._*`) is an internal
+detail and can change without notice.
+
+## Stability matrix
+
+| Module | Status | Since |
+| --- | --- | --- |
+| `noesis` | ✅ Stable | v0.5.0 |
+| `noesis.io` | ✅ Stable | v0.5.0 |
+| `noesis.events` | ✅ Stable | v0.7.1 |
+| `noesis.summary` | ✅ Stable | v0.7.1 |
+| `noesis.episode` | ✅ Stable | v0.7.0 |
+| `noesis.context` | ✅ Stable | v0.7.1 |
+| `noesis.trace` | ✅ Stable | v0.4.0 |
+| `noesis.learn` | 🟡 Evolving | v0.4.0 |
+| `noesis.insight` | 🟡 Evolving | v0.4.0 |
+| `noesis.adapters.*` | 🟡 Example | v0.4.0 |
+| `noesis.runtime.events` | ✅ Stable (facade) | v0.4.0 |
+| `noesis.runtime.summary` | ✅ Stable (facade) | v0.4.0 |
+| `noesis.runtime.learning` | ✅ Stable (facade) | v0.4.0 |
+| `noesis.runtime.utils` | ✅ Stable (facade) | v0.4.0 |
+| `noesis.runtime._*` | ❌ Deprecated → 0.9 removal | v0.7.1 |
+
+<Callout type="warning" emoji="⚠️">
+Avoid importing from `noesis.domain.*`, `noesis.usecases.*`, `noesis.infrastructure.*`,
+`noesis.interfaces.*`, or any module whose name starts with an underscore. Those are
+internal details and will change.
+</Callout>
+
+<Callout type="info" emoji="🗓️">
+**Sunset schedule (pre-1.0)** — `_events`, `_summary`, `_learning`, `_utils`, and `state.store.EpisodeStore`
+emit deprecation warnings as of v0.7.x and will be removed in v0.9.0. Switch to the replacements listed
+below.
+</Callout>
+
+## Migration guide
+
+| Old import | Use instead | Removal |
+| --- | --- | --- |
+| `from noesis.runtime._events import …` | `from noesis.events import …` | v0.9.0 |
+| `from noesis.runtime._summary import finalize_summary` | `from noesis.summary import finalize` | v0.9.0 |
+| `from noesis.runtime._learning import maybe_emit_learn_event` | `from noesis.learn import emit` | v0.9.0 |
+| `from noesis.runtime._utils import …` | `from noesis.runtime.utils import …` | v0.9.0 |
+| `from noesis.runtime.config_provider import …` | `from noesis.context import …` | v0.9.0 |
+| `from noesis.state.store import EpisodeStore` | `from noesis.episode import EpisodeIndex` | v0.9.0 |
+
+## Module quick reference
+
+| Module | Purpose |
+| --- | --- |
+| `noesis` | Entry points (`run`, `solve`, `set`, `get`, `summary`, `events`, …) plus intuition and direction helpers. |
+| `noesis.io` | Read-only helpers for summaries, events, metrics, and run listings. |
+| `noesis.events` | Emit cognitive-loop events (observe/interpret/plan/act/reflect/learn). |
+| `noesis.summary` | Finalise summaries and emit derived insight metrics. |
+| `noesis.episode` | Episode manifest API (`EpisodeIndex`, `EpisodeIndexPort`, `EpisodeRecord`). |
+| `noesis.context` | Runtime context tooling (`RuntimeContext`, `create_runtime_context`, config accessors). |
+| `noesis.trace` | Trace schema helpers (`read_events`, `write_event`, `write_cognitive_event`, `read_summary`). |
+| `noesis.learn` / `noesis.insight` | Learning and insight programmatic helpers. |
+| `noesis.adapters.*` | Reference adapters (LangGraph, CrewAI, etc.). Treat as examples. |
+
+<Callout type="warning" emoji="⚠️">
+Avoid importing from `noesis.domain.*`, `noesis.usecases.*`, `noesis.infrastructure.*`, `noesis.interfaces.*`,
+or any module whose name starts with an underscore. Those are internal details and will change.
+</Callout>
+
+## Quick examples
+
+Stick to the root facade for orchestration (`ns.run`, `ns.solve`) and the module surfaces for everything else.
+Reserve `noesis.io.*` for advanced read-only tooling; the mainstream path is `ns.summary.read`, `ns.events.read`,
+and `noesis.learn.emit` for post-run learning hooks.
+
+```python filename="python"
+# --- Core happy path ---------------------------------------------------------
+import noesis as ns
+
+episode_id = ns.run("Draft weekly update", intuition=False)
+metrics = ns.summary.read(episode_id)["metrics"]
+print(metrics["success"])
+
+# --- Solving with a custom graph + capturing events --------------------------
+from pathlib import Path
+
+# If your runner accepts a callable, pass one; otherwise pass a label/path your loader understands.
+episode_id = ns.solve(
+    "Generate release notes",
+    using=lambda: Path("flows/release_notes.py"),
+    intuition=True,
+)
+
+for ev in ns.events.read(episode_id):
+    print(ev["phase"], ev["payload"])
+
+# --- Working with the runtime context facade ---------------------------------
+from noesis import context
+
+ctx = context.create_runtime_context()
+ctx.register("memory", provider=my_memory_port, api="memory/1.0")
+context.set_context(ctx)
+
+snapshot = context.get_config_snapshot()
+print(snapshot)
+
+# --- Finalizing summaries in backfills ---------------------------------------
+from pathlib import Path
+from noesis import summary
+
+summary.finalize(
+    run_dir=Path("./runs/demo"),
+    episode_id="ep_demo",
+    task="Backfill summary",
+    seed=0,
+    started_at="2025-01-01T00:00:00Z",
+    intuition_enabled=False,
+    intuition_mode=None,          # or ns.IntuitionMode.ADVISORY if applicable
+    using_label="core.minimal",
+    tags={},
+    intuition=None,
+    schema_version="1.2.0",
+    config=context.get_config_snapshot(),
+    ports=ctx.list_ports(),
+)
+
+# --- Emitting events outside the orchestrator --------------------------------
+from pathlib import Path
+from noesis import events
+
+run_dir = Path("./runs/manual")
+events.start(run_dir, "ep_manual", {"task": "Hand-crafted episode"})
+events.ensure(
+    run_dir,
+    "ep_manual",
+    adapter_label="adapter:manual",
+    input_excerpt="noop",
+    outcome="ok",
+)
+events.terminate(run_dir, "ep_manual", {"status": "ok"})
+
+# --- Learning helpers (high-level) -------------------------------------------
+from pathlib import Path
+from noesis import learn
+
+learn.emit(
+    run_dir=Path("./runs/demo"),
+    episode_id="ep_demo",
+    events=list(ns.events.read("ep_demo")),
+    metrics=ns.summary.read("ep_demo")["metrics"],
+    config=context.get_config_snapshot(),
+)
+
+# --- Episode manifest (read-only) --------------------------------------------
+from noesis.episode import EpisodeIndex
+
+index = EpisodeIndex("./runs/_episodes", ttl_days=14)
+recent = list(index.iter())
+
+# --- Optional: legacy read-only tooling via noesis.io ------------------------
+# Prefer ns.summary.read / ns.events.read above; keep io.* for power users.
+from noesis.io import list_runs, summary as io_summary, events as io_events
+
+latest = list_runs(limit=1)[0]
+details = io_summary(latest["episode_id"])
+timeline = list(io_events(latest["episode_id"], stream=True))
+```
+
+Prefer the high-level `learn.emit` helper; lower-level builders such as `build_learn_payload` / `persist_episode_learning`
+remain available for migration, but will follow the deprecation schedule in future releases.
+
+<Callout type="info" emoji="🧠">
+`context=` is the agent’s scoped worldview: configuration + registered faculties. Make it explicit when you need dependency injection or isolated test fixtures.
+</Callout>

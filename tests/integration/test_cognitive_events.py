@@ -3,7 +3,7 @@ from pathlib import Path
 from noesis.domain.planner.minimal import MinimalActuator, MinimalPlanner
 from noesis.domain.state import CognitiveVerb, LineageTracker
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
-from noesis.runtime._events import observe_event, start_event
+from noesis import events
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
 from noesis.trace.events import read_events
@@ -44,14 +44,14 @@ def test_episode_runner_emits_metrics_and_lineage(tmp_path) -> None:
     instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
 
-    start_event(ctx.run_dir, ctx.episode_id, {"task": ctx.task, "seed": ctx.seed})
-    observe_event(ctx.run_dir, ctx.episode_id, task=ctx.task, tags=ctx.tags, snapshot=None)
+    events.start(ctx.run_dir, ctx.episode_id, {"task": ctx.task, "seed": ctx.seed})
+    events.observe(ctx.run_dir, ctx.episode_id, task=ctx.task, tags=ctx.tags, snapshot=None)
 
     request = EpisodeRequest(goal=ctx.task, beliefs=(), context=ctx)
     runner.run(request)
 
-    events = read_events(ctx.run_dir)
-    verbs = {e.get("phase"): e for e in events if e.get("phase") in {v.value for v in CognitiveVerb}}
+    recorded = read_events(ctx.run_dir)
+    verbs = {e.get("phase"): e for e in recorded if e.get("phase") in {v.value for v in CognitiveVerb}}
 
     for verb in CognitiveVerb:
         if verb is CognitiveVerb.OBSERVE:

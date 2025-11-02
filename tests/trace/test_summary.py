@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 
 import noesis as ns
 from noesis.trace.events import read_events, write_event
-from noesis import DirectedIntuition
+from noesis.direction import DirectedIntuition
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 import pytest
+from noesis.io import list_runs
+from noesis.exceptions import NoesisVeto
 
 
 def _iso_now() -> str:
@@ -18,7 +20,7 @@ def test_metrics_keys_dedup(tmp_path):
     ns.set(runs_dir=str(runs_dir))
 
     episode_id = ns.run(task="Metrics sanity check", intuition=False)
-    metrics = ns.summary(episode_id)["metrics"]
+    metrics = ns.summary.read(episode_id)["metrics"]
 
     assert metrics["success"] == 1  # baseline run() now terminates with status 'ok'
     assert "veto_rate" not in metrics
@@ -41,7 +43,7 @@ def test_duration_and_mode_flags(tmp_path):
     ns.set(runs_dir=str(runs_dir))
 
     episode_id = ns.run(task="Duration check", intuition=False)
-    summary = ns.summary(episode_id)
+    summary = ns.summary.read(episode_id)
 
     assert summary["duration_sec"] > 0.0
     assert summary["flags"]["mode"] == "off"
@@ -53,7 +55,7 @@ def test_direction_policy_omitted_when_absent(tmp_path):
     ns.set(runs_dir=str(runs_dir))
 
     episode_id = ns.run(task="No policy episode", intuition=False)
-    direction_flags = ns.summary(episode_id)["flags"]["direction"]
+    direction_flags = ns.summary.read(episode_id)["flags"]["direction"]
 
     assert "policy" not in direction_flags
 
@@ -67,7 +69,7 @@ def test_success_metric(tmp_path):
             return {"result": task}
 
     episode_id = ns.solve("Success task", using=lambda: Adapter(), intuition=False)
-    metrics = ns.summary(episode_id)["metrics"]
+    metrics = ns.summary.read(episode_id)["metrics"]
 
     assert metrics["success"] == 1
 
@@ -104,16 +106,16 @@ def test_latency_metrics_positive(tmp_path):
         def invoke(self, payload):
             return payload
 
-    with pytest.raises(ns.NoesisVeto):
+    with pytest.raises(NoesisVeto):
         ns.solve(
             "Latency check",
             using=lambda: NoopGraph(),
             intuition=VetoImmediately(),
         )
 
-    episode_id = ns.list_runs(limit=1)[0]["episode_id"]
+    episode_id = list_runs(limit=1)[0]["episode_id"]
 
-    metrics = ns.summary(episode_id)["metrics"]
+    metrics = ns.summary.read(episode_id)["metrics"]
     latencies = metrics.get("latencies", {})
     assert latencies.get("time_to_veto_ms") is not None
     assert latencies["time_to_veto_ms"] >= 1
