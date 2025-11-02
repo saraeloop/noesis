@@ -60,7 +60,6 @@ class MinimalActuator(Actuator):
             event_bus.emit_action(action)
             reasons.append(f"step:{step.id}:{step.kind.value}")
 
-        event_bus.emit_reflect(success=True, reasons=reasons)
         return ActuationResult(
             status="ok",
             summary=f"Completed {len(plan)} minimal steps.",

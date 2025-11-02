@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List
 import json
 
+from noesis.domain.state.cognitive import CognitiveEvent
+
 EVENTS_FILE = "events.jsonl"
 
 # Canonical phases for event.phase
@@ -73,6 +75,7 @@ __all__ = [
     "REQUIRED_EVENT_KEYS",
     "RECOMMENDED_EVENT_KEYS",
     "write_event",
+    "write_cognitive_event",
     "iter_events",
     "read_events",
 ]
@@ -97,6 +100,18 @@ def _validate_event_schema(event: Dict[str, Any]) -> None:
         raise ValueError("event.payload must be a dict")
     if not isinstance(event.get("evidence_ids"), list):
         raise ValueError("event.evidence_ids must be a list")
+    caused_by = event.get("caused_by")
+    if caused_by is not None and not isinstance(caused_by, str):
+        raise ValueError("event.caused_by must be a string UUID when provided")
+    metrics = event.get("metrics")
+    if metrics is not None:
+        if not isinstance(metrics, dict):
+            raise ValueError("event.metrics must be a dict when provided")
+        for key in ("started_at", "completed_at", "duration_ms"):
+            if key not in metrics:
+                raise ValueError(f"event.metrics is missing '{key}'")
+        if not isinstance(metrics.get("duration_ms"), (int, float)):
+            raise ValueError("event.metrics.duration_ms must be numeric")
 
     if isinstance(phase, str) and phase in VERB_PHASES:
         minima = _VERB_PAYLOAD_MINIMA.get(phase, set())
@@ -121,6 +136,19 @@ def write_event(dir_path: Path, event: Dict[str, Any], *, validate: bool = True)
     dir_path.mkdir(parents=True, exist_ok=True)
     with (dir_path / EVENTS_FILE).open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+
+def write_cognitive_event(
+    dir_path: Path,
+    event: CognitiveEvent,
+    *,
+    agent_id: str = "system",
+    validate: bool = True,
+) -> None:
+    """Serialize and append a CognitiveEvent."""
+    record = event.to_record()
+    record["agent_id"] = agent_id
+    write_event(dir_path, record, validate=validate)
 
 
 def iter_events(dir_path: Path) -> Iterator[Dict[str, Any]]:

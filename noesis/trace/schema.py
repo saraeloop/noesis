@@ -12,18 +12,29 @@ from __future__ import annotations
 from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Public schema version exported to runtime/core.
-SUMMARY_SCHEMA_VERSION = "1.1.0"
+SUMMARY_SCHEMA_VERSION = "1.2.0"
+
+
+class EventMetrics(TypedDict):
+    """Timing metadata emitted for cognitive verbs."""
+
+    started_at: str
+    completed_at: str
+    duration_ms: float
 
 
 class EventRecord(TypedDict, total=False):
     """Typed snapshot of a single event emitted to events.jsonl."""
 
+    id: str
     timestamp: str
     episode_id: str
     agent_id: NotRequired[str]
     phase: str
     payload: Dict[str, Any]
     evidence_ids: List[str]
+    caused_by: NotRequired[str]
+    metrics: NotRequired[EventMetrics]
 
 
 class SummaryFlags(TypedDict, total=False):
@@ -56,4 +67,5 @@ __all__ = [
     "EventRecord",
     "SummaryFlags",
     "SummarySnapshot",
+    "EventMetrics",
 ]

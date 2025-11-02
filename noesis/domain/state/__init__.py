@@ -2,6 +2,13 @@
 Domain models for cognitive state and related value objects.
 """
 
+from .cognitive import (  # noqa: F401
+    COGNITIVE_VERBS,
+    CognitiveEvent,
+    CognitiveMetrics,
+    CognitiveVerb,
+    LineageTracker,
+)
 from .models import (  # noqa: F401
     ActionArtifact,
     ActionRecord,
@@ -26,6 +33,10 @@ from .models import (  # noqa: F401
 __all__ = [
     "ActionArtifact",
     "ActionRecord",
+    "COGNITIVE_VERBS",
+    "CognitiveEvent",
+    "CognitiveMetrics",
+    "CognitiveVerb",
     "MemoryFact",
     "NoesisState",
     "OutcomeStatus",
@@ -41,5 +52,6 @@ __all__ = [
     "STATE_SCHEMA_VERSION",
     "STATE_VERSION",
     "StepStatus",
+    "LineageTracker",
     "create_state",
 ]

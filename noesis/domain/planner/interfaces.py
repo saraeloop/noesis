@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol, Sequence
+from uuid import UUID
 
-from ..state import ActionRecord, NoesisState, PlanStep
+from ..state import ActionRecord, NoesisState, PlanStep, CognitiveMetrics
 
 
 @dataclass(slots=True)
@@ -53,13 +54,34 @@ class Actuator(Protocol):
 class EventBus(Protocol):
     """Abstraction over runtime event emission (plan, act, reflect)."""
 
-    def emit_plan(self, *, steps: Sequence[PlanStep], rationale: str, source: str) -> None:
+    def emit_plan(
+        self,
+        *,
+        steps: Sequence[PlanStep],
+        rationale: str,
+        source: str,
+        metrics: CognitiveMetrics | None = None,
+        caused_by: UUID | None = None,
+    ) -> None:
         ...
 
-    def emit_action(self, action: ActionRecord) -> None:
+    def emit_action(
+        self,
+        action: ActionRecord,
+        *,
+        metrics: CognitiveMetrics | None = None,
+        caused_by: UUID | None = None,
+    ) -> None:
         ...
 
-    def emit_reflect(self, *, success: bool, reasons: list[str]) -> None:
+    def emit_reflect(
+        self,
+        *,
+        success: bool,
+        reasons: list[str],
+        metrics: CognitiveMetrics | None = None,
+        caused_by: UUID | None = None,
+    ) -> None:
         ...
 
 

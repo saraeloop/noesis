@@ -7,34 +7,115 @@ emission helpers so the use cases remain framework-agnostic.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Sequence
+from uuid import UUID
 
 from noesis.domain.planner.interfaces import EventBus
-from noesis.domain.state import ActionRecord, PlanStep
-from noesis.runtime._events import plan_event, act_event, reflect_event
+from noesis.domain.state import (
+    ActionRecord,
+    CognitiveEvent,
+    CognitiveMetrics,
+    CognitiveVerb,
+    LineageTracker,
+    PlanStep,
+)
+from noesis.infrastructure.state_repository import EpisodeContext
+from noesis.runtime.clock import RuntimeClock
+from noesis.runtime.events_emitter import CognitiveEventEmitter
 
 
 @dataclass(slots=True)
 class RuntimeEventBus(EventBus):
     """Concrete event bus that writes to the runtime JSONL logs."""
 
-    run_dir: Path
-    episode_id: str
+    context: EpisodeContext
+    emitter: CognitiveEventEmitter
+    lineage: LineageTracker
+    clock: RuntimeClock = field(default_factory=RuntimeClock)
+    _plan_steps: list[str] = field(default_factory=list, init=False, repr=False)
+    _reflect_snapshot: dict[str, object] = field(default_factory=dict, init=False, repr=False)
 
-    def emit_plan(self, *, steps: Sequence[PlanStep], rationale: str, source: str) -> None:
+    def emit_plan(
+        self,
+        *,
+        steps: Sequence[PlanStep],
+        rationale: str,
+        source: str,
+        metrics: CognitiveMetrics | None = None,
+        caused_by: UUID | None = None,
+    ) -> None:
+        self._plan_steps = [step.id for step in steps]
+        if metrics is not None:
+            if caused_by is not None:
+                self.lineage.seed(last_event_id=caused_by)
+            return
         labels = [f"{step.kind.value}:{step.description}" for step in steps]
-        plan_event(self.run_dir, self.episode_id, steps=labels, rationale=rationale, source=source)
-
-    def emit_action(self, action: ActionRecord) -> None:
-        act_event(
-            self.run_dir,
-            self.episode_id,
-            adapter=action.tool,
-            input_excerpt=action.input_excerpt,
-            outcome=action.result_status,
+        payload = {"steps": labels}
+        if rationale:
+            payload["rationale"] = rationale
+        metrics = metrics or self._instant_metric(CognitiveVerb.PLAN)
+        event = CognitiveEvent(
+            episode_id=self.context.episode_id,
+            verb=CognitiveVerb.PLAN,
+            payload=payload,
         )
+        if metrics:
+            event = event.with_metrics(metrics)
+        linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
+        self.emitter.emit(linked, agent_id=source or "system")
 
-    def emit_reflect(self, *, success: bool, reasons: list[str]) -> None:
-        reflect_event(self.run_dir, self.episode_id, success=success, reasons=reasons or None)
+    def emit_action(
+        self,
+        action: ActionRecord,
+        *,
+        metrics: CognitiveMetrics | None = None,
+        caused_by: UUID | None = None,
+    ) -> None:
+        payload = {
+            "input_excerpt": action.input_excerpt,
+            "outcome": action.result_status,
+        }
+        if action.tool:
+            payload["tool"] = action.tool
+        metrics = metrics or self._instant_metric(CognitiveVerb.ACT)
+        event = CognitiveEvent(
+            episode_id=self.context.episode_id,
+            verb=CognitiveVerb.ACT,
+            payload=payload,
+        )
+        if metrics:
+            event = event.with_metrics(metrics)
+        linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
+        self.emitter.emit(linked, agent_id=action.tool or "system")
+
+    def emit_reflect(
+        self,
+        *,
+        success: bool,
+        reasons: list[str],
+        metrics: CognitiveMetrics | None = None,
+        caused_by: UUID | None = None,
+    ) -> None:
+        self._reflect_snapshot = {"success": success, "reasons": list(reasons)}
+        if metrics is not None:
+            if caused_by is not None:
+                self.lineage.seed(last_event_id=caused_by)
+            return
+        payload = {"success": success}
+        if reasons:
+            payload["reasons"] = reasons
+        metrics = metrics or self._instant_metric(CognitiveVerb.REFLECT)
+        event = CognitiveEvent(
+            episode_id=self.context.episode_id,
+            verb=CognitiveVerb.REFLECT,
+            payload=payload,
+        )
+        if metrics:
+            event = event.with_metrics(metrics)
+        linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
+        self.emitter.emit(linked)
+
+    def _instant_metric(self, verb: CognitiveVerb) -> CognitiveMetrics:
+        token = self.clock.start(verb)
+        return self.clock.stop(token)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from ..trace.events import read_events, write_event
 from ._utils import now
@@ -23,6 +24,7 @@ def start_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> None
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": now(),
             "episode_id": episode_id,
             "agent_id": "system",
@@ -52,6 +54,7 @@ def observe_event(
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": ts,
             "episode_id": episode_id,
             "agent_id": "system",
@@ -77,6 +80,7 @@ def interpret_event(
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": now(),
             "episode_id": episode_id,
             "agent_id": source,
@@ -102,6 +106,7 @@ def plan_event(
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": now(),
             "episode_id": episode_id,
             "agent_id": source,
@@ -135,6 +140,7 @@ def act_event(
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": now(),
             "episode_id": episode_id,
             "agent_id": adapter or tool or "system",
@@ -161,6 +167,7 @@ def reflect_event(
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": now(),
             "episode_id": episode_id,
             "agent_id": "system",
@@ -195,6 +202,7 @@ def terminate_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> 
     write_event(
         run_dir,
         {
+            "id": str(uuid4()),
             "timestamp": now(),
             "episode_id": episode_id,
             "agent_id": "system",

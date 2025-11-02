@@ -23,17 +23,16 @@ from pathlib import Path
 from typing import Any, Dict, Optional, List, Final, Protocol
 
 from .state import (
-    NoesisState,
     PlanStep,
     PlanKind,
     StepStatus,
-    PLAN_KINDS_DEFAULT,
     OUTCOME_STATUS_OK,
     OUTCOME_STATUS_ERROR,
     OUTCOME_STATUS_VETOED,
     OUTCOME_STATUS_ABORTED,
     OUTCOME_STATUS_PARTIAL,
 )
+from .domain.state import LineageTracker
 from .state.episode import new_episode_id, begin_episode
 from .state.store import EpisodeStore
 # Domain / use-case layer imports
@@ -45,6 +44,8 @@ from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
 from .runtime._utils import now as _now
+from .runtime.clock import RuntimeClock
+from .runtime.events_emitter import CognitiveEventEmitter
 from .runtime._events import (
     act_event as _act_event,
     ensure_act_event as _ensure_act_event,
@@ -57,7 +58,12 @@ from .runtime._events import (
 )
 from .runtime._summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
-from .usecases.episode_runner import EpisodeDependencies, EpisodeRequest, EpisodeRunner
+from .usecases.episode_runner import (
+    EpisodeDependencies,
+    EpisodeInstrumentation,
+    EpisodeRequest,
+    EpisodeRunner,
+)
 from .usecases.memory_sync import persist_episode_memory
 from .runtime.config_provider import RuntimeContext, get_context
 
@@ -326,14 +332,28 @@ def _run_impl(
         _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
         _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
 
-        event_bus = RuntimeEventBus(run_dir=ctx.run_dir, episode_id=ctx.episode_id)
+        lineage = LineageTracker()
+        clock = RuntimeClock()
+        emitter = CognitiveEventEmitter(run_dir=ctx.run_dir)
+        event_bus = RuntimeEventBus(
+            context=episode_ctx,
+            emitter=emitter,
+            lineage=lineage,
+            clock=clock,
+        )
         deps = EpisodeDependencies(
             planner=MinimalPlanner(),
             actuator=MinimalActuator(tool_label=adapter_label),
             event_bus=event_bus,
             state_repository=state_repo,
         )
-        runner = EpisodeRunner(deps)
+        instrumentation = EpisodeInstrumentation(
+            clock=clock,
+            emitter=emitter,
+            lineage=lineage,
+            hooks=(),
+        )
+        runner = EpisodeRunner(deps, instrumentation=instrumentation)
         episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=episode_ctx)
         result = runner.run(episode_request)
 

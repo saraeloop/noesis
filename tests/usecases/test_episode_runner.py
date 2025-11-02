@@ -17,13 +17,13 @@ class DummyEventBus(EventBus):
         self.actions: list[ActionRecord] = []
         self.reflected: tuple[bool, list[str]] | None = None
 
-    def emit_plan(self, *, steps, rationale: str, source: str) -> None:  # type: ignore[override]
+    def emit_plan(self, *, steps, rationale: str, source: str, metrics=None, caused_by=None) -> None:  # type: ignore[override]
         self.plan_steps = list(steps)
 
-    def emit_action(self, action: ActionRecord) -> None:
+    def emit_action(self, action: ActionRecord, *, metrics=None, caused_by=None) -> None:
         self.actions.append(action)
 
-    def emit_reflect(self, *, success: bool, reasons: list[str]) -> None:
+    def emit_reflect(self, *, success: bool, reasons: list[str], metrics=None, caused_by=None) -> None:
         self.reflected = (success, reasons)
 
 
