@@ -7,6 +7,23 @@
 
 ### Changed
 - README documents the cognitive framework in depth and showcases the new persistent memory workflow.
+- Episode index moved behind a dedicated port; import `EpisodeIndex` from `noesis.episode` (legacy `noesis.state.store` emits a deprecation warning and will be removed in v0.8.0).
+
+## v0.7.0 – 2025-11-01
+### Added
+- Cognitive loop primitives — `CognitiveVerb`, `CognitiveEvent`, and `LineageTracker` — formalise the six verbs with immutable payloads and causal IDs (`noesis/domain/state/cognitive.py`).
+- High-resolution `RuntimeClock` instrumentation wraps each verb, producing per-phase latency metrics consumed by diagnostics (`noesis/runtime/clock.py`).
+- Event emission adapters (`noesis/runtime/events_emitter.py`) and meta-phase hooks (`noesis/usecases/hooks/meta_phase.py`) enable governance and observability extensions without touching orchestration.
+- Integration and unit tests cover lineage coverage, timing sanity, and enriched episode artifacts (`tests/domain/test_cognitive_lineage.py`, `tests/runtime/test_clock.py`, `tests/integration/test_cognitive_events.py`).
+
+### Changed
+- `EpisodeRunner` now seeds lineage, times each verb, and emits metric-rich `events.jsonl` entries while enforcing learn-phase payload contracts (`noesis/usecases/episode_runner.py`).
+- `RuntimeEventBus` cooperates with the new instrumentation to avoid double emission and preserve causal chains (`noesis/interfaces/observability.py`).
+- Trace schema bumped to **1.2.0** with validation for `metrics` and `caused_by`; legacy helpers mint stable IDs (`noesis/trace/schema.py`, `noesis/trace/events.py`, `noesis/runtime/_events.py`).
+- `core.run` wires shared clock/lineage/emitter instances so minimal mode benefits from the reinforced loop (`noesis/core.py`).
+
+### Removed
+- Minimal actuator no longer emits reflect events directly; loop emissions are centralised in the runner (`noesis/domain/planner/minimal.py`).
 
 ## v0.6.1 – 2025-10-31
 ### Changed

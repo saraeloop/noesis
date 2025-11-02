@@ -34,7 +34,7 @@ from .state import (
 )
 from .domain.state import LineageTracker
 from .state.episode import new_episode_id, begin_episode
-from .state.store import EpisodeStore
+from .episode import EpisodeIndex
 # Domain / use-case layer imports
 from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
@@ -388,7 +388,7 @@ def _run_impl(
         try:
             store_root = Path(runs_dir) / "_episodes"
             summary_path = ctx.run_dir / "summary.json"
-            EpisodeStore(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
+            EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
                 episode_id=ctx.episode_id,
                 summary_path=summary_path,
                 state_path=state_path,
@@ -519,7 +519,7 @@ def _run_impl(
     try:
         store_root = Path(runs_dir) / "_episodes"
         summary_path = ctx.run_dir / "summary.json"
-        EpisodeStore(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
+        EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
             episode_id=ctx.episode_id,
             summary_path=summary_path,
             state_path=state_path,

@@ -40,16 +40,16 @@ Plan steps use a controlled vocabulary (`kind ∈ {detect, analyze, plan, act, v
 Schema migration note: v1 is the initial release. Fields may expand, but existing keys will remain stable. Use the `state_schema_version` field to gate parser upgrades.
 </Callout>
 
-## EpisodeStore patterns
+## Episode index patterns
 
-The `EpisodeStore` keeps a JSONL manifest of prior runs (plus an optional FAISS index for similarity search). Expired episodes are hidden from default iterators but never removed unless you call `vacuum()`.
+The `EpisodeIndex` keeps a JSONL manifest of prior runs (plus an optional FAISS index for similarity search). Expired episodes are hidden from default iterators but never removed unless you call `vacuum()`.
 
 Retrieve the most recent matching episodes:
 
 ```python filename="python"
-from noesis.state.store import EpisodeStore
+from noesis.episode import EpisodeIndex
 
-store = EpisodeStore("./runs/_episodes")
+store = EpisodeIndex("./runs/_episodes")
 latest = [rec for idx, rec in zip(range(5), store.iter())]
 ```
 
@@ -74,7 +74,7 @@ for episode_id, distance in matches:
 Control retention explicitly:
 
 ```python filename="python"
-store = EpisodeStore("./runs/_episodes", ttl_days=14)
+store = EpisodeIndex("./runs/_episodes", ttl_days=14)
 store.vacuum()  # permanently drop records whose TTL has passed
 ```
 
