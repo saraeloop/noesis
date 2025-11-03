@@ -37,8 +37,11 @@ from .state.episode import new_episode_id, begin_episode
 from .episode import EpisodeIndex
 # Domain / use-case layer imports
 from .domain.planner.minimal import MinimalActuator, MinimalPlanner
+from .domain.planner.meta import MetaPlanner
+from .domain.faculties.governance import PreActGovernor
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from .interfaces.observability import RuntimeEventBus
+from .interfaces.config import PlannerMode
 from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
@@ -341,11 +344,15 @@ def _run_impl(
             lineage=lineage,
             clock=clock,
         )
+        direction_planner = MetaPlanner() if cfg.planner_mode is PlannerMode.META else None
+        governance_policy = PreActGovernor() if cfg.planner_mode is PlannerMode.META else None
         deps = EpisodeDependencies(
             planner=MinimalPlanner(),
             actuator=MinimalActuator(tool_label=adapter_label),
             event_bus=event_bus,
             state_repository=state_repo,
+            direction_planner=direction_planner,
+            governance_policy=governance_policy,
         )
         instrumentation = EpisodeInstrumentation(
             clock=clock,
@@ -419,6 +426,14 @@ def _run_impl(
 
     _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
     _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
+
+    _interpret_event(
+        ctx.run_dir,
+        ctx.episode_id,
+        signals=[],
+        reasons=None,
+        source="system",
+    )
 
     plan_steps = [adapter_label]
     plan_rationale = "Execute adapter"

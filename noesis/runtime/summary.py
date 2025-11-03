@@ -14,7 +14,8 @@ import json
 from noesis.state.episode import EpisodeSummary
 from noesis.trace.events import read_events, write_event
 from noesis.trace.summary import write_summary
-from noesis.domain.faculties.insight import compute_metrics
+from noesis.domain.faculties import validate_hook_sequence
+from noesis.domain.faculties.insight import compute_metrics, build_insight_metrics
 from noesis.intuition import Intuition, IntuitionMode
 from noesis.interfaces.config import ConfigSnapshot
 
@@ -57,6 +58,7 @@ def finalize_summary(
 ) -> None:
     snapshot = config
     events = read_events(run_dir)
+    validate_hook_sequence([event.get("phase", "") for event in events if isinstance(event.get("phase"), str)])
     duration_sec = compute_duration(events)
 
     flags: Dict[str, Any] = {
@@ -65,6 +67,8 @@ def finalize_summary(
     }
     if using_label is not None:
         flags["using"] = using_label
+
+    summary_metrics = compute_metrics({}, events)
 
     summary = EpisodeSummary(
         schema_version=schema_version,
@@ -76,12 +80,14 @@ def finalize_summary(
         flags=flags,
         agents_config_hash=_agents_config_hash(using_label, intuition, intuition_enabled),
         answer={},
-        metrics=compute_metrics({}, events),
+        metrics=summary_metrics,
         tags=tags or {},
         ports=ports,
     ).__dict__
 
     metrics_bucket = summary.setdefault("metrics", {})
+    insight_metrics = build_insight_metrics(events, summary_metrics)
+    summary.setdefault("insight", {})["metrics"] = insight_metrics.to_mapping()
     metrics_bucket["intuition_events"] = sum(1 for e in events if e.get("phase") == "intuition")
 
     learn_info = maybe_emit_learn_event(
@@ -110,6 +116,14 @@ def finalize_summary(
     )
 
     last_payload = direction_events[-1].get("payload", {}) if direction_events else {}
+    policy_tag: Optional[str] = None
+    for direction_event in reversed(direction_events):
+        payload = direction_event.get("payload", {}) or {}
+        status = payload.get("status")
+        if payload.get("policy") and status not in {"skipped"}:
+            policy_tag = payload.get("policy")
+            last_payload = payload
+            break
     diff_strings: List[str] = []
     for diff_item in (last_payload.get("diff") or []):
         try:
@@ -135,7 +149,6 @@ def finalize_summary(
         "last_diff": diff_strings,
         "threshold": snapshot.direction_min_confidence,
     }
-    policy_tag = last_payload.get("policy")
     if policy_tag:
         direction_flags["policy"] = policy_tag
     summary.setdefault("flags", {})["direction"] = direction_flags

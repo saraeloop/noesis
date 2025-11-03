@@ -12,6 +12,8 @@ from typing import Sequence
 from uuid import UUID
 
 from noesis.domain.planner.interfaces import EventBus
+from noesis.domain.faculties.direction import PlannerDirective
+from noesis.domain.faculties.governance import GovernanceResult
 from noesis.domain.state import (
     ActionRecord,
     CognitiveEvent,
@@ -23,6 +25,7 @@ from noesis.domain.state import (
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
+from noesis.runtime.events import direction_event as _direction_event, governance_event as _governance_event
 
 
 @dataclass(slots=True)
@@ -44,12 +47,10 @@ class RuntimeEventBus(EventBus):
         source: str,
         metrics: CognitiveMetrics | None = None,
         caused_by: UUID | None = None,
-    ) -> None:
+    ) -> UUID:
         self._plan_steps = [step.id for step in steps]
-        if metrics is not None:
-            if caused_by is not None:
-                self.lineage.seed(last_event_id=caused_by)
-            return
+        if metrics is not None and caused_by is not None:
+            self.lineage.seed(last_event_id=caused_by)
         labels = [f"{step.kind.value}:{step.description}" for step in steps]
         payload = {"steps": labels}
         if rationale:
@@ -64,6 +65,40 @@ class RuntimeEventBus(EventBus):
             event = event.with_metrics(metrics)
         linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
         self.emitter.emit(linked, agent_id=source or "system")
+        return linked.event_id
+
+    def emit_direction(
+        self,
+        *,
+        directive: PlannerDirective,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        payload = directive.to_mapping()
+        payload["policy"] = directive.policy_id
+        event_id = _direction_event(
+            self.context.run_dir,
+            self.context.episode_id,
+            payload,
+            agent=directive.policy_id,
+            caused_by=str(caused_by) if caused_by else None,
+        )
+        return event_id
+
+    def emit_governance(
+        self,
+        *,
+        result: GovernanceResult,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        payload = result.to_mapping()
+        event_id = _governance_event(
+            self.context.run_dir,
+            self.context.episode_id,
+            payload,
+            agent=result.policy_id,
+            caused_by=str(caused_by) if caused_by else None,
+        )
+        return event_id
 
     def emit_action(
         self,

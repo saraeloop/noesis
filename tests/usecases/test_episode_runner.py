@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.planner.minimal import MinimalActuator, MinimalPlanner
@@ -17,8 +18,15 @@ class DummyEventBus(EventBus):
         self.actions: list[ActionRecord] = []
         self.reflected: tuple[bool, list[str]] | None = None
 
-    def emit_plan(self, *, steps, rationale: str, source: str, metrics=None, caused_by=None) -> None:  # type: ignore[override]
+    def emit_plan(self, *, steps, rationale: str, source: str, metrics=None, caused_by=None) -> UUID:  # type: ignore[override]
         self.plan_steps = list(steps)
+        return uuid4()
+
+    def emit_direction(self, *, directive, caused_by=None) -> UUID:  # type: ignore[override]
+        return uuid4()
+
+    def emit_governance(self, *, result, caused_by=None) -> UUID:  # type: ignore[override]
+        return uuid4()
 
     def emit_action(self, action: ActionRecord, *, metrics=None, caused_by=None) -> None:
         self.actions.append(action)

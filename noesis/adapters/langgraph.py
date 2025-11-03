@@ -24,7 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from copy import deepcopy
-from uuid import UUID
+from uuid import UUID, uuid4
+from datetime import datetime, timezone
+import time
 
 from ..intuition import Intuition, IntuitionEvent
 from ..direction import DirectiveKind
@@ -34,13 +36,33 @@ from .protocols import (
     Executor,
     DEFAULT_MIN_CONFIDENCE,
 )
+from noesis.trace.events import write_event
 from ..domain.state.cognitive import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker
-from ..runtime.clock import RuntimeClock, PhaseToken
-from ..runtime.events_emitter import CognitiveEventEmitter
-from ..runtime.utils import now as runtime_now
-from .. import events as public_events
 
 __all__ = ["LangGraphAdapter", "Executor"]
+
+
+@dataclass(frozen=True, slots=True)
+class _PhaseToken:
+    verb: CognitiveVerb
+    started_at: datetime
+    _perf_start: float
+
+
+class _Clock:
+    """Lightweight stopwatch mirroring RuntimeClock without runtime dependency."""
+
+    def start(self, verb: CognitiveVerb) -> _PhaseToken:
+        return _PhaseToken(verb=verb, started_at=datetime.now(timezone.utc), _perf_start=time.perf_counter())
+
+    def stop(self, token: _PhaseToken) -> CognitiveMetrics:
+        completed = datetime.now(timezone.utc)
+        duration_ms = (time.perf_counter() - token._perf_start) * 1000.0
+        return CognitiveMetrics(
+            started_at=token.started_at,
+            completed_at=completed,
+            duration_ms=round(duration_ms, 3),
+        )
 
 
 @dataclass(slots=True)
@@ -72,6 +94,10 @@ def _excerpt(obj: Any, limit: int = 400) -> str:
     return (s[:limit]) if len(s) > limit else s
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 class LangGraphAdapter:
     """
     Wrap a LangGraph graph to emit Noēsis-compatible events and apply intuition.
@@ -100,15 +126,22 @@ class LangGraphAdapter:
         self.input_mapper: Callable[[str], Any] = input_mapper or discovered or (lambda t: t)
         self._state = _State(tools_seen=set())
         self._min_confidence = float(min_confidence)
-        self._clock = RuntimeClock()
+        self._clock = _Clock()
         self._lineage = LineageTracker()
         self._current_episode: Optional[str] = None
+        self._run_path: Optional[Path] = None
 
     def _reset(self, episode_id: str) -> None:
         self._state = _State(tools_seen=set())
-        self._clock = RuntimeClock()
+        self._clock = _Clock()
         self._lineage = LineageTracker()
         self._current_episode = episode_id
+        self._run_path = None
+
+    def _require_run_path(self) -> Path:
+        if self._run_path is None:
+            raise RuntimeError("Run path not initialised")
+        return self._run_path
 
     @staticmethod
     def _policy_tag(intuition: Optional[Intuition]) -> str:
@@ -139,15 +172,14 @@ class LangGraphAdapter:
 
         return input_obj, False, [], "not_patchable_input"
 
-    def _start_phase(self, verb: CognitiveVerb) -> PhaseToken:
+    def _start_phase(self, verb: CognitiveVerb) -> _PhaseToken:
         return self._clock.start(verb)
 
-    def _stop_phase(self, token: PhaseToken) -> CognitiveMetrics:
+    def _stop_phase(self, token: _PhaseToken) -> CognitiveMetrics:
         return self._clock.stop(token)
 
     def _emit_event(
         self,
-        emitter: CognitiveEventEmitter,
         verb: CognitiveVerb,
         payload: Dict[str, Any],
         *,
@@ -163,12 +195,39 @@ class LangGraphAdapter:
         if metrics is not None:
             event = event.with_metrics(metrics)
         linked = self._lineage.register(event, cause=cause)
-        emitter.emit(linked, agent_id=agent_id)
+        record = linked.to_record()
+        record["agent_id"] = agent_id
+        write_event(self._require_run_path(), record)
         return linked.event_id
+
+    def _write_plain_event(
+        self,
+        *,
+        phase: str,
+        payload: Dict[str, Any],
+        agent: str,
+        caused_by: Optional[UUID] = None,
+        metrics: Optional[CognitiveMetrics] = None,
+    ) -> UUID:
+        event_id = uuid4()
+        record: Dict[str, Any] = {
+            "id": str(event_id),
+            "timestamp": _now_iso(),
+            "episode_id": self._current_episode or "",
+            "agent_id": agent,
+            "phase": phase,
+            "payload": payload,
+            "evidence_ids": [],
+        }
+        if caused_by:
+            record["caused_by"] = str(caused_by)
+        if metrics:
+            record["metrics"] = metrics.to_dict()
+        write_event(self._require_run_path(), record)
+        return event_id
 
     def _record_instant(
         self,
-        emitter: CognitiveEventEmitter,
         verb: CognitiveVerb,
         payload: Dict[str, Any],
         *,
@@ -178,7 +237,6 @@ class LangGraphAdapter:
         token = self._start_phase(verb)
         metrics = self._stop_phase(token)
         return self._emit_event(
-            emitter,
             verb,
             payload,
             agent_id=agent_id,
@@ -188,28 +246,25 @@ class LangGraphAdapter:
 
     def _emit_plan_with_direction(
         self,
-        emitter: CognitiveEventEmitter,
         payload: Dict[str, Any],
         *,
         cause: Optional[UUID],
-        run_dir: Path,
     ) -> UUID:
         token = self._start_phase(CognitiveVerb.PLAN)
         metrics = self._stop_phase(token)
         plan_event_id = self._emit_event(
-            emitter,
             CognitiveVerb.PLAN,
             payload,
             cause=cause,
             metrics=metrics,
         )
-        public_events.direction(
-            run_dir,
-            self._current_episode or "",
-            payload.copy(),
+        direction_payload = payload.copy()
+        self._write_plain_event(
+            phase="direction",
+            payload=direction_payload,
             agent="adapter.langgraph",
-            caused_by=str(plan_event_id),
-            metrics=metrics.to_dict(),
+            caused_by=plan_event_id,
+            metrics=metrics,
         )
         return plan_event_id
 
@@ -304,10 +359,10 @@ class LangGraphAdapter:
         tags = tags or {}
         run_path = Path(run_dir)
         self._reset(episode_id)
-        emitter = CognitiveEventEmitter(run_dir=run_path, agent_id="adapter.langgraph")
+        self._run_path = run_path
 
-        observe_payload = {"task": task, "tags": tags, "timestamp": runtime_now()}
-        observe_id = self._record_instant(emitter, CognitiveVerb.OBSERVE, observe_payload)
+        observe_payload = {"task": task, "tags": tags, "timestamp": _now_iso()}
+        observe_id = self._record_instant(CognitiveVerb.OBSERVE, observe_payload)
         cause_id: Optional[UUID] = observe_id
 
         policy_tag = self._policy_tag(intuition)
@@ -339,7 +394,6 @@ class LangGraphAdapter:
             interpret_payload["patch_keys"] = sorted(directive.patch.keys())
         interpret_metrics = self._stop_phase(interpret_token)
         interpret_id = self._emit_event(
-            emitter,
             CognitiveVerb.INTERPRET,
             interpret_payload,
             cause=cause_id,
@@ -366,10 +420,8 @@ class LangGraphAdapter:
             if directive.blocking or directive_kind == DirectiveKind.VETO.value:
                 payload.update({"status": "blocked", "reason": "veto", "steps": ["directive_veto"], "applied": False})
                 plan_event_id = self._emit_plan_with_direction(
-                    emitter,
                     payload,
                     cause=cause_id,
-                    run_dir=run_path,
                 )
                 self._lineage.seed(last_event_id=plan_event_id)
                 raise NoesisVeto(advice=directive.advice, target=directive.target, scope=directive.scope)
@@ -387,10 +439,8 @@ class LangGraphAdapter:
                         }
                     )
                     plan_event_id = self._emit_plan_with_direction(
-                        emitter,
                         payload,
                         cause=cause_id,
-                        run_dir=run_path,
                     )
                     directive.applied = False
                 elif not patch:
@@ -404,10 +454,8 @@ class LangGraphAdapter:
                         }
                     )
                     plan_event_id = self._emit_plan_with_direction(
-                        emitter,
                         payload,
                         cause=cause_id,
-                        run_dir=run_path,
                     )
                     directive.applied = False
                 else:
@@ -422,10 +470,8 @@ class LangGraphAdapter:
                         }
                     )
                     plan_event_id = self._emit_plan_with_direction(
-                        emitter,
                         payload,
                         cause=cause_id,
-                        run_dir=run_path,
                     )
                     if applied:
                         directive.applied = True
@@ -448,7 +494,6 @@ class LangGraphAdapter:
                 "steps": [f"invoke:{self.graph.__class__.__name__}"]
             }
             plan_event_id = self._record_instant(
-                emitter,
                 CognitiveVerb.PLAN,
                 default_plan_payload,
                 cause=cause_id,
@@ -468,7 +513,6 @@ class LangGraphAdapter:
                 "tools": tools_used,
             }
             act_id = self._emit_event(
-                emitter,
                 CognitiveVerb.ACT,
                 act_payload,
                 cause=cause_id,
@@ -479,7 +523,6 @@ class LangGraphAdapter:
                 "reasons": ["graph_completed"],
             }
             reflect_id = self._record_instant(
-                emitter,
                 CognitiveVerb.REFLECT,
                 reflect_payload,
                 cause=act_id,
@@ -497,7 +540,6 @@ class LangGraphAdapter:
                 "tools": tools_used,
             }
             act_id = self._emit_event(
-                emitter,
                 CognitiveVerb.ACT,
                 act_payload,
                 cause=cause_id,
@@ -508,7 +550,6 @@ class LangGraphAdapter:
                 "reasons": [self._categorize_error(exc)],
             }
             self._record_instant(
-                emitter,
                 CognitiveVerb.REFLECT,
                 reflect_payload,
                 cause=act_id,

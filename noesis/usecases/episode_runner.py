@@ -8,7 +8,7 @@ while keeping orchestration logic free from infrastructure concerns.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 from uuid import UUID
 
 from noesis.domain.planner.interfaces import (
@@ -17,7 +17,10 @@ from noesis.domain.planner.interfaces import (
     EventBus,
     Planner,
 )
-from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanStep
+from noesis.domain.planner.meta import MetaPlanner
+from noesis.domain.faculties.direction import PlannerDirective, DirectiveStatus
+from noesis.domain.faculties.governance import GovernanceDecision, GovernanceResult, PreActGovernor
+from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
@@ -54,6 +57,8 @@ class EpisodeDependencies:
     actuator: Actuator
     event_bus: EventBus
     state_repository: RuntimeStateRepository
+    direction_planner: MetaPlanner | None = None
+    governance_policy: PreActGovernor | None = None
 
 
 @dataclass(slots=True)
@@ -97,8 +102,8 @@ class EpisodeRunner:
         state = self._deps.state_repository.init(request.context)
 
         interpret_event = self._run_interpret(request)
-        plan, plan_event = self._run_plan(request, state)
-        actuation, act_event = self._run_act(plan, request, state)
+        plan, plan_event, direction_event_id = self._run_plan(request, state)
+        actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
         reflect_event = self._run_reflect(actuation, plan_event.event_id)
         self._run_learn(actuation, reflect_event.event_id)
 
@@ -158,12 +163,25 @@ class EpisodeRunner:
         payload: Dict[str, object] = {"signals": signals}
         return self._emit_event(verb=verb, context=context, payload=payload, metrics=metrics)
 
-    def _run_plan(self, request: EpisodeRequest, state: NoesisState) -> tuple[list[PlanStep], CognitiveEvent]:
+    def _run_plan(
+        self,
+        request: EpisodeRequest,
+        state: NoesisState,
+    ) -> tuple[list[PlanStep], CognitiveEvent, Optional[UUID]]:
         verb = CognitiveVerb.PLAN
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
         plan = self._deps.planner.build_plan(goal=request.goal, beliefs=request.beliefs)
+        directive: PlannerDirective | None = None
+        if self._deps.direction_planner is not None:
+            directive = self._deps.direction_planner.propose(
+                goal=request.goal,
+                beliefs=request.beliefs,
+                base_plan=plan,
+            )
+            if directive.applied:
+                _apply_directive(plan, directive)
         metrics = self._clock.stop(token)
         labels = [f"{step.kind.value}:{step.description}" for step in plan]
         payload: Dict[str, object] = {
@@ -178,19 +196,31 @@ class EpisodeRunner:
             metrics=metrics,
             agent_id="planner.minimal",
         )
-        state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
+        rationale = "minimal planner"
+        if directive and directive.applied:
+            rationale = f"{rationale} + meta"
+        state.set_plan(steps=plan, rationale=rationale, source="planner.minimal")
+        plan_anchor = event.event_id
         self._deps.event_bus.emit_plan(
             steps=plan,
             rationale="minimal planner",
             source="planner.minimal",
             metrics=metrics,
-            caused_by=event.event_id,
+            caused_by=None,
         )
-        return plan, event
+        direction_event_id: Optional[UUID] = None
+        if directive is not None and directive.status is not DirectiveStatus.SKIPPED:
+            direction_event_id = self._deps.event_bus.emit_direction(
+                directive=directive,
+                caused_by=plan_anchor,
+            )
+        return plan, event, direction_event_id
 
     def _run_act(
         self,
         plan: Sequence[PlanStep],
+        plan_event: CognitiveEvent,
+        direction_event_id: Optional[UUID],
         request: EpisodeRequest,
         state: NoesisState,
     ) -> tuple[ActuationResult, CognitiveEvent]:
@@ -198,12 +228,65 @@ class EpisodeRunner:
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
+        plan_anchor = plan_event.event_id
+        latest_direction_id: Optional[UUID] = direction_event_id
+        governance_result: GovernanceResult | None = None
+        governance_event_id: Optional[UUID] = None
+        if self._deps.governance_policy is not None:
+            governance_result = self._deps.governance_policy.evaluate(goal=request.goal, plan=plan)
+            governance_event_id = self._deps.event_bus.emit_governance(
+                result=governance_result,
+                caused_by=latest_direction_id or plan_anchor,
+            )
+            if governance_result.decision is GovernanceDecision.VETO:
+                veto_directive = PlannerDirective(
+                    steps=("governance:veto", governance_result.rule_id),
+                    status=DirectiveStatus.BLOCKED,
+                    reason="veto",
+                    diff=(),
+                    applied=False,
+                    policy_id=governance_result.policy_id,
+                    policy_version=governance_result.policy_version,
+                    policy_kind=governance_result.policy_kind,
+                )
+                latest_direction_id = self._deps.event_bus.emit_direction(
+                    directive=veto_directive,
+                    caused_by=governance_event_id,
+                )
+                metrics = self._clock.stop(token)
+                excerpt_basis = plan[0].description if plan else request.goal
+                payload: Dict[str, object] = {
+                    "input_excerpt": excerpt_basis or "",
+                    "outcome": "blocked",
+                    "adapter": request.context.adapter_label,
+                    "reasons": [governance_result.rule_id],
+                }
+                event = self._emit_event(
+                    verb=verb,
+                    context=context,
+                    payload=payload,
+                    metrics=metrics,
+                    agent_id=request.context.adapter_label,
+                    cause=latest_direction_id,
+                )
+                return (
+                    ActuationResult(
+                        status=OUTCOME_STATUS_VETOED,
+                        summary=governance_result.message or "Action vetoed",
+                        metrics={},
+                        reasons=[governance_result.rule_id],
+                        success=False,
+                    ),
+                    event,
+                )
         actuation = self._deps.actuator.execute(
             plan=plan,
             request=request,
             state=state,
             event_bus=self._deps.event_bus,
         )
+        if governance_result and governance_result.decision is GovernanceDecision.AUDIT:
+            actuation.reasons.append(governance_result.rule_id)
         metrics = self._clock.stop(token)
         excerpt_basis = plan[0].description if plan else request.goal
         payload: Dict[str, object] = {
@@ -218,6 +301,7 @@ class EpisodeRunner:
             payload=payload,
             metrics=metrics,
             agent_id=request.context.adapter_label,
+            cause=latest_direction_id or governance_event_id or plan_anchor,
         )
         return actuation, event
 
@@ -263,3 +347,25 @@ class EpisodeRunner:
             metrics=metrics,
             cause=caused_by,
         )
+def _apply_directive(plan: list[PlanStep], directive: PlannerDirective) -> None:
+    for diff in directive.diff:
+        key = diff.key
+        if key.startswith("plan.steps[") and key.endswith("].description"):
+            index_str = key[len("plan.steps[") : -len("].description")]
+            try:
+                index = int(index_str)
+            except ValueError:
+                continue
+            if 0 <= index < len(plan) and diff.after is not None:
+                plan[index].description = str(diff.after)
+        elif key.startswith("plan.steps[") and key.endswith("].kind") and diff.after:
+            index_str = key[len("plan.steps[") : -len("].kind")]
+            try:
+                index = int(index_str)
+            except ValueError:
+                continue
+            if 0 <= index < len(plan):
+                try:
+                    plan[index].kind = PlanKind(str(diff.after))
+                except ValueError:
+                    continue

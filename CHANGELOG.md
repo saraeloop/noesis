@@ -1,7 +1,36 @@
 # Changelog
 
 ## Unreleased
-_No changes yet._
+### Added
+- Faculty schema registry consolidates version constants for intuition, direction, governance, and insight contracts (`noesis/domain/faculties/versioning.py`).
+- JSON Schemas for faculty payloads ship under `noesis/trace/schema/` with golden fixtures and validation tests ensuring forward compatibility.
+- Canonical hook-order validator guards adapter event sequencing (`noesis/domain/faculties/hooks.py`).
+- Depth-limited `MetaPlanner` with optional `PreActGovernor` gating, selectable via `NOESIS_PLANNER` flag (`meta` by default).
+- Baseline heuristic + LLM intuition shims for deterministic advisory behaviour (`noesis/domain/faculties/intuition.py`).
+- Insight summary now emits versioned per-episode metrics under `summary.insight.metrics`.
+
+## Breaking / Behavior Changes
+- **Default planner mode is now `meta`**, which **enables pre-ACT governance**. To retain legacy behavior:
+  - Env: `NOESIS_PLANNER=minimal`
+  - Code: `ns.set(planner_mode="minimal")`
+
+## Upgrade Notes
+- New `direction` and `governance` events appear in traces. Downstream tooling should:
+  - Treat unknown phases as no-ops, or handle:
+    - `direction.payload.status ∈ {applied, skipped, blocked}`
+    - `governance.payload.decision ∈ {allow, audit, veto}`
+- Insight metrics moved to `summary["insight"]["metrics"]`. Example:
+  ```python
+  s = ns.summary.read(eid)
+  insight = s["insight"]["metrics"]  # {phase_ms, veto_count, plan_revisions, branching_factor, plan_adherence, tool_coverage, success}
+
+### Compatibility
+| Faculty | Schema version | Compatible until |
+|---------|----------------|------------------|
+| Intuition | 1.0.0 | All 1.x releases |
+| Direction | 1.0.0 | All 1.x releases |
+| Governance | 1.0.0 | All 1.x releases |
+| Insight | 1.0.0 | All 1.x releases |
 
 ## v0.7.1 – 2025-11-02
 ### Added

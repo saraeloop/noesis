@@ -16,7 +16,7 @@ from noesis.domain.config import (
     apply_runtime_overrides,
     default_runtime_config,
 )
-from noesis.interfaces.config import ConfigPort, ConfigSnapshot
+from noesis.interfaces.config import ConfigPort, ConfigSnapshot, PlannerMode
 
 from .utils import find_config_path
 
@@ -32,6 +32,7 @@ _ENV_KEY_MAP: dict[str, str] = {
     "NOESIS_TIMEOUT_SEC": "timeout_sec",
     "NOESIS_INTUITION_MODE": "intuition_mode",
     "NOESIS_DIRECTION_MIN_CONFIDENCE": "direction_min_confidence",
+    "NOESIS_PLANNER": "planner_mode",
     "NOESIS_LEARN_MODE": "learn_mode",
     "NOESIS_LEARN_HOME": "learn_home",
     "NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES": "learn_auto_apply_min_successes",
@@ -138,6 +139,7 @@ class EnvTomlConfig(ConfigPort):
             timeout_sec=config.timeout_sec,
             intuition_mode=config.intuition_mode,
             direction_min_confidence=config.direction_min_confidence,
+            planner_mode=config.planner_mode,
             policy_aliases=dict(config.policy_aliases),
             learn_mode=config.learn_mode,
             learn_home=config.learn_home,

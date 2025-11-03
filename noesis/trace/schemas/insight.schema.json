@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NoesisInsightMetrics",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "veto_count",
+    "branching_factor",
+    "plan_adherence",
+    "success"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "phase_ms": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["integer", "null"]
+      }
+    },
+    "veto_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "branching_factor": {
+      "type": "number"
+    },
+    "plan_adherence": {
+      "type": "number"
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "plan_revisions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tool_coverage": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": true
+}

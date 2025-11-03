@@ -1,10 +1,10 @@
-# 🧠 Noēsis Milestone Backlogs
+# Noēsis Milestone Backlogs
 **Program Increment:** v0.7 → v1.0  
 **Audience:** Core Engineering, Research, and QA
 
 ---
 
-## 🌌 Vision
+## Vision
 
 Noēsis is a **cognitive framework** — not a workflow engine, not a chat orchestrator.  
 It formalizes reasoning as a *structured cognitive process* that is **observable, extensible, and testable**.
@@ -19,7 +19,7 @@ Every update strengthens three dimensions:
 
 ---
 
-## 🧩 1. Core Cognitive Loop Reinforcement
+## 1. Core Cognitive Loop Reinforcement
 **Goal:** Make cognition causal, measurable, and extensible.  
 **Aligned Research:** ReAct (Yao et al. 2022), Reflexion (Shinn et al. 2023)
 
@@ -32,23 +32,43 @@ Every update strengthens three dimensions:
 
 ---
 
-## 🧠 2. Faculties Expansion
+## 2. Faculties Expansion
 **Goal:** Solidify Intuition, Direction, Insight, and introduce Governance.  
 **Aligned Research:** Tree of Thoughts (Yao et al. 2023), MetaGPT (2023)
 
 | Faculty | Additions | Layer | Status |
 |----------|------------|--------|--------|
-| Intuition | Add probabilistic and LLM-based inference adapters | `domain/faculties/intuition.py` | ⏳ |
-| Direction | Expand planner for meta-planning + success-based weighting | `domain/faculties/direction.py` | ⏳ |
-| Insight | Enable cross-episode metrics + drift detection | `domain/faculties/insight.py` | ⏳ |
-| Governance | Introduce veto/trust hooks, enforce ethical constraints | `domain/faculties/governance.py` | 🔴 new |
+| Intuition | Add probabilistic and LLM-based inference adapters | `domain/faculties/intuition.py` | 🚧 heuristics shipped (v0.7.x) |
+| Direction | Expand planner for meta-planning + success-based weighting | `domain/faculties/direction.py` | 🚧 meta skeleton integrated |
+| Insight | Enable cross-episode metrics + drift detection | `domain/faculties/insight.py` | 🚧 per-episode KPIs in summary |
+| Governance | Introduce veto/trust hooks, enforce ethical constraints | `domain/faculties/governance.py` | 🚧 pre-act gate in runtime |
+
+### Risks
+- **API drift:** `PlannerDirective`/`GovernanceResult` fields must freeze before adapters adopt them, otherwise downstream tests break twice.
+- **Hook ordering:** Current validator is strict; define tolerated retry/interleave patterns so production runs don’t raise.
+- **Back-compat:** Minimal planner / legacy governance behaviour still assumed in tests; needs shims or flags during rollout.
+
+### Next Moves (ship as focused PRs)
+1. **Direction walking skeleton** — MetaPlanner (depth=2, beam=2) returning `PlannerDirective`; EpisodeRunner consumes directives only.
+2. **Governance pre-act** — Inject `governance.pre_act` hook returning `GovernanceResult`; emit audit/veto events and short-circuit ACT on veto.
+3. **Insight finalize** — Compute per-episode KPIs (success, phase latency, veto rate, plan revisions, tool coverage) and persist under `summary["insight"]["metrics"]` with golden fixtures.
+4. **Intuition baselines** — Heuristic policy emitting hints/patches and protocol-only LLM stub with deterministic test double.
+5. **Back-compat flags** — e.g. `NOESIS_PLANNER=meta|minimal` to keep legacy planner available until docs/tests migrate.
+6. **Docs/examples** — Update README + API surface with governance pre-act, new insight metrics, and refreshed trace snippet.
+
+### Acceptance Checks
+- Direction: deterministic `PlannerDirective` for fixed seed (`tests/direction/test_meta_planner.py`).
+- Governance: ALLOW/AUDIT/VETO pathways emit correct events and block ACT (`tests/governance/test_pre_act.py`).
+- Insight: finalize writes expected metrics (`tests/insight/test_finalize_metrics.py` golden match).
+- Hook order: validator tolerates documented retry sequences (`tests/runtime/test_hook_order.py`).
+- Adapters: LangGraph happy & veto paths match golden schemas.
 
 ---
 
-## 🚀 v0.7 — Memory & Loop Fidelity
+## v0.8 — Memory & Loop Fidelity
 **Owner:** Core Runtime **Dependencies:** event schema draft, FAISS toolchain
 
-### ✅ Delivered in v0.7.0
+### ✅ Delivered in v0.8.0
 - ✅ Cognitive verbs formalised with metric envelopes (`noesis/domain/state/cognitive.py`)
 - ✅ Causal lineage propagation with `caused_by` IDs across six verbs (`noesis/usecases/episode_runner.py`)
 - ✅ RuntimeClock instrumentation emitting per-phase durations (`noesis/runtime/clock.py`)
@@ -62,10 +82,10 @@ Every update strengthens three dimensions:
 
 ---
 
-## 🧠 v0.8 — Learning & Feedback
+## v0.8 — Learning & Feedback
 **Owner:** Learning Systems **Dependencies:** lineage artifacts (v0.7); diagnostics harness live
 
-### 🔧 Backlog
+### Backlog
 - Implement **`LearningPort`** (apply/revert/update_policy)
 - Build **LearningOrchestrator** reacting to Reflect events
 - Add **policy snapshot + diff**
@@ -78,11 +98,11 @@ Every update strengthens three dimensions:
 
 ---
 
-## ⚖️ v0.9 — Governance, Insight & Direction
+## v0.9 — Governance, Insight & Direction
 **Owner:** Safety, Insight & Reasoning  
 **Dependencies:** governance schema merged; learning metrics emitted; **Direction ToT success metrics running in diagnostics (governance work MUST wait until this gate passes)**
 
-### 🔧 Backlog
+### Backlog
 - Define **GovernancePolicy contract** + evaluation semantics
 - Implement **veto/trust loop**, emit `governance.audit|veto`
 - Build **InsightAggregator** for cross-episode KPIs
@@ -96,7 +116,7 @@ Every update strengthens three dimensions:
 
 ---
 
-## 📘 v1.0 — Curriculum, Meta-CoT & Release
+## v1.0 — Curriculum, Meta-CoT & Release
 **Owner:** Platform **Dependencies:** docs pipeline, schema freeze, CI signing keys
 
 ### 🔧 Backlog
@@ -188,4 +208,3 @@ Every update strengthens three dimensions:
 - Any drift auto-surfaced in CI summary
 
 ---
-

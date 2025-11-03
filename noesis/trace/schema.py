@@ -9,10 +9,18 @@ evolves.
 
 from __future__ import annotations
 
+from importlib.resources import files
 from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Public schema version exported to runtime/core.
 SUMMARY_SCHEMA_VERSION = "1.2.0"
+
+_FACULTY_SCHEMA_FILES: Dict[str, str] = {
+    "intuition": "intuition.schema.json",
+    "direction": "direction.schema.json",
+    "governance": "governance.schema.json",
+    "insight": "insight.schema.json",
+}
 
 
 class EventMetrics(TypedDict):
@@ -62,10 +70,21 @@ class SummarySnapshot(TypedDict, total=False):
     tags: Dict[str, Any]
 
 
+def schema_path(name: str) -> str:
+    """Return the filesystem path for a faculty JSON schema."""
+    normalized = name.lower()
+    try:
+        filename = _FACULTY_SCHEMA_FILES[normalized]
+    except KeyError as err:  # pragma: no cover - defensive guard
+        raise KeyError(f"Unknown faculty schema '{name}'") from err
+    return str(files("noesis.trace.schemas") / filename)
+
+
 __all__ = [
     "SUMMARY_SCHEMA_VERSION",
     "EventRecord",
     "SummaryFlags",
     "SummarySnapshot",
     "EventMetrics",
+    "schema_path",
 ]

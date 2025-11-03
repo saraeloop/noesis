@@ -2,7 +2,9 @@
 
 from .events import (
     act_event,
+    direction_event,
     ensure_act_event,
+    governance_event,
     interpret_event,
     observe_event,
     plan_event,
@@ -16,7 +18,9 @@ from .config_provider import RuntimeContext, create_runtime_context, get_context
 
 __all__ = [
     "act_event",
+    "direction_event",
     "ensure_act_event",
+    "governance_event",
     "interpret_event",
     "observe_event",
     "plan_event",

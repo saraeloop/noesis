@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "decision_id": "22222222-2222-2222-2222-222222222222",
+  "decision": "audit",
+  "rule_id": "safety:write_guard",
+  "score": 0.65,
+  "message": "Write operation flagged for review",
+  "policy_id": "safety-governance",
+  "policy_version": "1.0.0",
+  "policy_kind": "rules",
+  "details": {
+    "tool": "filesystem.write",
+    "reason": "sensitive-path"
+  }
+}

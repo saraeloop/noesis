@@ -17,10 +17,12 @@ def _iso_now() -> str:
 
 def test_metrics_keys_dedup(tmp_path):
     runs_dir = tmp_path / "runs"
-    ns.set(runs_dir=str(runs_dir))
+    original = ns.get()
+    ns.set(runs_dir=str(runs_dir), planner_mode="minimal")
 
     episode_id = ns.run(task="Metrics sanity check", intuition=False)
-    metrics = ns.summary.read(episode_id)["metrics"]
+    summary = ns.summary.read(episode_id)
+    metrics = summary["metrics"]
 
     assert metrics["success"] == 1  # baseline run() now terminates with status 'ok'
     assert "veto_rate" not in metrics
@@ -36,11 +38,16 @@ def test_metrics_keys_dedup(tmp_path):
     assert "direction_veto_rate" not in metrics
     assert "direction_top_reasons" not in metrics
     assert "action_efficiency" not in metrics
+    insight = summary["insight"]["metrics"]
+    assert insight["success"] is True
+    assert isinstance(insight["plan_revisions"], int)
+    ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
 
 
 def test_duration_and_mode_flags(tmp_path):
     runs_dir = tmp_path / "runs-duration"
-    ns.set(runs_dir=str(runs_dir))
+    original = ns.get()
+    ns.set(runs_dir=str(runs_dir), planner_mode="minimal")
 
     episode_id = ns.run(task="Duration check", intuition=False)
     summary = ns.summary.read(episode_id)
@@ -48,30 +55,37 @@ def test_duration_and_mode_flags(tmp_path):
     assert summary["duration_sec"] > 0.0
     assert summary["flags"]["mode"] == "off"
     assert summary["flags"]["intuition"] is False
+    ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
 
 
 def test_direction_policy_omitted_when_absent(tmp_path):
     runs_dir = tmp_path / "runs-policy"
-    ns.set(runs_dir=str(runs_dir))
+    original = ns.get()
+    ns.set(runs_dir=str(runs_dir), planner_mode="minimal")
 
     episode_id = ns.run(task="No policy episode", intuition=False)
     direction_flags = ns.summary.read(episode_id)["flags"]["direction"]
 
     assert "policy" not in direction_flags
+    ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
 
 
 def test_success_metric(tmp_path):
     runs_dir = tmp_path / "runs-success"
-    ns.set(runs_dir=str(runs_dir))
+    original = ns.get()
+    ns.set(runs_dir=str(runs_dir), planner_mode="minimal")
 
     class Adapter:
         def run(self, task):
             return {"result": task}
 
     episode_id = ns.solve("Success task", using=lambda: Adapter(), intuition=False)
-    metrics = ns.summary.read(episode_id)["metrics"]
+    summary = ns.summary.read(episode_id)
+    metrics = summary["metrics"]
 
     assert metrics["success"] == 1
+    assert summary["insight"]["metrics"]["success"] is True
+    ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
 
 
 def test_schema_version_export():
@@ -115,10 +129,13 @@ def test_latency_metrics_positive(tmp_path):
 
     episode_id = list_runs(limit=1)[0]["episode_id"]
 
-    metrics = ns.summary.read(episode_id)["metrics"]
+    summary = ns.summary.read(episode_id)
+    metrics = summary["metrics"]
     latencies = metrics.get("latencies", {})
     assert latencies.get("time_to_veto_ms") is not None
     assert latencies["time_to_veto_ms"] >= 1
     first_action = latencies.get("first_action_ms")
     if first_action is not None:
         assert first_action >= 1
+    insight = summary["insight"]["metrics"]
+    assert insight["veto_count"] >= 1

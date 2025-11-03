@@ -22,6 +22,7 @@ __all__ = [
     "act_event",
     "reflect_event",
     "direction_event",
+    "governance_event",
     "ensure_act_event",
     "terminate_event",
     "last_event_of_phase",
@@ -194,9 +195,10 @@ def direction_event(
     agent: str = "system",
     caused_by: Optional[str] = None,
     metrics: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> UUID:
+    event_id = uuid4()
     record: Dict[str, Any] = {
-        "id": str(uuid4()),
+        "id": str(event_id),
         "timestamp": now(),
         "episode_id": episode_id,
         "agent_id": agent,
@@ -209,6 +211,31 @@ def direction_event(
     if metrics:
         record["metrics"] = metrics
     write_event(run_dir, record)
+    return event_id
+
+
+def governance_event(
+    run_dir: Path,
+    episode_id: str,
+    payload: Dict[str, Any],
+    *,
+    agent: str = "system",
+    caused_by: Optional[str] = None,
+) -> UUID:
+    event_id = uuid4()
+    record: Dict[str, Any] = {
+        "id": str(event_id),
+        "timestamp": now(),
+        "episode_id": episode_id,
+        "agent_id": agent,
+        "phase": "governance",
+        "payload": payload,
+        "evidence_ids": [],
+    }
+    if caused_by:
+        record["caused_by"] = caused_by
+    write_event(run_dir, record)
+    return event_id
 
 
 def ensure_act_event(

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "hint",
+  "advice": "Verify input format",
+  "confidence": 0.75,
+  "policy_id": "rules-intuition",
+  "policy_version": "1.0.0",
+  "policy_kind": "rules",
+  "applied": false,
+  "rationale": "Input mismatch detected",
+  "evidence_ids": ["event:observe:1"],
+  "target": "input",
+  "scope": "episode",
+  "blocking": false
+}

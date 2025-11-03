@@ -120,6 +120,10 @@ learn.emit(
 
 Use these artifacts to tune prompts, policies, or evaluators—or wire them into a governance loop.
 
+### Governance & insight
+
+Pre-act governance policies can audit or veto actions before the `act` phase when the planner mode is `meta` (default). On veto, the ACT phase is logged as `outcome="blocked"` and no tool invocation occurs. Direction events reflect both heuristic directives and governance verdicts, and summaries expose versioned per-episode insight metrics under `summary["insight"]["metrics"]`.
+
 ### Human-in-the-loop & governance (optional)
 
 Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
@@ -130,9 +134,9 @@ Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis
 
 You can tailor cognition without committing to a specific runtime or library.
 
-### Model
+### Model / planner
 
-Noēsis is model-agnostic—keep whichever LLM or policy your graph already uses. Noēsis decorates execution with the cognitive loop and artifacts; it does not replace your model choice.
+Noēsis is model-agnostic—keep whichever LLM or policy your graph already uses. Noēsis decorates execution with the cognitive loop and artifacts; it does not replace your model choice. Planner mode is configurable via `NOESIS_PLANNER=meta|minimal` (or `ns.set(planner_mode=\"...\")`) so you can opt into the depth-limited meta planner and governance gate when ready.
 
 ### “System prompt”
 

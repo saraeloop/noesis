@@ -6,6 +6,7 @@ from typing import Mapping
 
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
+from noesis.interfaces.config import PlannerMode
 
 CONFIG_FILE_CANDIDATES: tuple[str, ...] = ("noesis.toml", ".noesis.toml")
 
@@ -17,6 +18,7 @@ ALLOWED_CONFIG_KEYS: frozenset[str] = frozenset(
         "timeout_sec",
         "intuition_mode",
         "direction_min_confidence",
+        "planner_mode",
         "policy_aliases",
         "learn_mode",
         "learn_home",
@@ -36,6 +38,7 @@ class RuntimeConfig:
     timeout_sec: int
     intuition_mode: IntuitionMode
     direction_min_confidence: float
+    planner_mode: PlannerMode
     policy_aliases: dict[str, str]
     learn_mode: LearnMode
     learn_home: Path
@@ -52,6 +55,7 @@ def default_runtime_config() -> RuntimeConfig:
         timeout_sec=60,
         intuition_mode=IntuitionMode.ADVISORY,
         direction_min_confidence=0.5,
+        planner_mode=PlannerMode.META,
         policy_aliases={},
         learn_mode=LearnMode.RECORD,
         learn_home=Path.home() / ".noesis" / "state",
@@ -96,6 +100,8 @@ def apply_runtime_overrides(
                 updated,
                 direction_min_confidence=_bounded_float(value, "direction_min_confidence"),
             )
+        elif key == "planner_mode":
+            updated = replace(updated, planner_mode=_parse_planner_mode(value))
         elif key == "policy_aliases":
             if not isinstance(value, Mapping):
                 raise ValueError("policy_aliases must be a mapping of alias -> spec")
@@ -135,6 +141,14 @@ def _parse_learn_mode(value: object) -> LearnMode:
     if isinstance(value, str):
         return LearnMode(value.lower().strip())
     raise TypeError(f"unsupported learn_mode value: {value!r}")
+
+
+def _parse_planner_mode(value: object) -> PlannerMode:
+    if isinstance(value, PlannerMode):
+        return value
+    if isinstance(value, str):
+        return PlannerMode(value.lower().strip())
+    raise TypeError(f"unsupported planner_mode value: {value!r}")
 
 
 def _bounded_float(value: object, label: str) -> float:

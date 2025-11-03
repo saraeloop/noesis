@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NoesisGovernanceResult",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decision_id",
+    "decision",
+    "rule_id",
+    "score",
+    "message",
+    "policy_id",
+    "policy_version",
+    "policy_kind"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "decision_id": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["allow", "audit", "veto"]
+    },
+    "rule_id": {
+      "type": "string"
+    },
+    "score": {
+      "type": "number"
+    },
+    "message": {
+      "type": "string"
+    },
+    "policy_id": {
+      "type": "string"
+    },
+    "policy_version": {
+      "type": "string"
+    },
+    "policy_kind": {
+      "type": "string",
+      "enum": ["llm", "rules", "hybrid"]
+    },
+    "details": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

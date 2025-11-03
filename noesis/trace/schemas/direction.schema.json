@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NoesisPlannerDirective",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "directive_id",
+    "steps",
+    "status",
+    "reason",
+    "diff",
+    "applied",
+    "policy_id",
+    "policy_version",
+    "policy_kind"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "directive_id": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["applied", "skipped", "blocked"]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "diff": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key"],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "before": {},
+          "after": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    "applied": {
+      "type": "boolean"
+    },
+    "policy_id": {
+      "type": "string"
+    },
+    "policy_version": {
+      "type": "string"
+    },
+    "policy_kind": {
+      "type": "string",
+      "enum": ["llm", "rules", "hybrid"]
+    }
+  },
+  "additionalProperties": true
+}

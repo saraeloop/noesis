@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "phase_ms": {
+    "observe": 120,
+    "interpret": 240,
+    "plan": 310,
+    "act": 540,
+    "reflect": 200
+  },
+  "veto_count": 1,
+  "branching_factor": 1.5,
+  "plan_adherence": 0.8,
+  "success": true,
+  "plan_revisions": 2,
+  "tool_coverage": 1.0
+}

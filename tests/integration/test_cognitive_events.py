@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from noesis.domain.planner.minimal import MinimalActuator, MinimalPlanner
+from noesis.domain.planner.meta import MetaPlanner
+from noesis.domain.faculties.governance import PreActGovernor
 from noesis.domain.state import CognitiveVerb, LineageTracker
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis import events
@@ -40,6 +42,8 @@ def test_episode_runner_emits_metrics_and_lineage(tmp_path) -> None:
         actuator=MinimalActuator(tool_label=ctx.adapter_label),
         event_bus=event_bus,
         state_repository=state_repo,
+        direction_planner=MetaPlanner(),
+        governance_policy=PreActGovernor(),
     )
     instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
     runner = EpisodeRunner(deps, instrumentation=instrumentation)

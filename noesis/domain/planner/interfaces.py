@@ -12,6 +12,8 @@ from typing import Protocol, Sequence
 from uuid import UUID
 
 from ..state import ActionRecord, NoesisState, PlanStep, CognitiveMetrics
+from noesis.domain.faculties.direction import PlannerDirective
+from noesis.domain.faculties.governance import GovernanceResult
 
 
 @dataclass(slots=True)
@@ -62,7 +64,23 @@ class EventBus(Protocol):
         source: str,
         metrics: CognitiveMetrics | None = None,
         caused_by: UUID | None = None,
-    ) -> None:
+    ) -> UUID:
+        ...
+
+    def emit_direction(
+        self,
+        *,
+        directive: PlannerDirective,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        ...
+
+    def emit_governance(
+        self,
+        *,
+        result: GovernanceResult,
+        caused_by: UUID | None = None,
+    ) -> UUID:
         ...
 
     def emit_action(

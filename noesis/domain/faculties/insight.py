@@ -8,11 +8,64 @@ application services and adapters without introducing infrastructure coupling.
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass, field
 from math import ceil
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-__all__ = ["compute_metrics"]
+from .versioning import current_version, is_compatible
+
+__all__ = ["InsightMetrics", "compute_metrics", "build_insight_metrics"]
+
+
+@dataclass(frozen=True, slots=True)
+class InsightMetrics:
+    """Canonical insight payload persisted into summary artifacts."""
+
+    schema_version: ClassVar[str] = current_version("insight")
+    phase_ms: Mapping[str, Optional[int]] = field(default_factory=dict)
+    veto_count: int = 0
+    branching_factor: float = 0.0
+    plan_adherence: float = 0.0
+    success: bool = False
+    plan_revisions: int = 0
+    tool_coverage: float = 0.0
+
+    def to_mapping(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "veto_count": self.veto_count,
+            "branching_factor": round(self.branching_factor, 4),
+            "plan_adherence": round(self.plan_adherence, 4),
+            "success": self.success,
+            "plan_revisions": self.plan_revisions,
+            "tool_coverage": round(self.tool_coverage, 4),
+        }
+        if self.phase_ms:
+            payload["phase_ms"] = dict(self.phase_ms)
+        return payload
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any]) -> "InsightMetrics":
+        version = str(payload.get("schema_version", cls.schema_version))
+        if not is_compatible(version, cls.schema_version):
+            raise ValueError(
+                f"Incompatible insight schema version '{version}' (expected ≤ {cls.schema_version})"
+            )
+        phase_source = payload.get("phase_ms")
+        if isinstance(phase_source, Mapping):
+            phase_ms: Dict[str, Any] = dict(phase_source)
+        else:
+            phase_ms = {}
+        return cls(
+            phase_ms=phase_ms,
+            veto_count=int(payload.get("veto_count", 0)),
+            branching_factor=float(payload.get("branching_factor", 0.0)),
+            plan_adherence=float(payload.get("plan_adherence", 0.0)),
+            success=bool(payload.get("success", False)),
+            plan_revisions=int(payload.get("plan_revisions", 0)),
+            tool_coverage=float(payload.get("tool_coverage", 0.0)),
+        )
 
 
 def _first_event_time(events: Iterable[Dict[str, Any]], phase: str) -> Optional[str]:
@@ -149,6 +202,69 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
     return _finalize_metrics(metrics)
 
 
+def build_insight_metrics(
+    events: Sequence[Dict[str, Any]],
+    summary_metrics: Mapping[str, Any] | None = None,
+) -> InsightMetrics:
+    """Construct InsightMetrics from raw events and aggregate summary data."""
+    summary_metrics = summary_metrics or {}
+    phase_ms: Dict[str, Optional[int]] = {}
+    direction_events = [event for event in events if event.get("phase") == "direction"]
+    plan_events = [event for event in events if event.get("phase") == "plan"]
+    act_events = [event for event in events if event.get("phase") == "act"]
+
+    for event in events:
+        phase = event.get("phase")
+        metrics = event.get("metrics") or {}
+        duration = metrics.get("duration_ms")
+        if phase in {"observe", "interpret", "plan", "act", "reflect"} and duration is not None:
+            try:
+                phase_ms[phase] = int(duration)
+            except (ValueError, TypeError):
+                continue
+
+    veto_count = sum(
+        1
+        for event in direction_events
+        if (event.get("payload") or {}).get("status") == "blocked"
+    )
+    plan_revisions = sum(
+        1
+        for event in direction_events
+        if (event.get("payload") or {}).get("status") == "applied"
+    )
+    branching_factor = float(summary_metrics.get("direction_events", len(direction_events)))
+    plan_total = summary_metrics.get("plan_count", len(plan_events))
+    executed_steps = summary_metrics.get("act_count", len(act_events))
+    plan_adherence = 0.0
+    try:
+        plan_total_val = float(plan_total)
+    except (TypeError, ValueError):
+        plan_total_val = 0.0
+    if plan_total_val > 0:
+        plan_adherence = float(executed_steps) / plan_total_val
+
+    success_flag = bool(summary_metrics.get("success", 0))
+
+    tool_labels = set()
+    for event in act_events:
+        payload = event.get("payload") or {}
+        tool = payload.get("tool")
+        if tool:
+            tool_labels.add(tool)
+    tool_coverage = float(len(tool_labels))
+
+    return InsightMetrics(
+        phase_ms=phase_ms,
+        veto_count=veto_count,
+        branching_factor=branching_factor,
+        plan_adherence=plan_adherence,
+        success=success_flag,
+        plan_revisions=plan_revisions,
+        tool_coverage=tool_coverage,
+    )
+
+
 def _finalize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize metric payload before it is persisted/emitted."""
     act_count = metrics.get("act_count", metrics.get("steps", 0))
@@ -175,4 +291,14 @@ def _finalize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
     else:
         metrics.pop("experimental", None)
 
-    return metrics
+    metrics.setdefault("schema_version", InsightMetrics.schema_version)
+    metrics.setdefault("phase_ms", {})
+    metrics.setdefault("veto_count", metrics.get("direction_vetoed", 0))
+    metrics.setdefault("branching_factor", 0.0)
+    metrics.setdefault("plan_adherence", 0.0)
+    metrics.setdefault("success", metrics.get("success", 0))
+
+    finalized = InsightMetrics.from_mapping(metrics).to_mapping()
+    extras = {key: value for key, value in metrics.items() if key not in finalized}
+    finalized.update(extras)
+    return finalized

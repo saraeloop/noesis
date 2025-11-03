@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Mapping, Protocol
 
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
 
-__all__ = ["ConfigSnapshot", "ConfigPort"]
+__all__ = ["ConfigSnapshot", "ConfigPort", "PlannerMode"]
+
+
+class PlannerMode(str, Enum):
+    MINIMAL = "minimal"
+    META = "meta"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +28,7 @@ class ConfigSnapshot:
     timeout_sec: int
     intuition_mode: IntuitionMode
     direction_min_confidence: float
+    planner_mode: PlannerMode
     policy_aliases: Dict[str, str]
     learn_mode: LearnMode
     learn_home: Path
@@ -45,6 +52,13 @@ class ConfigSnapshot:
                 return LearnMode(raw.lower().strip())
             raise TypeError(f"Unsupported learn_mode value: {raw!r}")
 
+        def _planner_mode(raw: Any) -> PlannerMode:
+            if isinstance(raw, PlannerMode):
+                return raw
+            if isinstance(raw, str):
+                return PlannerMode(raw.lower().strip())
+            raise TypeError(f"Unsupported planner_mode value: {raw!r}")
+
         raw_aliases = data.get("policy_aliases", {})
         if raw_aliases is None:
             raw_aliases = {}
@@ -58,6 +72,7 @@ class ConfigSnapshot:
             timeout_sec=int(data["timeout_sec"]),
             intuition_mode=_intuition_mode(data["intuition_mode"]),
             direction_min_confidence=float(data["direction_min_confidence"]),
+            planner_mode=_planner_mode(data.get("planner_mode", PlannerMode.META.value)),
             policy_aliases={str(key): str(value) for key, value in raw_aliases.items()},
             learn_mode=_learn_mode(data["learn_mode"]),
             learn_home=Path(str(data["learn_home"])),
@@ -78,6 +93,7 @@ class ConfigSnapshot:
             "timeout_sec": int(self.timeout_sec),
             "intuition_mode": self.intuition_mode.value,
             "direction_min_confidence": float(self.direction_min_confidence),
+            "planner_mode": self.planner_mode.value,
             "policy_aliases": dict(self.policy_aliases),
             "learn_mode": self.learn_mode.value,
             "learn_home": str(self.learn_home),
