@@ -2,217 +2,256 @@
 
 _Understanding, made observable._
 
-Noēsis is a lightweight Python framework for orchestrating, tracing, and improving agentic reasoning workflows.  
-It gives every episode a mind-set: contextual awareness, advisory intuition, steerable direction, and measurable insight.
+Noēsis is a lightweight Python cognitive framework for orchestrating, tracing, and improving agentic reasoning workflows.  
+**TL;DR:** it drops a cognitive loop on top of any agent stack, so every run is observable end-to-end context in, actions out, with advisory Intuition, steerable Direction, and measurable Insight captured as immutable artifacts.
 
----
+Noēsis works with the graphs, tools, and runtimes you already use. It makes them plan, act, reflect, learn, and remember in a measurable, auditable way.
 
-> **Public surface (v0.7.1)**
-> Stable: `noesis`, `noesis.summary`, `noesis.events`, `noesis.context`, `noesis.learn`, `noesis.episode`, `noesis.io`, `noesis.trace`, `noesis.intuition`, `noesis.direction`, `noesis.insight`, plus the facades under `noesis.runtime.*`.
->
-> Prefer the modules-first API (`ns.summary.read`, `ns.events.read`, `noesis.learn.emit`). Reserve `noesis.io.*` for read-only power-user workflows. Avoid importing from `noesis.domain.*`, `noesis.usecases.*`, `noesis.infrastructure.*`, `noesis.interfaces.*`, or modules prefixed with `_` — those remain internal.
+⸻
 
----
-
-## ✨ Highlights
-
-- **Observable cognition** – every phase (observe → interpret → plan → act → reflect → learn) emits structured events and summary metrics.
-- **Runtime context** – register ports (memory, insight, evaluators) once; inject them per run for deterministic cognition.
-- **Direction & intuition** – steer behaviour with advisory policies, interventions, or vetoes that leave auditable traces.
-- **Learning feedback** – emit learn artifacts (`learn.emit`) that feed long-term policy stores or analytics pipelines.
-- **Guardrails baked in** – public-surface tests, import contracts, and docs keep the API clean and predictable.
-
----
-
-## 🚀 Quickstart
-
-### Install (uv)
+## Installation
 
 ```bash
+# pip
+pip install noesis
+
+# uv
 uv add noesis
-noesis run "Summarize this repo"
-noesis solve react "Weekly plan for a 3-person team"
-noesis events "$(noesis list -j | jq -r '.[0].episode_id')" --phase insight -j
-# optional: uv tool install .   # or pipx install .
+
+# poetry
+poetry add noesis
 ```
 
-### Python in 30 seconds
+Need the CLI (`noesis run …`, `noesis solve …`)? Install the console script from source with `uv tool install .` or `pipx install .`. Optional pretty-printing for CLI JSON uses `jq` (`brew install jq`).
+
+⸻
+
+## Usage
+
+The simplest way to see Noēsis in action is to run a task and read back the immutable artifacts it produces.
 
 ```python
 import noesis as ns
 
-episode_id = ns.run("Summarize the roadmap", seed=42, intuition=True)
-metrics = ns.summary.read(episode_id)["metrics"]
-print(metrics["success"])
+# Run a task with cognition enabled
+episode_id = ns.run("Draft a weekly engineering update", intuition=True)
+
+# Read back the summary and timeline
+summary = ns.summary.read(episode_id)
+timeline = list(ns.events.read(episode_id))
+
+print(summary["metrics"]["success"])
+for ev in timeline[:5]:
+    print(ev["phase"], ev.get("payload"))
 ```
 
----
+### Bring your own agent / graph
 
-## 🧰 Public API in practice
+Noēsis is framework-agnostic. Point `solve()` at your orchestrator (LangGraph, CrewAI, custom Python), and Noēsis will wrap it with planning, reflection, trace events, and summaries.
 
 ```python
-# --- Core happy path ---------------------------------------------------------
-import noesis as ns
-
-episode_id = ns.run("Draft weekly update", intuition=False)
-metrics = ns.summary.read(episode_id)["metrics"]
-print(metrics["success"])
-
-# --- Solving with a custom graph + capturing events --------------------------
 from pathlib import Path
+import noesis as ns
 
-# If your runner accepts a callable, pass one; otherwise pass a label/path your loader understands.
 episode_id = ns.solve(
-    "Generate release notes",
-    using=lambda: Path("flows/release_notes.py"),
+    "Generate release notes from ./CHANGELOG.md",
+    using=lambda: Path("flows/release_notes.py"),  # your graph/runner
     intuition=True,
 )
+```
 
-for event in ns.events.read(episode_id):
-    print(event["phase"], event["payload"])
+### Runtime context & memory
 
-# --- Working with the runtime context facade ---------------------------------
+Register durable memory or insight evaluators via the context facade; cognition stays explicit and testable.
+
+```python
 from noesis import context
+from noesis.episode import EpisodeIndex
 
 ctx = context.create_runtime_context()
-ctx.register("memory", provider=my_memory_port, api="memory/1.0")
+ctx.register("memory", provider=my_sqlite_memory, api="memory/1.1")  # or FAISS/HNSW
 context.set_context(ctx)
 
-snapshot = context.get_config_snapshot()
-print(snapshot)
+index = EpisodeIndex("./runs/_episodes", ttl_days=14)
+print(list(index.iter())[:3])
+```
 
-# --- Finalising summaries in backfills ---------------------------------------
-from noesis import summary
+`context` is the agent’s scoped worldview (config + registered faculties); pass it explicitly to keep dependencies clear and tests pure.
 
-summary.finalize(
-    run_dir=Path("./runs/demo"),
-    episode_id="ep_demo",
-    task="Backfill summary",
-    seed=0,
-    started_at="2025-01-01T00:00:00Z",
-    intuition_enabled=False,
-    intuition_mode=None,          # or ns.IntuitionMode.ADVISORY
-    using_label="core.minimal",
-    tags={},
-    intuition=None,
-    schema_version="1.2.0",
-    config=context.get_config_snapshot(),
-    ports=ctx.list_ports(),
-)
+⸻
 
-# --- Emitting events outside the orchestrator --------------------------------
-run_dir = Path("./runs/manual")
-events = ns.events  # module alias
-events.start(run_dir, "ep_manual", {"task": "Hand-crafted episode"})
-events.ensure(
-    run_dir,
-    "ep_manual",
-    adapter_label="adapter:manual",
-    input_excerpt="noop",
-    outcome="ok",
-)
-events.terminate(run_dir, "ep_manual", {"status": "ok"})
+## Core capabilities
 
-# --- Learning helpers (high-level) -------------------------------------------
-from noesis import learn
+### Planning & task decomposition
+
+Direction turns vague goals into stepwise plans and keeps them fresh as evidence arrives (observe → interpret → plan). Plans and transitions are written to `events.jsonl` and `state.json`.
+
+### Context & trace management
+
+Every episode emits immutable artifacts:
+
+- `events.jsonl` – timeline of phases (observe/interpret/plan/act/reflect/learn) with causal IDs
+- `summary.json` – metrics, outcomes, and cross-links
+- `state.json` – current plan and episode state
+
+### Long-term memory
+
+Plug in a memory port (SQLite for dev, FAISS/HNSW for semantic recall). After each summary, Noēsis persists normalized facts and episode links so future runs can retrieve relevant context.
+
+### Reflection & learning
+
+Noēsis records reflections and can emit learning payloads for policy updates or offline analysis.
+
+```python
+from pathlib import Path
+from noesis import learn, events, summary, context
+
+run_dir = Path("./runs/demo")
+episode_id = "ep_demo"
 
 learn.emit(
     run_dir=run_dir,
+    episode_id=episode_id,
+    events=list(events.read(episode_id)),
+    metrics=summary.read(episode_id)["metrics"],
+    config=context.get_config_snapshot(),
+)
+```
+
+Use these artifacts to tune prompts, policies, or evaluators—or wire them into a governance loop.
+
+### Human-in-the-loop & governance (optional)
+
+Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
+
+⸻
+
+## Customizing Noēsis
+
+You can tailor cognition without committing to a specific runtime or library.
+
+### Model
+
+Noēsis is model-agnostic—keep whichever LLM or policy your graph already uses. Noēsis decorates execution with the cognitive loop and artifacts; it does not replace your model choice.
+
+### “System prompt”
+
+Rather than one mega prompt, Noēsis splits responsibilities:
+
+- **Intuition** – advisory heuristics (LLM or rule-based) for interpretation
+- **Direction** – planner + strategy reflection (Tree-of-Thought-style branching optional)
+- **Insight** – metrics/evaluations that feed summaries and learning
+
+Keep your graph’s prompts; add faculty-specific guidance when helpful.
+
+### Tools
+
+Your tools remain your tools. Noēsis observes tool calls via `act` events and can route outcomes into memory and reflection automatically.
+
+### Faculties & hooks (middleware analogy)
+
+Think of faculties like modular middleware:
+
+- **Intuition**: advisory reasoning
+- **Direction**: planning, adjustment, veto integration
+- **Insight**: evaluation/metrics roll-up
+- **Governance (optional)**: enforce policies with auditable vetoes
+
+⸻
+
+## Sub-agents & complex workflows
+
+Noēsis doesn’t force a sub-agent API—it embraces your existing one. If a LangGraph/CrewAI/OpenDevin workflow spawns subordinate agents, Noēsis traces them and persists their outcomes like any other steps:
+
+- Keep the isolation semantics from your framework.
+- Measure plan changes, action latency, success ratios, and long-term recall hits via Noēsis artifacts.
+
+⸻
+
+## MCP & external tooling
+
+Adapters let Noēsis index and observe actions from MCP servers (Anthropic’s Model Context Protocol). You can keep tool execution external and safe while still capturing causal timelines and summary metrics inside `runs/`.
+
+⸻
+
+## Sync vs async
+
+Use the same `run` / `solve` API. If your orchestrator is async, expose it via `using=` (callable or path) and Noēsis wraps timing, events, and summaries around it.
+
+⸻
+
+## What Noēsis adds (at a glance)
+
+- A real plan (Direction) instead of ad-hoc action loops
+- Traces & metrics you can trust (`events.jsonl`, `summary.json`, `state.json`)
+- Memory that matters (SQLite/FAISS) for cross-episode recall
+- Learning signals for improving policies/prompts over time
+- Framework freedom—LangGraph, CrewAI, OpenDevin, custom runners… all welcome
+
+⸻
+
+## API cheatsheet
+
+```python
+from pathlib import Path
+import noesis as ns
+from noesis import context, summary, events, learn
+from noesis.episode import EpisodeIndex
+
+# Run / Solve
+eid = ns.run("Summarize this repo", intuition=True)
+eid = ns.solve("Release notes", using=lambda: Path("flows/release_notes.py"))
+
+# Artifacts
+summary.read(eid)
+list(events.read(eid))
+
+# Emit extra events (optional)
+run_dir = Path("./runs/manual")
+events.start(run_dir, "ep_manual", {"task": "demo"})
+events.ensure(run_dir, "ep_manual", adapter_label="grep", input_excerpt="...", outcome="ok")
+events.terminate(run_dir, "ep_manual", {"status": "ok"})
+
+# Context & memory
+ctx = context.create_runtime_context()
+ctx.register("memory", provider=my_sqlite_memory, api="memory/1.1")
+context.set_context(ctx)
+
+# Learning
+learn.emit(
+    run_dir=run_dir,
     episode_id="ep_manual",
-    events=list(ns.events.read("ep_manual")),
-    metrics=ns.summary.read("ep_manual")["metrics"],
+    events=list(events.read("ep_manual")),
+    metrics=summary.read("ep_manual")["metrics"],
     config=context.get_config_snapshot(),
 )
 
-# --- Episode manifest (read-only) --------------------------------------------
-from noesis.episode import EpisodeIndex
-
+# Episode index
 index = EpisodeIndex("./runs/_episodes", ttl_days=14)
-recent = list(index.iter())
-
-# --- Optional: legacy read-only tooling via noesis.io ------------------------
-# Prefer ns.summary.read / ns.events.read above; keep io.* for power users.
-from noesis.io import list_runs, summary as io_summary, events as io_events
-
-latest = list_runs(limit=1)[0]
-details = io_summary(latest["episode_id"])
-timeline = list(io_events(latest["episode_id"], stream=True))
+list(index.iter())
 ```
 
-Prefer the high-level `learn.emit` helper; lower-level builders (`build_learn_payload`, `persist_episode_learning`) remain for migration but will sunset before 1.0.
+⸻
 
----
+## Stability & versioning
 
-## 📦 Supported modules
+- Public modules to rely on today: `noesis`, `noesis.summary`, `noesis.events`, `noesis.context`, `noesis.learn`, `noesis.episode`, `noesis.io`, `noesis.trace`, plus the facades under `noesis.runtime.*`.
+- Evolving modules slated to stabilize post-0.7: `noesis.learn`, `noesis.insight`, and advanced helpers inside those packages.
+- Avoid importing from `noesis.domain.*`, `noesis.usecases.*`, `noesis.infrastructure.*`, `noesis.interfaces.*`, or underscore-prefixed modules—they remain internal.
+- Need the full matrix? See **API Surface & Stability** in the docs.
 
-| Module | Status | Purpose |
-| --- | --- | --- |
-| `noesis` | ✅ Stable | Entry points (`run`, `solve`, `set`, `get`) and module facades (`summary`, `events`, `context`, `learn`). |
-| `noesis.summary` | ✅ Stable | Read/finalise summaries. |
-| `noesis.events` | ✅ Stable | Emit or read cognitive-loop events. |
-| `noesis.context` | ✅ Stable | Create/manage runtime contexts and config ports. |
-| `noesis.learn` | 🟡 Evolving | Emit learning payloads, persist policy snapshots. |
-| `noesis.episode` | ✅ Stable | Read-only episode index API. |
-| `noesis.io` | ✅ Stable | Legacy/advanced read-only helpers (keep for analytics tooling). |
-| `noesis.runtime.*` | ✅ Stable (facades) | Low-level emitters and summary utilities for power users. |
+Version details:
 
----
+- **Package:** noesis **v0.7.2**
+- **Schema:** summary.schema.json **v1.1.0**
+- **Python:** **≥ 3.11**
 
-## 🧠 Cognitive loop (at a glance)
+⸻
 
-| Phase | What happens | Artifact |
-| --- | --- | --- |
-| Observe | Capture task + context. | `events.jsonl` (`phase="observe"`) |
-| Interpret | Translate signals to beliefs. | `events.jsonl` (`phase="interpret"`) |
-| Plan | Decide the next actions. | `state.json` (`plan_steps[]`) |
-| Act | Execute via adapters/tools. | `events.jsonl` (`phase="act"`) |
-| Reflect | Score outcomes, capture reasons. | `summary.json["metrics"]` |
-| Learn | Emit learn payloads/persist knowledge. | `learn.jsonl` |
+## Acknowledgements
 
-Faculties such as Intuition, Direction, and Insight weave through these phases so every intervention or veto is recorded and testable.
+Inspired by the research and practice behind ReAct (Yao et al., 2022), Reflexion (Shinn et al., 2023), Tree-of-Thoughts (Yao et al., 2023), Voyager (Wang et al., 2023), and Meta-CoT (Zhang et al., 2024), as well as production systems such as Claude Code and Deep Research (Anthropic PBC).
 
----
+## License
 
-## 🧱 Architecture snapshot
-
-- **Context-first** – everything flows through a `RuntimeContext`; ports are versioned and declarative.
-- **Clean boundaries** – domain models know nothing about adapters; use cases orchestrate behaviour; infrastructure handles IO.
-- **Artifacts, not side effects** – every run produces `events.jsonl`, `summary.json`, `state.json`, and optional `learn.jsonl`.
-- **Guardrails** – import-linter contracts, public-surface smoke tests, and docs keep the API tidy.
-
----
-
-## 🗂️ Project layout
-
-```
-noesis/
- ├─ __init__.py           # Public API (run, solve, summary/events/context facades)
- ├─ core.py               # Execution + orchestration
- ├─ config.py             # Global configuration + noesis.toml loader
- ├─ intuition.py          # Advisory layer contracts
- ├─ direction.py          # Interventions + veto helpers
- ├─ insight.py            # Metrics + lightweight analytics
- ├─ io.py                 # Run inspection helpers
- ├─ loader.py             # Dynamic adapter + graph loader
- │
- ├─ adapters/             # Framework bridges (LangGraph, CrewAI, etc.)
- ├─ state/                # Episode state + schema models
- ├─ trace/                # Trace + summary event handling
- └─ exceptions.py         # Framework-specific error types
-```
-
----
-
-## ⚙️ Versioning
-
-- **Package:** noesis v0.7.1  
-- **Schema:** summary.schema.json v1.1.0  
-- **Python:** ≥ 3.11
-
-All runs embed `schema_version` for reproducibility.
-
----
-
-## 🪶 License
-
-Apache License 2.0
+Apache 2.0

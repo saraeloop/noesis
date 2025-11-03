@@ -7,7 +7,7 @@ from warnings import warn
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 
 # Package metadata
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Core execution API

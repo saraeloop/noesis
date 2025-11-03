@@ -21,6 +21,7 @@ from .runtime.events import (
     reflect_event as _reflect_event,
     start_event as _start_event,
     terminate_event as _terminate_event,
+    direction_event as _direction_event,
 )
 from .io import events as _events_fn
 
@@ -32,6 +33,7 @@ __all__ = [
     "plan",
     "act",
     "reflect",
+    "direction",
     "ensure",
     "terminate",
     "last_event_of_phase",
@@ -73,6 +75,26 @@ def reflect(*args: Any, **kwargs: Any) -> None:
     _reflect_event(*args, **kwargs)
 
 
+def direction(
+    run_dir: Any,
+    episode_id: str,
+    payload: Dict[str, Any],
+    *,
+    agent: str = "system",
+    caused_by: str | None = None,
+    metrics: Dict[str, Any] | None = None,
+) -> None:
+    """Emit a direction (policy) event for the episode."""
+    _direction_event(
+        run_dir,
+        episode_id,
+        payload,
+        agent=agent,
+        caused_by=caused_by,
+        metrics=metrics,
+    )
+
+
 def ensure(*args: Any, **kwargs: Any) -> None:
     """Emit the ensure-act event for the episode."""
     _ensure_act_event(*args, **kwargs)
@@ -111,5 +133,6 @@ interpret_event = _deprecated("interpret_event", "interpret")(interpret)
 plan_event = _deprecated("plan_event", "plan")(plan)
 act_event = _deprecated("act_event", "act")(act)
 reflect_event = _deprecated("reflect_event", "reflect")(reflect)
+direction_event = _deprecated("direction_event", "direction")(direction)
 ensure_act_event = _deprecated("ensure_act_event", "ensure")(ensure)
 terminate_event = _deprecated("terminate_event", "terminate")(terminate)

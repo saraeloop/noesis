@@ -18,12 +18,14 @@ Purpose
 """
 
 from __future__ import annotations
+import asyncio
+import inspect
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from copy import deepcopy
+from uuid import UUID
 
-from ..trace.events import write_event
 from ..intuition import Intuition, IntuitionEvent
 from ..direction import DirectiveKind
 from ..exceptions import NoesisVeto
@@ -31,44 +33,28 @@ from .protocols import (
     AdapterPath,
     Executor,
     DEFAULT_MIN_CONFIDENCE,
-    STATE_HISTORY_LIMIT,
 )
+from ..domain.state.cognitive import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker
+from ..runtime.clock import RuntimeClock, PhaseToken
+from ..runtime.events_emitter import CognitiveEventEmitter
+from ..runtime.utils import now as runtime_now
+from .. import events as public_events
 
 __all__ = ["LangGraphAdapter", "Executor"]
 
 
-@dataclass
+@dataclass(slots=True)
 class _State:
-    """Minimal state snapshot carried across the run for advisory hooks."""
-    history: list
-    tools_seen: list
+    """Adapter-local snapshot used for advisory hooks."""
 
-    def append_history(self, phase: str, payload: Dict[str, Any]) -> None:
-        if phase in {
-            "intuition",
-            "direction",
-            "reason",
-            "observe",
-            "interpret",
-            "plan",
-            "act",
-            "reflect",
-            "error",
-        }:
-            self.history.append({"phase": phase, "payload": payload})
-            if len(self.history) > STATE_HISTORY_LIMIT:
-                del self.history[0]
+    tools_seen: set[str]
 
-    def note_tool(self, payload: Dict[str, Any]) -> None:
-        tool_name = payload.get("tool")
-        if tool_name and tool_name not in self.tools_seen:
-            self.tools_seen.append(tool_name)
+    def note_tool(self, tool_name: str | None) -> None:
+        if tool_name:
+            self.tools_seen.add(tool_name)
 
-
-def _ts() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
+    def snapshot(self) -> Dict[str, Any]:
+        return {"tools_seen": sorted(self.tools_seen)}
 def _excerpt(obj: Any, limit: int = 400) -> str:
     """
     Safe string excerpt from typical LangChain/LangGraph returns:
@@ -112,21 +98,17 @@ class LangGraphAdapter:
         # precedence: explicit arg > graph attribute > identity
         discovered = getattr(graph, "__noesis_input_mapper__", None)
         self.input_mapper: Callable[[str], Any] = input_mapper or discovered or (lambda t: t)
-        self._state = _State(history=[], tools_seen=[])
+        self._state = _State(tools_seen=set())
         self._min_confidence = float(min_confidence)
+        self._clock = RuntimeClock()
+        self._lineage = LineageTracker()
+        self._current_episode: Optional[str] = None
 
-    def _log(self, run_dir: AdapterPath, episode_id: str, phase: str, payload: Dict[str, Any]) -> None:
-        body = {
-            "timestamp": _ts(),
-            "episode_id": episode_id,
-            "agent_id": "adapter.langgraph",
-            "phase": phase,
-            "payload": payload,
-            "evidence_ids": payload.get("evidence_ids", []),
-        }
-        write_event(run_dir, body)
-        self._state.append_history(phase, payload)
-        self._state.note_tool(payload)
+    def _reset(self, episode_id: str) -> None:
+        self._state = _State(tools_seen=set())
+        self._clock = RuntimeClock()
+        self._lineage = LineageTracker()
+        self._current_episode = episode_id
 
     @staticmethod
     def _policy_tag(intuition: Optional[Intuition]) -> str:
@@ -135,15 +117,6 @@ class LangGraphAdapter:
         name = intuition.__class__.__name__
         version = getattr(intuition, "__version__", None) or getattr(intuition, "version", None) or "unspecified"
         return f"{name}@{version}"
-
-    def _snapshot(self, *, task: str, seed: int, tags: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        return {
-            "task": task,
-            "seed": seed,
-            "history": list(self._state.history),
-            "tools_seen": list(self._state.tools_seen),
-            "tags": tags or {},
-        }
 
     def _apply_patch(
         self,
@@ -166,6 +139,158 @@ class LangGraphAdapter:
 
         return input_obj, False, [], "not_patchable_input"
 
+    def _start_phase(self, verb: CognitiveVerb) -> PhaseToken:
+        return self._clock.start(verb)
+
+    def _stop_phase(self, token: PhaseToken) -> CognitiveMetrics:
+        return self._clock.stop(token)
+
+    def _emit_event(
+        self,
+        emitter: CognitiveEventEmitter,
+        verb: CognitiveVerb,
+        payload: Dict[str, Any],
+        *,
+        agent_id: str = "adapter.langgraph",
+        cause: Optional[UUID] = None,
+        metrics: Optional[CognitiveMetrics] = None,
+    ) -> UUID:
+        event = CognitiveEvent(
+            episode_id=self._current_episode or "",
+            verb=verb,
+            payload=payload,
+        )
+        if metrics is not None:
+            event = event.with_metrics(metrics)
+        linked = self._lineage.register(event, cause=cause)
+        emitter.emit(linked, agent_id=agent_id)
+        return linked.event_id
+
+    def _record_instant(
+        self,
+        emitter: CognitiveEventEmitter,
+        verb: CognitiveVerb,
+        payload: Dict[str, Any],
+        *,
+        agent_id: str = "adapter.langgraph",
+        cause: Optional[UUID] = None,
+    ) -> UUID:
+        token = self._start_phase(verb)
+        metrics = self._stop_phase(token)
+        return self._emit_event(
+            emitter,
+            verb,
+            payload,
+            agent_id=agent_id,
+            cause=cause,
+            metrics=metrics,
+        )
+
+    def _emit_plan_with_direction(
+        self,
+        emitter: CognitiveEventEmitter,
+        payload: Dict[str, Any],
+        *,
+        cause: Optional[UUID],
+        run_dir: Path,
+    ) -> UUID:
+        token = self._start_phase(CognitiveVerb.PLAN)
+        metrics = self._stop_phase(token)
+        plan_event_id = self._emit_event(
+            emitter,
+            CognitiveVerb.PLAN,
+            payload,
+            cause=cause,
+            metrics=metrics,
+        )
+        public_events.direction(
+            run_dir,
+            self._current_episode or "",
+            payload.copy(),
+            agent="adapter.langgraph",
+            caused_by=str(plan_event_id),
+            metrics=metrics.to_dict(),
+        )
+        return plan_event_id
+
+    @staticmethod
+    def _categorize_error(exc: Exception) -> str:
+        name = exc.__class__.__name__
+        if isinstance(exc, TimeoutError):
+            return "timeout"
+        lowered = name.lower()
+        if "tool" in lowered:
+            return "tool_failure"
+        if "state" in lowered:
+            return "invalid_state"
+        return name
+
+    def _extract_tools(self, result: Any) -> list[str]:
+        names: set[str] = set()
+        tool_calls = getattr(result, "tool_calls", None)
+        if isinstance(tool_calls, list):
+            for call in tool_calls:
+                name = None
+                if isinstance(call, dict):
+                    name = call.get("name")
+                else:
+                    name = getattr(call, "name", None)
+                if name:
+                    names.add(str(name))
+        if isinstance(result, dict):
+            maybe_tool = result.get("tool") or result.get("tool_name")
+            if maybe_tool:
+                names.add(str(maybe_tool))
+            calls = result.get("tool_calls")
+            if isinstance(calls, list):
+                for call in calls:
+                    if isinstance(call, dict):
+                        name = call.get("name")
+                        if name:
+                            names.add(str(name))
+        for name in names:
+            self._state.note_tool(name)
+        return sorted(names)
+
+    def _await_maybe_async(self, value: Any) -> Any:
+        if inspect.isawaitable(value):
+            return self._run_coroutine(value)
+        return value
+
+    def _run_coroutine(self, coro: Any) -> Any:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        if not loop.is_running():
+            return loop.run_until_complete(coro)  # pragma: no cover - legacy loop usage
+        # Running loop: execute in a dedicated new loop to avoid blocking.
+        new_loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(new_loop)
+            return new_loop.run_until_complete(coro)
+        finally:
+            new_loop.close()
+            try:
+                asyncio.set_event_loop(loop)
+            except Exception:
+                asyncio.set_event_loop(None)
+
+    def _invoke_graph(self, input_obj: Any) -> Any:
+        graph = self.graph
+        if hasattr(graph, "invoke"):
+            value = graph.invoke(input_obj)
+        elif hasattr(graph, "ainvoke"):
+            value = graph.ainvoke(input_obj)
+        elif hasattr(graph, "run"):
+            value = graph.run(input_obj)
+        elif hasattr(graph, "arun"):
+            value = graph.arun(input_obj)
+        elif callable(graph):
+            value = graph(input_obj)
+        else:
+            raise TypeError("graph object is neither runnable (.invoke/.run) nor callable")
+        return self._await_maybe_async(value)
     def execute(
         self,
         *,
@@ -176,148 +301,216 @@ class LangGraphAdapter:
         seed: int = 0,
         tags: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        directive: Optional[IntuitionEvent] = None
-        # Pre-run advisory (core already logs "start"; this is adapter-level hinting)
+        tags = tags or {}
+        run_path = Path(run_dir)
+        self._reset(episode_id)
+        emitter = CognitiveEventEmitter(run_dir=run_path, agent_id="adapter.langgraph")
+
+        observe_payload = {"task": task, "tags": tags, "timestamp": runtime_now()}
+        observe_id = self._record_instant(emitter, CognitiveVerb.OBSERVE, observe_payload)
+        cause_id: Optional[UUID] = observe_id
+
         policy_tag = self._policy_tag(intuition)
 
+        interpret_token = self._start_phase(CognitiveVerb.INTERPRET)
+        input_obj = self.input_mapper(task)
+        directive: Optional[IntuitionEvent] = None
         if intuition:
-            directive = intuition.advise(self._snapshot(task=task, seed=seed, tags=tags))
-            if directive:
-                self._log(
-                    run_dir,
-                    episode_id,
-                    "intuition",
-                    {
-                        "kind": directive.kind,
-                        "advice": directive.advice,
-                        "confidence": directive.confidence,
-                        "applied": directive.applied,
-                        "rationale": directive.rationale,
-                        "evidence_ids": directive.evidence_ids,
-                        "target": directive.target,
-                        "scope": directive.scope,
-                        "blocking": directive.blocking,
-                        "patch_keys": sorted(directive.patch.keys()) if directive.patch else [],
-                        "policy": policy_tag,
-                    },
+            advisory_snapshot = {
+                "task": task,
+                "seed": seed,
+                "tags": tags,
+                **self._state.snapshot(),
+            }
+            directive = intuition.advise(advisory_snapshot)
+        interpret_payload: Dict[str, Any] = {
+            "policy": policy_tag,
+            "input_type": type(input_obj).__name__,
+            "kind": directive.kind if directive else "none",
+            "confidence": directive.confidence if directive else None,
+            "blocking": directive.blocking if directive else False,
+            "target": directive.target if directive else None,
+            "scope": directive.scope if directive else None,
+            "signals": [f"input:{type(input_obj).__name__}"],
+        }
+        if directive and directive.advice:
+            interpret_payload["advice"] = directive.advice
+        if directive and directive.patch:
+            interpret_payload["patch_keys"] = sorted(directive.patch.keys())
+        interpret_metrics = self._stop_phase(interpret_token)
+        interpret_id = self._emit_event(
+            emitter,
+            CognitiveVerb.INTERPRET,
+            interpret_payload,
+            cause=cause_id,
+            metrics=interpret_metrics,
+        )
+        cause_id = interpret_id
+
+        plan_event_id: Optional[UUID] = None
+        if directive:
+            directive_kind = directive.kind or ""
+            policy_version = policy_tag.split("@", 1)[1] if "@" in policy_tag else "unspecified"
+            payload: Dict[str, Any] = {
+                "policy": policy_tag,
+                "policy_version": policy_version,
+                "kind": directive_kind,
+                "confidence": directive.confidence,
+                "threshold": self._min_confidence,
+                "target": directive.target,
+                "scope": directive.scope,
+                "steps": ["apply_directive"],
+                "applied": False,
+                "diff": [],
+            }
+            if directive.blocking or directive_kind == DirectiveKind.VETO.value:
+                payload.update({"status": "blocked", "reason": "veto", "steps": ["directive_veto"], "applied": False})
+                plan_event_id = self._emit_plan_with_direction(
+                    emitter,
+                    payload,
+                    cause=cause_id,
+                    run_dir=run_path,
                 )
+                self._lineage.seed(last_event_id=plan_event_id)
+                raise NoesisVeto(advice=directive.advice, target=directive.target, scope=directive.scope)
 
-        # Execution boundary
-        self._log(run_dir, episode_id, "reason", {"note": "enter LangGraph", "task": task})
-
-        try:
-            input_obj = self.input_mapper(task)
-
-            if directive:
-                input_obj = self._enforce_direction(
-                    directive,
-                    input_obj,
-                    run_dir,
-                    episode_id,
-                    policy_tag,
-                )
-
-            input_excerpt = _excerpt(input_obj)
-
-            if hasattr(self.graph, "invoke"):
-                result = self.graph.invoke(input_obj)  # compiled LangGraph
-            elif hasattr(self.graph, "run"):
-                result = self.graph.run(input_obj)     # older/simple APIs
-            elif callable(self.graph):
-                result = self.graph(input_obj)         # fallback
+            if directive_kind == DirectiveKind.INTERVENTION.value:
+                patch = directive.patch or {}
+                if directive.confidence < self._min_confidence:
+                    payload.update(
+                        {
+                            "status": "skipped",
+                            "reason": "policy_low_confidence",
+                            "patch": patch,
+                            "steps": ["directive_skipped"],
+                            "applied": False,
+                        }
+                    )
+                    plan_event_id = self._emit_plan_with_direction(
+                        emitter,
+                        payload,
+                        cause=cause_id,
+                        run_dir=run_path,
+                    )
+                    directive.applied = False
+                elif not patch:
+                    payload.update(
+                        {
+                            "status": "skipped",
+                            "reason": "empty_patch",
+                            "patch": {},
+                            "steps": ["directive_skipped"],
+                            "applied": False,
+                        }
+                    )
+                    plan_event_id = self._emit_plan_with_direction(
+                        emitter,
+                        payload,
+                        cause=cause_id,
+                        run_dir=run_path,
+                    )
+                    directive.applied = False
+                else:
+                    adjusted, applied, diff, reason = self._apply_patch(input_obj, patch)
+                    payload.update(
+                        {
+                            "status": "applied" if applied else "skipped",
+                            "reason": reason,
+                            "patch": patch,
+                            "diff": diff,
+                            "applied": applied,
+                        }
+                    )
+                    plan_event_id = self._emit_plan_with_direction(
+                        emitter,
+                        payload,
+                        cause=cause_id,
+                        run_dir=run_path,
+                    )
+                    if applied:
+                        directive.applied = True
+                        input_obj = adjusted
+                    else:
+                        directive.applied = False
             else:
-                raise TypeError("graph object is neither runnable (.invoke/.run) nor callable")
+                payload.update({"status": "hint", "reason": "hint", "steps": ["directive_hint"], "applied": False})
+                plan_event_id = self._emit_plan_with_direction(
+                    emitter,
+                    payload,
+                    cause=cause_id,
+                    run_dir=run_path,
+                )
+                directive.applied = False
+            cause_id = plan_event_id or cause_id
 
-            self._log(
-                run_dir,
-                episode_id,
-                "act",
-                {
-                    "adapter": "adapter.langgraph",
-                    "input_excerpt": input_excerpt,
-                    "outcome": _excerpt(result),
-                },
+        if plan_event_id is None:
+            default_plan_payload = {
+                "steps": [f"invoke:{self.graph.__class__.__name__}"]
+            }
+            plan_event_id = self._record_instant(
+                emitter,
+                CognitiveVerb.PLAN,
+                default_plan_payload,
+                cause=cause_id,
+            )
+            cause_id = plan_event_id
+
+        input_excerpt = _excerpt(input_obj)
+        act_token = self._start_phase(CognitiveVerb.ACT)
+        try:
+            result = self._invoke_graph(input_obj)
+            metrics = self._stop_phase(act_token)
+            tools_used = self._extract_tools(result)
+            act_payload = {
+                "adapter": "adapter.langgraph",
+                "input_excerpt": input_excerpt,
+                "outcome": "ok",
+                "tools": tools_used,
+            }
+            act_id = self._emit_event(
+                emitter,
+                CognitiveVerb.ACT,
+                act_payload,
+                cause=cause_id,
+                metrics=metrics,
+            )
+            reflect_payload = {
+                "success": True,
+                "reasons": ["graph_completed"],
+            }
+            reflect_id = self._record_instant(
+                emitter,
+                CognitiveVerb.REFLECT,
+                reflect_payload,
+                cause=act_id,
             )
             return result
-
-        except Exception as e:
-            # Failure boundary
-            self._log(
-                run_dir,
-                episode_id,
-                "act",
-                {
-                    "adapter": "adapter.langgraph",
-                    "input_excerpt": locals().get("input_excerpt", "<unset>"),
-                    "outcome": "error",
-                    "error": str(e),
-                },
+        except Exception as exc:
+            metrics = self._stop_phase(act_token)
+            tools_used = sorted(self._state.tools_seen)
+            act_payload = {
+                "adapter": "adapter.langgraph",
+                "input_excerpt": input_excerpt,
+                "outcome": "error",
+                "error": str(exc)[:256],
+                "error_kind": self._categorize_error(exc),
+                "tools": tools_used,
+            }
+            act_id = self._emit_event(
+                emitter,
+                CognitiveVerb.ACT,
+                act_payload,
+                cause=cause_id,
+                metrics=metrics,
             )
-            self._log(run_dir, episode_id, "error", {"message": str(e)})
+            reflect_payload = {
+                "success": False,
+                "reasons": [self._categorize_error(exc)],
+            }
+            self._record_instant(
+                emitter,
+                CognitiveVerb.REFLECT,
+                reflect_payload,
+                cause=act_id,
+            )
             raise
-
-    def _enforce_direction(
-        self,
-        directive: IntuitionEvent,
-        input_obj: Any,
-        run_dir: AdapterPath,
-        episode_id: str,
-        policy_tag: str,
-    ) -> Any:
-        kind = directive.kind
-        payload: Dict[str, Any] = {
-            "kind": kind,
-            "advice": directive.advice,
-            "confidence": directive.confidence,
-            "target": directive.target,
-            "scope": directive.scope,
-            "policy": policy_tag,
-            "threshold": self._min_confidence,
-        }
-
-        if directive.blocking or kind == DirectiveKind.VETO.value:
-            payload.update({"applied": False, "status": "blocked", "reason": "veto"})
-            self._log(run_dir, episode_id, "direction", payload)
-            directive.applied = False
-            raise NoesisVeto(advice=directive.advice, target=directive.target, scope=directive.scope)
-
-        if kind == DirectiveKind.INTERVENTION.value:
-            patch = directive.patch or {}
-
-            if directive.confidence < self._min_confidence:
-                payload.update({
-                    "applied": False,
-                    "patch": patch,
-                    "reason": "policy_low_confidence",
-                    "diff": [],
-                })
-                directive.applied = False
-                self._log(run_dir, episode_id, "direction", payload)
-                return input_obj
-
-            if not patch:
-                payload.update({
-                    "applied": False,
-                    "patch": {},
-                    "reason": "empty_patch",
-                    "diff": [],
-                })
-                directive.applied = False
-                self._log(run_dir, episode_id, "direction", payload)
-                return input_obj
-
-            adjusted, applied, diff, reason = self._apply_patch(input_obj, patch)
-            payload.update({
-                "applied": applied,
-                "patch": patch,
-                "reason": reason,
-                "diff": diff,
-            })
-            directive.applied = applied
-            self._log(run_dir, episode_id, "direction", payload)
-            if applied:
-                return adjusted
-            return input_obj
-
-        # Hints are advisory only; they already logged via the intuition phase.
-        return input_obj

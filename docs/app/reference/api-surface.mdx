@@ -61,7 +61,7 @@ below.
 | `noesis` | Entry points (`run`, `solve`, `set`, `get`, `summary`, `events`, …) plus intuition and direction helpers. |
 | `noesis.io` | Read-only helpers for summaries, events, metrics, and run listings. |
 | `noesis.events` | Emit cognitive-loop events (observe/interpret/plan/act/reflect/learn). |
-| `noesis.summary` | Finalise summaries and emit derived insight metrics. |
+| `noesis.summary` | Finalize summaries and emit derived insight metrics. |
 | `noesis.episode` | Episode manifest API (`EpisodeIndex`, `EpisodeIndexPort`, `EpisodeRecord`). |
 | `noesis.context` | Runtime context tooling (`RuntimeContext`, `create_runtime_context`, config accessors). |
 | `noesis.trace` | Trace schema helpers (`read_events`, `write_event`, `write_cognitive_event`, `read_summary`). |
@@ -152,7 +152,7 @@ from noesis import learn
 learn.emit(
     run_dir=Path("./runs/demo"),
     episode_id="ep_demo",
-    events=list(ns.events.read("ep_demo")),
+    events=list(events.read("ep_demo")),
     metrics=ns.summary.read("ep_demo")["metrics"],
     config=context.get_config_snapshot(),
 )
