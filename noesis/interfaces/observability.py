@@ -47,7 +47,7 @@ class RuntimeEventBus(EventBus):
         source: str,
         metrics: CognitiveMetrics | None = None,
         caused_by: UUID | None = None,
-    ) -> UUID:
+    ) -> CognitiveEvent:
         self._plan_steps = [step.id for step in steps]
         if metrics is not None and caused_by is not None:
             self.lineage.seed(last_event_id=caused_by)
@@ -55,17 +55,17 @@ class RuntimeEventBus(EventBus):
         payload = {"steps": labels}
         if rationale:
             payload["rationale"] = rationale
-        metrics = metrics or self._instant_metric(CognitiveVerb.PLAN)
+        event_metrics = metrics or self._instant_metric(CognitiveVerb.PLAN)
         event = CognitiveEvent(
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.PLAN,
             payload=payload,
         )
-        if metrics:
-            event = event.with_metrics(metrics)
+        if event_metrics:
+            event = event.with_metrics(event_metrics)
         linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
         self.emitter.emit(linked, agent_id=source or "system")
-        return linked.event_id
+        return linked
 
     def emit_direction(
         self,

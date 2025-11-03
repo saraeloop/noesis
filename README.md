@@ -124,6 +124,49 @@ Use these artifacts to tune prompts, policies, or evaluators—or wire them into
 
 Pre-act governance policies can audit or veto actions before the `act` phase when the planner mode is `meta` (default). On veto, the ACT phase is logged as `outcome="blocked"` and no tool invocation occurs. Direction events reflect both heuristic directives and governance verdicts, and summaries expose versioned per-episode insight metrics under `summary["insight"]["metrics"]`.
 
+```python
+import os
+import noesis as ns
+
+# meta planner + PreActGovernor is the default
+episode_id = ns.run("Draft a rollout plan for the new release")
+
+# opt out of governance by switching planner mode
+ns.set(planner_mode="minimal")
+legacy_episode = ns.run("Draft a rollout plan for the new release")
+
+# restore the meta planner (or set NOESIS_PLANNER=meta in the environment)
+ns.set(planner_mode="meta")
+```
+
+### Demo: meta vs minimal runs
+
+```python
+import noesis as ns
+
+ns.set(runs_dir="./runs/demo")
+
+eid_meta = ns.run("Summarize the release notes in ./CHANGELOG.md", intuition=False)
+eid_veto = ns.run("Danger operation: delete production database", intuition=False)
+
+for eid in (eid_meta, eid_veto):
+    summary = ns.summary.read(eid)
+    insight = summary["insight"]["metrics"]
+    print(
+        f"{eid}: success={summary['metrics']['success']} "
+        f"vetoes={insight['veto_count']} "
+        f"plan_adherence={insight['plan_adherence']:.4f} "
+        f"tool_coverage={insight['tool_coverage']}"
+    )
+```
+
+Typical output:
+
+```
+ep_20251103_181813_293036_f3da_s0: success=True vetoes=0 plan_adherence=1.0000 tool_coverage=1.0
+ep_20251103_181813_294994_1d16_s0: success=False vetoes=1 plan_adherence=0.3333 tool_coverage=0.0
+```
+
 ### Human-in-the-loop & governance (optional)
 
 Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
@@ -246,7 +289,7 @@ list(index.iter())
 
 Version details:
 
-- **Package:** noesis **v0.7.2**
+- **Package:** noesis **v0.8.0**
 - **Schema:** summary.schema.json **v1.1.0**
 - **Python:** **≥ 3.11**
 

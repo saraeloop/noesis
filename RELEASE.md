@@ -28,6 +28,9 @@ It assumes you are working from a clean branch, targeting a tagged semantic vers
 
 - [ ] Execute `noesis diagnostics` (added in this release) and confirm all
       checks report `ok`. Address any warnings before continuing.
+- [ ] Verify `PlannerMode` overrides (`NOESIS_PLANNER`, `ns.set(planner_mode=...)`)
+      flip governance on/off and emit the expected `direction` / `governance`
+      phases.
 - [ ] Validate CLI ergonomics on both bash and zsh, including quoted `--port`
       specs.
 - [ ] Re-run `noesis validate-ports --json` to snapshot declared port APIs.

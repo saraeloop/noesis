@@ -1,0 +1,142 @@
+---
+title: Governance & Planner Modes
+description: Toggle the MetaPlanner and PreActGovernor for auditable runs.
+---
+
+import { Callout, Steps } from 'nextra/components'
+
+# Governance & Planner Modes
+
+Noēsis supports two planner modes for controlling execution behaviour:
+
+- **`meta`** (default): threads the depth-limited **MetaPlanner** through every episode and applies the **PreActGovernor** before actions execute.
+- **`minimal`**: skips governance entirely and uses the legacy stepwise planner for fast smoke tests.
+
+Configuration precedence: `ns.set()` override → `NOESIS_PLANNER` environment variable → `noesis.toml`.
+
+## Quick start
+
+```python filename="governance.py"
+import noesis as ns
+
+# meta mode is default; PreActGovernor may veto risky actions
+ns.set(seed=0)
+
+episode_id = ns.run("Provision staging infra for the v0.8.0 release")
+
+timeline = list(ns.events.read(episode_id))
+direction = [ev for ev in timeline if ev["phase"] == "direction"]
+governance = [ev for ev in timeline if ev["phase"] == "governance"]
+
+if direction:
+    print(direction[-1]["payload"].get("status"))     # applied | blocked | skipped
+if governance:
+    print(governance[-1]["payload"].get("decision"))  # allow | audit | veto
+
+print(ns.summary.read(episode_id)["insight"]["metrics"]["veto_count"])
+```
+
+<Callout type="info">
+**Direction** events capture the planner directive (`status`, `diff`, `reason`, `policy_id`) while **Governance** events record the decision and rationale. Both include `caused_by` IDs to preserve causal chains.
+</Callout>
+
+## Switching to minimal
+
+```python filename="legacy.py"
+import os
+import noesis as ns
+from noesis.interfaces.config import PlannerMode  # optional enum
+
+# Either method below works
+os.environ["NOESIS_PLANNER"] = "minimal"
+ns.set(planner_mode="minimal")  # or PlannerMode.MINIMAL
+
+episode_id = ns.run("Provision staging infra for the v0.8.0 release")
+
+assert not any(ev["phase"] == "governance" for ev in ns.events.read(episode_id))
+```
+
+Minimal mode keeps the canonical observe → interpret → plan → act → reflect → finalize loop but skips directive mutations and governance vetoes. Use it for baselines or when testing non-policy-aware adapters.
+
+## Inspecting metrics
+
+When governance is active, per-episode KPIs live under `summary["insight"]["metrics"]`:
+
+```python filename="metrics.py"
+metrics = ns.summary.read(episode_id)["insight"]["metrics"]
+print(metrics["plan_revisions"], metrics["veto_count"], metrics["tool_coverage"])
+```
+
+<Callout type="info">
+`plan_adherence` is rounded to four decimal places. `branching_factor` currently reflects the count of `direction` events emitted for the episode.
+</Callout>
+
+<Steps>
+
+### 1. Enable meta mode
+Leave the default, or set `NOESIS_PLANNER=meta` in your shell. You can also call `ns.set(planner_mode="meta")`.
+
+### 2. Review direction and governance events
+Open `events.jsonl` or use `ns.events.read()`. Confirm vetoes produce a `direction(status="blocked")` before ACT.
+
+### 3. Watch the KPIs
+Use `insight.metrics` for dashboards and regression tests (latencies, veto counts, plan adherence, tool coverage).
+
+</Steps>
+
+<Callout type="warning">
+The PreActGovernor blocks actions when it returns `decision="veto"`. Ensure adapters handle the `direction(status="blocked")` payload gracefully.
+</Callout>
+
+---
+
+## When to use each mode
+
+| Mode | Use when… | Trade-offs |
+|------|-----------|------------|
+| `meta` | You need auditability, vetoes, and insight KPIs | Slightly higher runtime overhead |
+| `minimal` | You want quick sanity or smoke tests | No guardrails, fewer artifacts |
+
+---
+
+## CLI usage
+
+You can toggle planner modes directly from the CLI:
+
+```bash filename="terminal"
+# Meta mode (default)
+noesis run "Summarize release notes"
+
+# Minimal mode
+NOESIS_PLANNER=minimal noesis run "Summarize release notes"
+```
+
+---
+
+## Example governance event
+
+```json filename="events.jsonl"
+{
+  "phase": "governance",
+  "agent_id": "governance.rules",
+  "payload": {
+    "schema_version": "1.0.0",
+    "decision": "audit",
+    "rule_id": "rules.audit.sensitive",
+    "score": 0.6,
+    "policy_id": "governance.rules",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "details": { "goal": "Write config" }
+  },
+  "caused_by": "7e0f..."
+}
+```
+
+---
+
+## Troubleshooting
+
+<Callout type="error">
+**No direction events?** You’re likely in `minimal` mode. Set `NOESIS_PLANNER=meta` or `ns.set(planner_mode="meta")` to enable governance.
+</Callout>

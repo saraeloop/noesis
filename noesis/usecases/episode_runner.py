@@ -183,38 +183,26 @@ class EpisodeRunner:
             if directive.applied:
                 _apply_directive(plan, directive)
         metrics = self._clock.stop(token)
-        labels = [f"{step.kind.value}:{step.description}" for step in plan]
-        payload: Dict[str, object] = {
-            "steps": labels,
-            "rationale": "minimal planner",
-            "source": "planner.minimal",
-        }
-        event = self._emit_event(
-            verb=verb,
-            context=context,
-            payload=payload,
-            metrics=metrics,
-            agent_id="planner.minimal",
-        )
         rationale = "minimal planner"
         if directive and directive.applied:
             rationale = f"{rationale} + meta"
         state.set_plan(steps=plan, rationale=rationale, source="planner.minimal")
-        plan_anchor = event.event_id
-        self._deps.event_bus.emit_plan(
+        plan_event = self._deps.event_bus.emit_plan(
             steps=plan,
-            rationale="minimal planner",
+            rationale=rationale,
             source="planner.minimal",
             metrics=metrics,
             caused_by=None,
         )
+        self._hooks.after_phase(verb, context, plan_event)
+        plan_anchor = plan_event.event_id
         direction_event_id: Optional[UUID] = None
         if directive is not None and directive.status is not DirectiveStatus.SKIPPED:
             direction_event_id = self._deps.event_bus.emit_direction(
                 directive=directive,
                 caused_by=plan_anchor,
             )
-        return plan, event, direction_event_id
+        return plan, plan_event, direction_event_id
 
     def _run_act(
         self,
@@ -294,6 +282,7 @@ class EpisodeRunner:
             "outcome": actuation.status,
             "adapter": request.context.adapter_label,
             "reasons": actuation.reasons,
+            "synthetic": True,
         }
         event = self._emit_event(
             verb=verb,

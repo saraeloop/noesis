@@ -1,20 +1,31 @@
 # Changelog
 
 ## Unreleased
-### Added
-- Faculty schema registry consolidates version constants for intuition, direction, governance, and insight contracts (`noesis/domain/faculties/versioning.py`).
-- JSON Schemas for faculty payloads ship under `noesis/trace/schema/` with golden fixtures and validation tests ensuring forward compatibility.
-- Canonical hook-order validator guards adapter event sequencing (`noesis/domain/faculties/hooks.py`).
-- Depth-limited `MetaPlanner` with optional `PreActGovernor` gating, selectable via `NOESIS_PLANNER` flag (`meta` by default).
-- Baseline heuristic + LLM intuition shims for deterministic advisory behaviour (`noesis/domain/faculties/intuition.py`).
-- Insight summary now emits versioned per-episode metrics under `summary.insight.metrics`.
+- No public changes yet.
 
-## Breaking / Behavior Changes
+## v0.8.0 – 2025-11-12
+### Added
+- Depth- and beam-limited `MetaPlanner` plus `_apply_directive` support land as the default planner (toggled via `PlannerMode` or `NOESIS_PLANNER`).
+- `PreActGovernor` introduces governance veto/audit events and blocks ACT on `veto`, emitting `direction(status=blocked)` for lineage clarity.
+- Faculty schema registry, versioned JSON Schemas, and golden fixtures keep Intuition, Direction, Governance, and Insight payloads auditable.
+- Deterministic heuristic and LLM intuition shims provide advisory behaviour that can be exercised in tests without remote calls.
+- Insight summaries now expose versioned per-episode metrics (`phase_ms`, `veto_count`, `plan_revisions`, `plan_adherence`, `tool_coverage`, `success`) under `summary["insight"]["metrics"]`.
+- Event bus writers for `direction` and `governance` phases ensure downstream observers receive the enriched cognitive loop.
+
+### Changed
+- EpisodeRunner threads the meta planner and pre-act governance through the cognitive pipeline (`observe → interpret → plan → direction → governance → act/blocked → reflect → finalize`) while preserving causal IDs.
+- Configuration snapshots capture the new planner mode, and the runtime honors `NOESIS_PLANNER=minimal` as the opt-out path.
+- Hook-order validation now tolerates the extended loop and leverages the shared schema registry.
+
+### Tests
+- Added golden and contract suites for the faculty schemas, planner diffs, governance veto/audit coverage, deterministic insight finalization, minimal-mode smoke runs, schema round-trips, and adapter/event goldens.
+
+### Breaking / Behavior Changes
 - **Default planner mode is now `meta`**, which **enables pre-ACT governance**. To retain legacy behavior:
   - Env: `NOESIS_PLANNER=minimal`
   - Code: `ns.set(planner_mode="minimal")`
 
-## Upgrade Notes
+### Upgrade Notes
 - New `direction` and `governance` events appear in traces. Downstream tooling should:
   - Treat unknown phases as no-ops, or handle:
     - `direction.payload.status ∈ {applied, skipped, blocked}`

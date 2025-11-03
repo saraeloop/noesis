@@ -1,5 +1,5 @@
 # Noēsis Milestone Backlogs
-**Program Increment:** v0.7 → v1.0  
+**Program Increment:** v0.8 → v1.0  
 **Audience:** Core Engineering, Research, and QA
 
 ---
@@ -38,47 +38,46 @@ Every update strengthens three dimensions:
 
 | Faculty | Additions | Layer | Status |
 |----------|------------|--------|--------|
-| Intuition | Add probabilistic and LLM-based inference adapters | `domain/faculties/intuition.py` | 🚧 heuristics shipped (v0.7.x) |
-| Direction | Expand planner for meta-planning + success-based weighting | `domain/faculties/direction.py` | 🚧 meta skeleton integrated |
-| Insight | Enable cross-episode metrics + drift detection | `domain/faculties/insight.py` | 🚧 per-episode KPIs in summary |
-| Governance | Introduce veto/trust hooks, enforce ethical constraints | `domain/faculties/governance.py` | 🚧 pre-act gate in runtime |
+| Intuition | Deterministic heuristic and LLM-based advisory shims | `domain/faculties/intuition.py` | ✅ done (v0.8.0) |
+| Direction | Depth/beam-limited MetaPlanner with directive mutation + PlannerMode toggle | `domain/faculties/direction.py`, `domain/planner/meta.py` | ✅ done (v0.8.0) |
+| Insight | Versioned per-episode KPIs persisted under `summary["insight"]["metrics"]` | `domain/faculties/insight.py` | ✅ done (v0.8.0) |
+| Governance | Pre-act governor with audit/veto wiring and blocked ACT lineage | `domain/faculties/governance.py`, `usecases/episode_runner.py` | ✅ done (v0.8.0) |
 
 ### Risks
-- **API drift:** `PlannerDirective`/`GovernanceResult` fields must freeze before adapters adopt them, otherwise downstream tests break twice.
-- **Hook ordering:** Current validator is strict; define tolerated retry/interleave patterns so production runs don’t raise.
-- **Back-compat:** Minimal planner / legacy governance behaviour still assumed in tests; needs shims or flags during rollout.
+- Directive and governance identifiers remain ephemeral; stable IDs are needed for future `caused_by` links.
+- `_apply_directive` surfaces terse errors, making directive/governance conflicts harder to debug.
+- Minimal planner regression path still lacks coverage ensuring no direction/governance phases leak in legacy mode.
 
 ### Next Moves (ship as focused PRs)
-1. **Direction walking skeleton** — MetaPlanner (depth=2, beam=2) returning `PlannerDirective`; EpisodeRunner consumes directives only.
-2. **Governance pre-act** — Inject `governance.pre_act` hook returning `GovernanceResult`; emit audit/veto events and short-circuit ACT on veto.
-3. **Insight finalize** — Compute per-episode KPIs (success, phase latency, veto rate, plan revisions, tool coverage) and persist under `summary["insight"]["metrics"]` with golden fixtures.
-4. **Intuition baselines** — Heuristic policy emitting hints/patches and protocol-only LLM stub with deterministic test double.
-5. **Back-compat flags** — e.g. `NOESIS_PLANNER=meta|minimal` to keep legacy planner available until docs/tests migrate.
-6. **Docs/examples** — Update README + API surface with governance pre-act, new insight metrics, and refreshed trace snippet.
+1. Thread stable IDs through `PlannerDirective` / `GovernanceResult` and propagate them to downstream events.
+2. Harden `_apply_directive` error reporting and governance keyword matching (word boundaries).
+3. Add a minimal-mode regression test guaranteeing no governance/direction events appear when `PlannerMode=minimal`.
+4. Expand docs and examples for governance auditing and planner tuning (README + docs site).
 
 ### Acceptance Checks
-- Direction: deterministic `PlannerDirective` for fixed seed (`tests/direction/test_meta_planner.py`).
-- Governance: ALLOW/AUDIT/VETO pathways emit correct events and block ACT (`tests/governance/test_pre_act.py`).
-- Insight: finalize writes expected metrics (`tests/insight/test_finalize_metrics.py` golden match).
-- Hook order: validator tolerates documented retry sequences (`tests/runtime/test_hook_order.py`).
-- Adapters: LangGraph happy & veto paths match golden schemas.
+- Deterministic `PlannerDirective` diff captured in `tests/direction/test_meta_planner.py`.
+- Governance ALLOW/AUDIT/VETO pathways block ACT and emit events (`tests/governance/test_pre_act.py`).
+- Insight finalize produces versioned metrics that match goldens (`tests/insight/test_finalize_metrics.py`).
+- Hook-order validator accepts documented retry sequences (`tests/runtime/test_hook_order.py`).
+- LangGraph/adapter fixtures assert direction/governance phases (`tests/integration/test_cognitive_events.py`).
 
 ---
 
-## v0.8 — Memory & Loop Fidelity
-**Owner:** Core Runtime **Dependencies:** event schema draft, FAISS toolchain
+## v0.8 — Meta Planner & Governance
+**Owner:** Core Runtime **Dependencies:** schema registry, planner config toggles
 
 ### ✅ Delivered in v0.8.0
-- ✅ Cognitive verbs formalised with metric envelopes (`noesis/domain/state/cognitive.py`)
-- ✅ Causal lineage propagation with `caused_by` IDs across six verbs (`noesis/usecases/episode_runner.py`)
-- ✅ RuntimeClock instrumentation emitting per-phase durations (`noesis/runtime/clock.py`)
-- ✅ Meta-phase hooks + emitter adapters for governance/extensibility (`noesis/usecases/hooks/meta_phase.py`, `noesis/runtime/events_emitter.py`)
+- ✅ Depth/beam-limited `MetaPlanner` with `_apply_directive` mutations and PlannerMode toggle (`noesis/domain/planner/meta.py`, `noesis/domain/faculties/direction.py`).
+- ✅ `PreActGovernor` gating ACT with audit/veto events and blocked direction lineage (`noesis/domain/faculties/governance.py`, `noesis/usecases/episode_runner.py`).
+- ✅ Faculty schema registry, versioned JSON Schemas, and golden fixtures guarding payload contracts (`noesis/domain/faculties/versioning.py`, `noesis/trace/schema/`).
+- ✅ Insight metrics builder emitting deterministic KPIs to `summary["insight"]["metrics"]` with versioned shapes (`noesis/domain/faculties/insight.py`).
 
 ### 📏 Acceptance Evidence
-- Replay harness exercises episode traces with metrics attached (see `tests/integration/test_cognitive_events.py`)
-- Lineage tracker coverage validated in unit tests (`tests/domain/test_cognitive_lineage.py`)
-- RuntimeClock unit tests confirm positive durations (`tests/runtime/test_clock.py`)
-- Diagnostics guardrails pending CI integration (tracked under Foundations)
+- `tests/direction/test_meta_planner.py` snapshots planner diffs deterministically.
+- `tests/governance/test_pre_act.py` covers allow/audit/veto pathways and ACT blocking.
+- `tests/insight/test_finalize_metrics.py` golden-matches insight metrics output.
+- `tests/runtime/test_hook_order.py` validates the extended hook sequencing.
+- `tests/integration/test_cognitive_events.py` exercises direction/governance phases end-to-end.
 
 ---
 

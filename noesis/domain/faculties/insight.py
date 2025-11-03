@@ -75,6 +75,11 @@ def _first_event_time(events: Iterable[Dict[str, Any]], phase: str) -> Optional[
     return None
 
 
+def _is_synthetic(event: Mapping[str, Any]) -> bool:
+    payload = event.get("payload")
+    return isinstance(payload, Mapping) and bool(payload.get("synthetic"))
+
+
 try:
     from dateutil import parser as _parser  # type: ignore
 
@@ -114,10 +119,27 @@ def _success_from_events(events: List[Dict[str, Any]]) -> int:
 def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute roll-up metrics from an episode summary + event stream."""
     direction_events = [event for event in events if event.get("phase") == "direction"]
-    plan_events = [event for event in events if event.get("phase") == "plan"]
+    plan_events = [
+        event
+        for event in events
+        if event.get("phase") == "plan" and not _is_synthetic(event)
+    ]
     reflect_events = [event for event in events if event.get("phase") == "reflect"]
-    act_events = [event for event in events if event.get("phase") == "act"]
-    interpret_events = [event for event in events if event.get("phase") == "interpret"]
+    act_events = [
+        event
+        for event in events
+        if event.get("phase") == "act" and not _is_synthetic(event)
+    ]
+    interpret_events = [
+        event for event in events if event.get("phase") == "interpret"
+    ]
+
+    planned_steps = 0
+    if plan_events:
+        plan_payload = plan_events[-1].get("payload") or {}
+        steps_field = plan_payload.get("steps")
+        if isinstance(steps_field, Sequence):
+            planned_steps = sum(1 for step in steps_field if isinstance(step, str))
 
     applied = [
         event
@@ -177,6 +199,7 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         "direction_vetoed": len(vetoed),
         "direction_applied_rate": direction_applied_rate,
         "top_reasons": top_reasons,
+        "plan_total": planned_steps,
         "latencies": {
             "first_action_ms": first_action_latency_ms,
             "time_to_veto_ms": time_to_veto_ms,
@@ -210,8 +233,16 @@ def build_insight_metrics(
     summary_metrics = summary_metrics or {}
     phase_ms: Dict[str, Optional[int]] = {}
     direction_events = [event for event in events if event.get("phase") == "direction"]
-    plan_events = [event for event in events if event.get("phase") == "plan"]
-    act_events = [event for event in events if event.get("phase") == "act"]
+    plan_events = [
+        event
+        for event in events
+        if event.get("phase") == "plan" and not _is_synthetic(event)
+    ]
+    act_events = [
+        event
+        for event in events
+        if event.get("phase") == "act" and not _is_synthetic(event)
+    ]
 
     for event in events:
         phase = event.get("phase")
@@ -219,9 +250,12 @@ def build_insight_metrics(
         duration = metrics.get("duration_ms")
         if phase in {"observe", "interpret", "plan", "act", "reflect"} and duration is not None:
             try:
-                phase_ms[phase] = int(duration)
+                duration_val = float(duration)
             except (ValueError, TypeError):
                 continue
+            if duration_val <= 0:
+                continue
+            phase_ms[phase] = max(1, int(ceil(duration_val)))
 
     veto_count = sum(
         1
@@ -234,15 +268,32 @@ def build_insight_metrics(
         if (event.get("payload") or {}).get("status") == "applied"
     )
     branching_factor = float(summary_metrics.get("direction_events", len(direction_events)))
-    plan_total = summary_metrics.get("plan_count", len(plan_events))
-    executed_steps = summary_metrics.get("act_count", len(act_events))
+    plan_total_value: Optional[float] = None
+    summary_plan_total = summary_metrics.get("plan_total")
+    if isinstance(summary_plan_total, (int, float)) and summary_plan_total > 0:
+        plan_total_value = float(summary_plan_total)
+    elif plan_events:
+        last_plan_payload = plan_events[-1].get("payload") or {}
+        steps_field = last_plan_payload.get("steps")
+        if isinstance(steps_field, Sequence):
+            plan_total_value = float(
+                sum(1 for step in steps_field if isinstance(step, str))
+            )
+    if plan_total_value is None or plan_total_value <= 0:
+        summary_steps = summary_metrics.get("steps")
+        if isinstance(summary_steps, (int, float)) and summary_steps > 0:
+            plan_total_value = float(summary_steps)
+        else:
+            plan_total_value = float(len(act_events))
+
+    executed_steps_raw = summary_metrics.get("act_count")
+    if isinstance(executed_steps_raw, (int, float)):
+        executed_steps = float(executed_steps_raw)
+    else:
+        executed_steps = float(len(act_events))
     plan_adherence = 0.0
-    try:
-        plan_total_val = float(plan_total)
-    except (TypeError, ValueError):
-        plan_total_val = 0.0
-    if plan_total_val > 0:
-        plan_adherence = float(executed_steps) / plan_total_val
+    if plan_total_value > 0:
+        plan_adherence = executed_steps / plan_total_value
 
     success_flag = bool(summary_metrics.get("success", 0))
 

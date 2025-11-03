@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.planner.minimal import MinimalActuator, MinimalPlanner
-from noesis.domain.state import ActionRecord, NoesisState, PlanKind
+from noesis.domain.state import ActionRecord, CognitiveEvent, CognitiveVerb, NoesisState, PlanKind
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.usecases.episode_runner import (
     EpisodeDependencies,
@@ -18,9 +18,13 @@ class DummyEventBus(EventBus):
         self.actions: list[ActionRecord] = []
         self.reflected: tuple[bool, list[str]] | None = None
 
-    def emit_plan(self, *, steps, rationale: str, source: str, metrics=None, caused_by=None) -> UUID:  # type: ignore[override]
+    def emit_plan(self, *, steps, rationale: str, source: str, metrics=None, caused_by=None) -> CognitiveEvent:  # type: ignore[override]
         self.plan_steps = list(steps)
-        return uuid4()
+        return CognitiveEvent(
+            episode_id="ep_test",
+            verb=CognitiveVerb.PLAN,
+            payload={"steps": [step.id for step in steps]},
+        )
 
     def emit_direction(self, *, directive, caused_by=None) -> UUID:  # type: ignore[override]
         return uuid4()
