@@ -51,6 +51,10 @@ jobs:
           which pnpm
           pnpm -v
 
+      - name: Install docs dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
       - name: Validate export surface
         run: python scripts/validate_exports.py --strict
 
