@@ -1,64 +1,65 @@
 # Noēsis Release Readiness Checklist
 
-This checklist turns the stability guidelines into concrete actions for every public release. 
-It assumes you are working from a clean branch, targeting a tagged semantic version.
+This checklist turns the stability guidelines into a repeatable public release ritual. 
+Start from a clean branch, confirm the freeze window is active, and target a tagged semantic version.
+
+**Legend**
+- `[Manual]` requires a human to execute or confirm.
+- `[CI]` runs automatically; ensure the pipeline signal is green.
+
+## 0. Freeze window administration
+- [Manual] Announce the v1.0 freeze window (≥ 3 weeks before GA) and pin it in `RELEASE.md` + `#announcements`.
+- [Manual] Apply GitHub labels `freeze-candidate` / `post-1.0` and move deferred work into the 1.1 board.
+- [CI] Confirm the schema-diff guard (post-freeze blocker) is enabled and green for the current default branch.
 
 ## 1. Freeze public interfaces
-
-- [ ] Update `CHANGELOG.md` with highlights and breaking-change notes.
-- [ ] Confirm `noesis.__version__`, `SUMMARY_SCHEMA_VERSION`, and state schema
-      constants are bumped as needed.
-- [ ] Review public APIs (`run`, `solve`, CLI commands, adapters) for backwards
-      compatibility; document any deprecations with timelines.
-- [ ] Regenerate or refresh reference docs that mirror the exported contracts.
+- [Manual] Update `CHANGELOG.md` with highlights and migration notes; link the version matrix excerpt.
+- [Manual] Bump `noesis.__version__`, `SUMMARY_SCHEMA_VERSION`, and any state schema constants.
+- [Manual] Verify no deprecated shims are importable without `NOESIS_LEGACY_SHIMS=1`; remove stragglers.
+- [Manual] Confirm exported modules match the documented API surface (CLI, adapters, helpers).
+- [Manual] Run `uv run scripts/validate_exports.py --strict` to diff `__all__` vs. docs; commit results.
+- [Manual] Lock schema and policy version tuples in `noesis/trace/schema/__init__.py` and `noesis/domain/faculties/versioning.py`.
+- [CI] Ensure the release freeze guard rejects backwards-incompatible schema bumps once the freeze starts.
 
 ## 2. Validate runtime durability
-
-- [ ] Run `uv run python -m pytest` (or your chosen runner) and ensure all
-      suites pass.
-- [ ] Exercise the Observe → Interpret → Plan → Act → Reflect → Learn loop with
-      representative adapters. Capture event logs for at least one minimal run
-      and one external adapter run.
-- [ ] Stress the runtime context resolution (CLI `--port`, `noesis.toml`,
-      entry-point plugins) in isolated environments.
-- [ ] Verify crash recovery by inspecting partially written runs (terminate a
-      run mid-flight and confirm summaries remain well-formed).
+- [Manual] Run `uv run python -m pytest` (or your standard runner) and confirm all suites pass.
+- [Manual] Execute two representative episodes (minimal + external adapter) and archive `events.jsonl` + summaries.
+- [Manual] Run `noesis diagnostics --replay tests/fixtures/demo_run` and confirm metrics match the golden tolerance.
+- [Manual] Terminate a governed run mid-flight (SIGINT) and verify `summary.status="aborted"` with valid `phase_ms`.
+- [Manual] Run a governed episode (`PlannerMode=governed`) and confirm veto propagation through governance → direction → insight logs.
 
 ## 3. Configuration and CLI checks
-
-- [ ] Execute `noesis diagnostics` (added in this release) and confirm all
-      checks report `ok`. Address any warnings before continuing.
-- [ ] Verify `PlannerMode` overrides (`NOESIS_PLANNER`, `ns.set(planner_mode=...)`)
-      flip governance on/off and emit the expected `direction` / `governance`
-      phases.
-- [ ] Validate CLI ergonomics on both bash and zsh, including quoted `--port`
-      specs.
-- [ ] Re-run `noesis validate-ports --json` to snapshot declared port APIs.
+- [Manual] Execute `noesis diagnostics` and clear any warnings before proceeding.
+- [Manual] Flip `PlannerMode` via `NOESIS_PLANNER` and `ns.set(planner_mode=...)`; ensure direction/governance phases appear or disappear appropriately.
+- [Manual] Validate CLI ergonomics on bash and zsh: quoted `--port` specs, `noesis view`, `noesis migrate`, `python -m noesis`.
+- [Manual] Install extras: `pip install .[migrate]`, `pip install .[ui]` and confirm clean imports plus dependency lists.
+- [Manual] Regenerate and spot-check shell completions (`noesis completion bash/zsh`).
+- [CI] Confirm the `cli-smoke` job runs every CLI command with `--help` and is green.
 
 ## 4. Learning and policy safeguards
-
-- [ ] Inspect `learn_home` for applied policy updates; ensure every applied
-      proposal has a reversible handle.
-- [ ] Audit direction policies for confidence thresholds, veto behaviour, and
-      experimental features toggles.
-- [ ] Confirm `policy_aliases` are current and documented.
+- [Manual] Inspect `learn_home` for applied policy updates; ensure every proposal has a reversible handle with a signed diff.
+- [Manual] Audit direction policies for confidence thresholds, veto behavior, and experimental toggles.
+- [Manual] Confirm `policy_aliases` are up to date, documented, and covered by tests.
+- [Manual] Re-run `pytest tests/learning/test_policy_proposals.py` after any governance change.
+- [Manual] Execute `noesis learn audit` to surface orphaned or un-reverted proposals.
+- [Manual] Compare `policy_score` trends across recent benchmark runs (target ≥ 10 % improvement or ≤ 5 % regression).
 
 ## 5. Operational readiness
-
-- [ ] Produce a signed wheel / sdist via `uv build` (or equivalent) and capture
-      hashes.
-- [ ] Generate the SBOM / dependency audit and archive it alongside the build.
-- [ ] Smoke test the built artifact inside a clean virtual environment.
-- [ ] Update deployment playbooks, dashboards, and any external monitoring
-      integrations.
+- [Manual] Build signed artifacts: `uv build --sign --metadata release.yaml`; archive hashes.
+- [Manual] Generate SBOM and attestations (`scripts/generate_sbom.sh` → `dist/noesis-vX.Y.Z-sbom.json`).
+- [Manual] Create a clean virtual environment, install `dist/noesis-*.whl` with `pip install --no-deps`, and confirm import fidelity.
+- [Manual] Smoke-test CLI (`noesis run "Hello"`, `noesis view last`) inside the clean environment.
+- [Manual] Set `NOESIS_OTLP_URL` to a mock endpoint and ensure telemetry gracefully falls back or succeeds.
+- [Manual] Update deployment playbooks, dashboards, and monitoring integrations with the new version.
 
 ## 6. Finalise release artefacts
+- [Manual] Tag the release: `git tag -s vX.Y.Z -m "Noēsis vX.Y.Z"` and push with signatures.
+- [Manual] Draft the GitHub release; attach wheels, SBOM, hashes, and the changelog excerpt.
+- [Manual] Paste the runtime × schema × policy version matrix table into the release notes.
+- [CI] Confirm the docs link checker (`pnpm nextra check-links` or equivalent) passes on the release commit.
+- [Manual] Announce support timelines and upgrade guidance (Docs site, X, internal Slack) with a `noesis migrate` cheat sheet.
 
-- [ ] Tag the release (`git tag vX.Y.Z`) once all checks pass.
-- [ ] Attach release notes, changelog excerpt, and verified hashes.
-- [ ] Announce support timelines and upgrade guidance, calling out policy or
-      schema changes explicitly.
+## Optional automation
+- [Manual] Run `uv run scripts/pre_release.py --check-all` if available; this helper aggregates lint, tests, docs, link checks, and version assertions into a single ✅ / ❌ summary.
 
-Keep the checklist under version control and revise it whenever the platform
-gains new capabilities or operational requirements. That way every public
-release follows the same transparent playbook.
+Keep the checklist under version control and revise it whenever the platform gains new capabilities or operational requirements. That way every public release follows the same transparent playbook.

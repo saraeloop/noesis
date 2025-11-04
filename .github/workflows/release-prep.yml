@@ -1,0 +1,63 @@
+name: Release Contracts
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Sync Python dependencies
+        run: uv sync
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: "docs/pnpm-lock.yaml"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: "8"
+
+      - name: Enable corepack
+        run: corepack enable && pnpm -v
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate export surface
+        run: python scripts/validate_exports.py --strict
+
+      - name: Execute pre-release checks
+        run: python scripts/pre_release.py --check-all --execute
+
+      - name: Upload pre-release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prerelease-logs
+          path: |
+            .noesis/prerelease
+            coverage.xml
+          if-no-files-found: ignore

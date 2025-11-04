@@ -1,0 +1,52 @@
+name: PR Contracts
+
+on:
+  pull_request:
+    paths:
+      - "noesis/**"
+      - "docs/**"
+      - "scripts/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "RELEASE.md"
+      - "ROADMAP.md"
+      - ".github/workflows/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run-contracts:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Validate export surface
+        run: python scripts/validate_exports.py --strict
+
+      - name: Pre-release dry run
+        run: python scripts/pre_release.py --check-all
+
+      - name: Upload pre-release summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prerelease-summary-${{ matrix.python }}
+          path: |
+            .noesis/prerelease
+          if-no-files-found: ignore

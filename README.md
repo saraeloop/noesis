@@ -1,5 +1,8 @@
 # Noēsis (νόησις)
 
+[![PR Contracts](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml)
+[![Release Prep](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml)
+
 _Understanding, made observable._
 
 Noēsis is a lightweight Python cognitive framework for orchestrating, tracing, and improving agentic reasoning workflows.  
