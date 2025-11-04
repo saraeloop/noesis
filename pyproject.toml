@@ -34,6 +34,7 @@ dev = [
   "jsonschema>=4.21",
   "ruff>=0.5",
   "import-linter>=2.0",
+  "build>=1.0.0",
 ]
 langgraph = [
   "langgraph>=0.0.45",
@@ -46,6 +47,7 @@ dev = [
   "jsonschema>=4.21",
   "ruff>=0.5",
   "import-linter>=2.0",
+  "build>=1.0.0",
 ]
 ui = [
   "rich>=14.2.0",
@@ -54,9 +56,6 @@ ui = [
   "streamlit>=1.51.0",
 ]
 migrate = ["libcst>=1.5.0"]
-
-[tool.uv]
-default-groups = ["dev"]
 
 [project.scripts]
 noesis = "noesis.cli.__main__:main"

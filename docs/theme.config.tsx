@@ -1,7 +1,6 @@
 import React from 'react'
-import type { DocsThemeConfig } from 'nextra-theme-docs'
 
-const themeConfig: DocsThemeConfig = {
+const themeConfig = {
   logo: (
     <div className="flex items-center gap-2 font-semibold leading-none text-slate-100">
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[#7c3aed] via-[#6366f1] to-[#22d3ee] text-base text-white shadow-[0_0_18px_rgba(99,102,241,0.45)]">

@@ -74,7 +74,7 @@ CHECKS: List[Check] = [
     ),
     Check(
         name="build-wheel",
-        command=["uv", "build"],
+        command=["uv", "run", "python", "-m", "build"],
         description="Build distribution artifacts to confirm packaging health.",
     ),
 ]
