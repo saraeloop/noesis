@@ -21,6 +21,7 @@ class Check:
     command: List[str]
     description: str
     env: Optional[Dict[str, str]] = None
+    cwd: Optional[str] = None
 
 
 CHECKS: List[Check] = [
@@ -50,9 +51,10 @@ CHECKS: List[Check] = [
         description="Ensure documented exports match the public surface.",
     ),
     Check(
-        name="lint-docs",
-        command=["pnpm", "--dir", "docs", "nextra", "check-links"],
-        description="Validate docs links (matches release checklist).",
+        name="docs-build",
+        command=["pnpm", "run", "build"],
+        description="Build docs site to catch broken links and compilation issues.",
+        cwd="docs",
     ),
     Check(
         name="telemetry-smoke",
@@ -136,7 +138,7 @@ def run_check(check: Check, execute: bool) -> bool:
         env = None
         if check.env:
             env = {**os.environ, **check.env}
-        subprocess.run(check.command, check=True, env=env)
+        subprocess.run(check.command, check=True, env=env, cwd=check.cwd)
         return True
     except subprocess.CalledProcessError as exc:
         LOG.error("Check %s failed with exit code %s", check.name, exc.returncode)
