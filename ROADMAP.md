@@ -97,21 +97,25 @@ Every update strengthens three dimensions:
 
 ---
 
-## v0.9 — Governance, Insight & Direction
-**Owner:** Safety, Insight & Reasoning  
-**Dependencies:** governance schema merged; learning metrics emitted; **Direction ToT success metrics running in diagnostics (governance work MUST wait until this gate passes)**
+## v0.9 — Shim retirement & episode UX
+**Owner:** Core Runtime & DX  
+**Dependencies:** governance schema merged; insight metrics stable (v0.8)
 
-### Backlog
-- Define **GovernancePolicy contract** + evaluation semantics
-- Implement **veto/trust loop**, emit `governance.audit|veto`
-- Build **InsightAggregator** for cross-episode KPIs
-- Expand **Direction** for **Tree-of-Thoughts** multi-hypothesis reasoning with heuristics + pruning
+### ✅ Delivered in v0.9.0
+- **Codemod:** `noesis migrate` rewrites deprecated shims to the stable surface with LibCST + TODO reporting.
+- **Episode viewer:** `noesis view` renders KPIs, governance decisions, and validation warnings (plain + Rich renderers).
+- **Shim removal:** legacy aliases disabled by default; temporary `NOESIS_LEGACY_SHIMS=1` escape hatch logs loud warnings.
+- **Insight polish:** reflect-only wins count as success; phase durations clamp to ≥ 1 ms for deterministic KPIs.
+- **Docs:** API surface reference + “Upgrading to v0.9” guide covering codemod flow and manual fixes.
 
-### ✅ Acceptance Tests
-- Veto blocks unsafe action → no downstream side effects
-- `diagnostics --governance` trust ratio ≥ 0.7
-- `insight --trend` computes drift < 8 min on 20 episodes
-- **Direction (ToT)** benchmarks: ≥ 80 % success (↑ from 60 %), branch depth metrics ≤ 5 % variance
+### 📏 Acceptance Evidence
+- `tests/tools/test_migrate.py` verifies codemod rewrites and idempotency.
+- `tests/cli/test_viewer_plain.py` snapshots KPIs/phases; `tests/cli/test_viewer_utils.py` clamps durations.
+- `tests/public/test_removed_symbols.py` + `tests/public/test_public_imports.py` enforce shim removal and env-guard reactivation.
+
+### 🔜 Next
+- Textual/TUI viewer (see v1.0 backlog) spawns from the CLI work.
+- Direction ToT / governance benchmarking continues under the curriculum milestone.
 
 ---
 
@@ -124,6 +128,9 @@ Every update strengthens three dimensions:
 - Freeze **schema/ports**, add version guard
 - Implement **signed build CI/CD** path
 - Integrate **Meta-CoT & Self-Discover** benchmarks into curriculum metrics
+- Ship **Textual episode viewer (TUI)** behind `noesis[ui]` with timeline/metrics/governance panes
+- Add **`noesis new-episode --danger-demo`** helper to seed sandbox runs for demos
+- Draft **release notes** template covering migration table + viewer walkthrough
 
 ### ✅ Acceptance Tests
 - Curriculum runs (smoke + regression + Meta-CoT) auto-compare outputs

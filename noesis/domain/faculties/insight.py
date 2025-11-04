@@ -109,10 +109,19 @@ def _ms_between(start: Optional[str], finish: Optional[str]) -> Optional[int]:
 
 
 def _success_from_events(events: List[Dict[str, Any]]) -> int:
+    reflect_success: Optional[bool] = None
     for event in reversed(events):
-        if event.get("phase") == "terminate":
+        phase = event.get("phase")
+        if phase == "terminate":
             status = (event.get("payload") or {}).get("status")
             return 1 if status == "ok" else 0
+        if reflect_success is None and phase == "reflect":
+            payload = event.get("payload") or {}
+            value = payload.get("success")
+            if isinstance(value, bool):
+                reflect_success = value
+    if reflect_success is not None:
+        return 1 if reflect_success else 0
     return 0
 
 
@@ -253,7 +262,7 @@ def build_insight_metrics(
                 duration_val = float(duration)
             except (ValueError, TypeError):
                 continue
-            if duration_val <= 0:
+            if duration_val < 0:
                 continue
             phase_ms[phase] = max(1, int(ceil(duration_val)))
 

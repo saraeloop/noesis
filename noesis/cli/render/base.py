@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Protocol
 
+from ..viewer import EpisodeView
+
 
 class OutputRenderer(Protocol):
     def banner(self, text: str) -> None: ...
@@ -15,3 +17,5 @@ class OutputRenderer(Protocol):
     def print_events(self, events: Iterable[Dict[str, Any]]) -> None: ...
 
     def json(self, data: Any) -> None: ...
+
+    def print_viewer(self, view: EpisodeView, *, grep: str | None = None) -> None: ...

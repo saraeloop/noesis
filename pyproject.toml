@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noesis"
-version = "v0.8.0"
+version = "v0.9.0"
 description = "Noēsis — a framework for intuition-guided agentic reasoning."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
@@ -19,47 +19,47 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 # Runtime deps only (none yet)
-dependencies = [
-    "pillow>=11.3.0",
-    "python-dateutil>=2.9.0.post0",
-    "rich>=14.2.0",
-    "rich-argparse>=1.7.1",
-    "streamlit>=1.51.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
-langgraph = [
-  "langgraph>=0.0.45",
-  "langchain>=0.1.0",
+migrate = ["libcst>=1.5.0"]
+ui = [
+  "rich>=14.2.0",
+  "rich-argparse>=1.7.1",
+  "textual>=0.79.0",
+  "streamlit>=1.51.0",
 ]
 dev = [
   "pytest>=7.4",
+  "jsonschema>=4.21",
   "ruff>=0.5",
   "import-linter>=2.0",
-  "jsonschema>=4.21",
 ]
-ui = [
-  "gradio>=4.40",
-  "streamlit>=1.39",
+langgraph = [
+  "langgraph>=0.0.45",
+  "langchain>=0.1.0",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=7.4",
+  "jsonschema>=4.21",
   "ruff>=0.5",
   "import-linter>=2.0",
-  "jsonschema>=4.21",
 ]
 ui = [
-  "gradio>=4.40",
-  "streamlit>=1.39",
+  "rich>=14.2.0",
+  "rich-argparse>=1.7.1",
+  "textual>=0.79.0",
+  "streamlit>=1.51.0",
 ]
+migrate = ["libcst>=1.5.0"]
 
 [tool.uv]
 default-groups = ["dev"]
 
 [project.scripts]
-noesis = "noesis.cli:main"
+noesis = "noesis.cli.__main__:main"
 
 
 [project.urls]

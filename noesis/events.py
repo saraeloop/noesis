@@ -7,9 +7,7 @@ aliases with shorter verb names.
 
 from __future__ import annotations
 
-from functools import wraps
 from typing import Any, Dict, Iterable
-from warnings import warn
 
 from .runtime.events import (
     act_event as _act_event,
@@ -24,6 +22,7 @@ from .runtime.events import (
     direction_event as _direction_event,
 )
 from .io import events as _events_fn
+from .deprecated import emit_legacy_warning, legacy_shims_enabled
 
 __all__ = [
     "read",
@@ -110,29 +109,51 @@ def last_event_of_phase(*args: Any, **kwargs: Any) -> Dict[str, Any] | None:
     return _last_event_of_phase(*args, **kwargs)
 
 
-def _deprecated(name: str, replacement: str):
-    def decorator(fn):
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any):
-            warn(
-                f"'noesis.events.{name}' is deprecated; use 'noesis.events.{replacement}' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return fn(*args, **kwargs)
+if legacy_shims_enabled():
+    def start_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.start_event")
+        start(*args, **kwargs)
 
-        return wrapper
+    def observe_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.observe_event")
+        observe(*args, **kwargs)
 
-    return decorator
+    def interpret_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.interpret_event")
+        interpret(*args, **kwargs)
 
+    def plan_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.plan_event")
+        plan(*args, **kwargs)
 
-# Backwards compatibility shims with deprecation warnings.
-start_event = _deprecated("start_event", "start")(start)
-observe_event = _deprecated("observe_event", "observe")(observe)
-interpret_event = _deprecated("interpret_event", "interpret")(interpret)
-plan_event = _deprecated("plan_event", "plan")(plan)
-act_event = _deprecated("act_event", "act")(act)
-reflect_event = _deprecated("reflect_event", "reflect")(reflect)
-direction_event = _deprecated("direction_event", "direction")(direction)
-ensure_act_event = _deprecated("ensure_act_event", "ensure")(ensure)
-terminate_event = _deprecated("terminate_event", "terminate")(terminate)
+    def act_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.act_event")
+        act(*args, **kwargs)
+
+    def reflect_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.reflect_event")
+        reflect(*args, **kwargs)
+
+    def direction_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.direction_event")
+        direction(*args, **kwargs)
+
+    def ensure_act_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.ensure_act_event")
+        ensure(*args, **kwargs)
+
+    def terminate_event(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.events.terminate_event")
+        terminate(*args, **kwargs)
+
+    __all__ += [
+        "start_event",
+        "observe_event",
+        "interpret_event",
+        "plan_event",
+        "act_event",
+        "reflect_event",
+        "direction_event",
+        "ensure_act_event",
+        "terminate_event",
+    ]

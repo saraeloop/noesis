@@ -9,6 +9,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.syntax import Syntax
 
+from ..viewer import EpisodeView, TimelineRow, ValidationIssue
+
 
 class RichRenderer:
     def __init__(self, console: Console, *, quiet: bool = False) -> None:
@@ -122,3 +124,98 @@ class RichRenderer:
     def json(self, data: Any) -> None:
         src = json.dumps(data, indent=2, ensure_ascii=False)
         self.console.print(Syntax(src, "json", word_wrap=True))
+
+    def _filter_timeline(self, rows: Iterable[TimelineRow], grep: str | None) -> list[TimelineRow]:
+        if not grep:
+            return list(rows)
+        terms = [term.strip().lower() for term in grep.split() if term.strip()]
+        filtered: list[TimelineRow] = []
+        for row in rows:
+            haystack = f"phase={row.phase} agent={row.agent} note={row.note}".lower()
+            if all(term in haystack for term in terms):
+                filtered.append(row)
+        return filtered
+
+    def _render_validation(self, issues: Iterable[ValidationIssue]) -> None:
+        issues = list(issues)
+        if not issues:
+            return
+        body = "\n".join(f"[err]•[/] {issue.format()}" for issue in issues)
+        self.console.print(Panel(body, title="[title]Validation[/]", border_style="red"))
+
+    def print_viewer(self, view: EpisodeView, *, grep: str | None = None) -> None:
+        header = view.header
+        header_table = Table.grid(padding=(0, 1))
+        header_table.add_row(Text("episode_id", style="key"), Text(str(header.get("episode_id")), style="val"))
+        header_table.add_row(Text("started_at", style="key"), Text(str(header.get("started_at")), style="val"))
+        header_table.add_row(Text("planner_mode", style="key"), Text(str(header.get("planner_mode")), style="val"))
+        intuition = "on" if header.get("intuition_enabled") else "off"
+        header_table.add_row(Text("intuition", style="key"), Text(intuition, style="val"))
+        if header.get("using"):
+            header_table.add_row(Text("using", style="key"), Text(str(header.get("using")), style="val"))
+        policies = header.get("policies") or []
+        if policies:
+            header_table.add_row(Text("policies", style="key"), Text(", ".join(str(p) for p in policies), style="val"))
+        ports = header.get("ports")
+        if isinstance(ports, dict) and ports:
+            ports_text = ", ".join(f"{k}={v}" for k, v in ports.items())
+            header_table.add_row(Text("ports", style="key"), Text(ports_text, style="muted"))
+        self.console.print(Panel(header_table, title="[title]Episode[/]"))
+
+        kpis = view.kpis
+        kpi_table = Table.grid(padding=(0, 1))
+        kpi_table.add_row(Text("success", style="key"), Text(str(kpis.get("success")), style="ok" if kpis.get("success") else "err"))
+        kpi_table.add_row(Text("plan_adherence", style="key"), Text(str(kpis.get("plan_adherence")), style="val"))
+        kpi_table.add_row(Text("veto_count", style="key"), Text(str(kpis.get("veto_count")), style="val"))
+        kpi_table.add_row(Text("tool_coverage", style="key"), Text(str(kpis.get("tool_coverage")), style="val"))
+        phase_ms = kpis.get("phase_ms") or {}
+        if phase_ms:
+            phase_table = Table.grid(padding=(0, 1))
+            for phase, value in phase_ms.items():
+                phase_table.add_row(Text(phase, style="key"), Text(f"{value} ms", style="val"))
+            kpi_table.add_row(Text("phase_ms", style="key"), phase_table)
+        self.console.print(Panel(kpi_table, title="[title]KPIs[/]"))
+
+        if view.governance:
+            gov = view.governance
+            gov_table = Table.grid(padding=(0, 1))
+            gov_table.add_row(Text("decision", style="key"), Text(str(gov.get("decision")), style="val"))
+            gov_table.add_row(Text("rule_id", style="key"), Text(str(gov.get("rule_id")), style="val"))
+            if gov.get("policy_id"):
+                policy = f"{gov.get('policy_id')}@{gov.get('policy_version')}" if gov.get("policy_version") else gov.get("policy_id")
+                gov_table.add_row(Text("policy", style="key"), Text(str(policy), style="val"))
+            if gov.get("message"):
+                gov_table.add_row(Text("message", style="key"), Text(str(gov.get("message")), style="val"))
+            if gov.get("time_to_veto_ms") is not None:
+                gov_table.add_row(Text("time_to_veto_ms", style="key"), Text(str(gov.get("time_to_veto_ms")), style="val"))
+            self.console.print(Panel(gov_table, title="[title]Governance[/]", border_style="yellow"))
+
+        rows = self._filter_timeline(view.timeline, grep)
+        timeline_table = Table(
+            show_header=True,
+            header_style="title",
+            box=None,
+            expand=True,
+            pad_edge=False,
+        )
+        timeline_table.add_column("TS", style="muted", no_wrap=True)
+        timeline_table.add_column("Δ", style="muted", no_wrap=True)
+        timeline_table.add_column("PHASE", style="val", no_wrap=True)
+        timeline_table.add_column("AGENT", style="muted", no_wrap=True)
+        timeline_table.add_column("NOTE", style="val")
+
+        if not rows:
+            timeline_table.add_row("-", "-", "-", "-", "no events matched")
+        else:
+            for row in rows:
+                phase_style = f"phase.{row.phase}" if f"phase.{row.phase}" in self.console.theme.styles else "val"
+                timeline_table.add_row(
+                    row.timestamp or "",
+                    row.delta_label(),
+                    Text(row.phase, style=phase_style),
+                    Text(row.agent, style="muted"),
+                    Text(row.note or "", style="val"),
+                )
+        self.console.print(timeline_table)
+
+        self._render_validation(view.validation)

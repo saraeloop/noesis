@@ -24,7 +24,19 @@ def _build_global_parser() -> argparse.ArgumentParser:
 def build_parser(formatter_class: type[argparse.HelpFormatter]) -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     global_parser = _build_global_parser()
     quick = "Quick start:\n  noesis run \"Summarize this repo\"\n  noesis solve react \"Weekly plan\"\n  noesis insight <episode_id> -j"
-    cheat = "Cheat sheet:\n  run       baseline episode\n  solve     adapter episode\n  list      recent runs\n  show      episode summary\n  events    stream events\n  insight   computed metrics snapshot\n  version   CLI + core versions\n  new       experimental scaffolder"
+    cheat = (
+        "Cheat sheet:\n"
+        "  run       baseline episode\n"
+        "  solve     adapter episode\n"
+        "  list      recent runs\n"
+        "  show      episode summary\n"
+        "  view      timeline + governance report\n"
+        "  events    stream events\n"
+        "  insight   computed metrics snapshot\n"
+        "  migrate   update deprecated shims\n"
+        "  version   CLI + core versions\n"
+        "  new       experimental scaffolder"
+    )
     version_line = f"noesis {getattr(ns, '__version__', 'unknown')}"
     parser = argparse.ArgumentParser(
         prog="noesis",

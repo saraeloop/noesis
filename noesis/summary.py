@@ -9,9 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .deprecated import emit_legacy_warning, legacy_shims_enabled
 from .io import summary as _summary_fn
-from warnings import warn
-
 from .runtime.summary import finalize_summary as _finalize_summary
 
 __all__ = ["read", "finalize"]
@@ -56,19 +55,13 @@ def finalize(
     )
 
 
-def load(*args: Any, **kwargs: Any) -> Dict[str, Any]:
-    warn(
-        "'noesis.summary.load' is deprecated; use 'noesis.summary.read' instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return read(*args, **kwargs)
+if legacy_shims_enabled():
+    def load(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+        emit_legacy_warning("noesis.summary.load")
+        return read(*args, **kwargs)
 
+    def finalize_summary(*args: Any, **kwargs: Any) -> None:
+        emit_legacy_warning("noesis.summary.finalize_summary")
+        finalize(*args, **kwargs)
 
-def finalize_summary(*args: Any, **kwargs: Any) -> None:
-    warn(
-        "'noesis.summary.finalize_summary' is deprecated; use 'noesis.summary.finalize' instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    finalize(*args, **kwargs)
+    __all__ += ["load", "finalize_summary"]

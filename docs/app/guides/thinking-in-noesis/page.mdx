@@ -55,6 +55,18 @@ flowchart TD
 
 The legend highlights the three Noēsis faculties: **Intuition** (policy), **Direction** (execution), and **Insight** (evaluation). Human review slots neatly between Act and Reflect so you can approve, edit, or reject decisions before they land.
 
+## Intuition gives Direction
+
+While traditional agent frameworks reason and act from explicit objectives,
+intuition introduces a lightweight prior that constrains the planner’s search space
+and improves decision latency.
+
+Noēsis models intuition as a heuristic inference layer — implemented via fast LLM or
+rule-based policies — that seeds Direction with contextual priors.
+
+This principle forms the bridge between perception and planning, enabling agents
+to act faster, safer, and more coherently across episodes.
+
 ## Start with the process you need to automate
 
 Imagine a triage agent for support emails. You may need to:

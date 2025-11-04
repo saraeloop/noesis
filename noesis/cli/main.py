@@ -37,7 +37,10 @@ def _env_bool(name: str) -> Optional[bool]:
 
 def _choose_formatter():
     if _HAS_RICH:
-        from rich_argparse import RichHelpFormatter
+        try:
+            from rich_argparse import RichHelpFormatter
+        except ImportError:
+            return argparse.RawTextHelpFormatter
         return RichHelpFormatter
     return argparse.RawTextHelpFormatter
 

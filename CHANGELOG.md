@@ -3,6 +3,27 @@
 ## Unreleased
 - No public changes yet.
 
+## v0.9.0 – 2025-11-04
+### Breaking Changes
+| Removed | Replacement | Codemod rule |
+| --- | --- | --- |
+| `noesis.summary.load` | `noesis.summary.read` | `summary.load` |
+| `noesis.summary.finalize_summary` | `noesis.summary.finalize` | `summary.finalize` |
+| `noesis.events.*_event` helpers | `noesis.events.start/observe/…` | `events.*_event` |
+| `noesis.state.store.EpisodeStore` | `noesis.episode.EpisodeIndex` | `state.store` |
+
+> Use `noesis migrate` to apply the codemod. The tool prints `{renamed, replaced, skipped}` counts and TODO files that still reference removed symbols.
+
+### Added
+- `noesis migrate` codemod with JSON/pretty output, TODO summaries, and `--dry-run` for safe previews.
+- `noesis view` CLI viewer showing episode header, KPIs, governance decisions, and a humanised timeline (`--grep`, `--json`, `--events`, `--fail-on-invalid`).
+- Legacy escape hatch `NOESIS_LEGACY_SHIMS=1` (prints a prominent warning) to temporarily re-enable removed APIs for one patch release.
+
+### Notes
+- `noesis.state.store` now raises `ImportError` unless the legacy env flag is set; import `EpisodeIndex` from `noesis.episode`.
+- Validation helpers highlight schema issues as `file schema:label → $.pointer message`. Pass `--fail-on-invalid` to make the viewer exit non-zero when violations exist.
+- Optional extras keep the base install lean: `pip install noesis[migrate]` for the codemod and `noesis[ui]` for Rich/Textual viewer enhancements.
+
 ## v0.8.0 – 2025-11-12
 ### Added
 - Depth- and beam-limited `MetaPlanner` plus `_apply_directive` support land as the default planner (toggled via `PlannerMode` or `NOESIS_PLANNER`).

@@ -1,0 +1,60 @@
+---
+title: Upgrading to v0.9
+description: Migrate deprecated shims and explore the new viewer tooling.
+---
+
+Migrating to **Noēsis v0.9** removes the long-standing compatibility shims. The new CLI codemod and viewer are designed to make the upgrade a one-liner followed by a confidence check.
+
+## Quick migration
+
+```bash
+noesis migrate . && pytest -q && noesis view runs/demo/ep_20251104_155501_805857_c5f4_s0 --pretty
+```
+
+- Install the optional extras once (`pip install noesis[migrate] noesis[ui]`) so the codemod and Rich/Textual viewer enhancements are available.
+- The codemod prints a `{renamed, replaced, skipped}` summary and a **TODO** list if references remain.
+- Use `--dry-run` or `--json` for CI previews, and `--fail-on-invalid` in the viewer when you are ready to gate on schema health.
+
+If you need a short-lived escape hatch, set `NOESIS_LEGACY_SHIMS=1` and re-run. You will get a prominent warning per process reminding you to remove it before the next release.
+
+## Removal table
+
+| Removed | Replacement | Codemod rule |
+| --- | --- | --- |
+| `noesis.summary.load` | `noesis.summary.read` | `summary.load` |
+| `noesis.summary.finalize_summary` | `noesis.summary.finalize` | `summary.finalize` |
+| `noesis.events.*_event` | `noesis.events.start/observe/…` | `events.*_event` |
+| `noesis.state.store.EpisodeStore` | `noesis.episode.EpisodeIndex` | `state.store` |
+
+The codemod updates imports, attributes, and common usage patterns. Any residual matches are reported under the TODO block so you can inspect and confirm manually.
+
+## Manual cleanup the codemod can’t do for you
+
+Star-imports need one quick edit before you re-run the migration:
+
+```python filename="before.py"
+from noesis.summary import *
+summary = load("ep")
+```
+
+```python filename="after.py"
+from noesis.summary import read
+summary = read("ep")
+# then rerun: noesis migrate .
+```
+
+## Viewer (CLI) refresher
+
+`noesis view <episode>` renders a compact report with:
+
+- **Header:** episode id, started_at, planner mode, intuition status, configured policies.
+- **KPIs:** success, plan adherence, veto count, tool coverage, `phase_ms` (clamped to ≥1ms).
+- **Governance:** latest decision, rule ID, rationale, `time_to_veto_ms`.
+- **Timeline:** timestamp, delta, phase, agent, and a terse note per event (`--grep phase=governance` filters).
+- **Validation:** schema issues printed as `file schema:label → $.pointer message`; add `--fail-on-invalid` to force a non-zero exit code.
+
+Use `--events` to stream raw JSONL or `--json` for machine-readable output.
+
+## Dashboard (TUI) preview
+
+`pip install noesis[ui]` will unlock the upcoming Textual dashboard: timeline on the left, payload/metrics/governance tabs on the right, and keybindings (`j/k` to navigate, `/` to filter, `g` for governance). Stay tuned for the release announcement.

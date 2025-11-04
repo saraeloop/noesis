@@ -22,7 +22,7 @@ uv add noesis
 poetry add noesis
 ```
 
-Need the CLI (`noesis run …`, `noesis solve …`)? Install the console script from source with `uv tool install .` or `pipx install .`. Optional pretty-printing for CLI JSON uses `jq` (`brew install jq`).
+Need the CLI (`noesis run …`, `noesis solve …`, `noesis view …`, `noesis migrate …`)? Install the console script from source with `uv tool install .` or `pipx install .`. Optional pretty-printing for CLI JSON uses `jq` (`brew install jq`).
 
 ⸻
 
@@ -278,6 +278,19 @@ index = EpisodeIndex("./runs/_episodes", ttl_days=14)
 list(index.iter())
 ```
 
+### Inspecting & migrating from the CLI
+
+```bash
+# Inspect an episode timeline, governance decisions, and KPIs
+noesis view runs/demo/ep_demo --pretty
+
+# Rewrite deprecated shims to the supported surface
+noesis migrate . --dry-run -j > migrate-report.json
+noesis migrate .
+```
+
+`noesis view` highlights plan adherence, veto count, tool coverage, governance decisions, and schema validation warnings. `noesis migrate` uses LibCST to rewrite shims such as `summary.load`, `events.start_event`, and `state.store.EpisodeStore`, reporting any TODOs that need manual cleanup.
+
 ⸻
 
 ## Stability & versioning
@@ -289,8 +302,8 @@ list(index.iter())
 
 Version details:
 
-- **Package:** noesis **v0.8.0**
-- **Schema:** summary.schema.json **v1.1.0**
+- **Package:** noesis **v0.9.0**
+- **Schema:** summary.schema.json **v1.2.0**
 - **Python:** **≥ 3.11**
 
 ⸻

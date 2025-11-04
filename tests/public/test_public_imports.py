@@ -1,5 +1,8 @@
 import importlib
+import sys
 import warnings
+
+import pytest
 
 PUBLIC_IMPORTS = [
     "noesis",
@@ -53,45 +56,70 @@ def test_legacy_root_exports_warn() -> None:
     assert caught, "expected accessing legacy alias to warn"
 
 
-def test_summary_deprecated_aliases_warn(monkeypatch) -> None:
-    from noesis import summary
-
-    monkeypatch.setattr(summary, "read", lambda *args, **kwargs: {})
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", DeprecationWarning)
-        summary.load("missing", context=None)
-    assert caught, "expected noesis.summary.load to warn"
-
-    def _noop_finalize(**kwargs):
-        return None
-
-    monkeypatch.setattr(summary, "finalize", _noop_finalize)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", DeprecationWarning)
-        summary.finalize_summary(
-            run_dir=None,
-            episode_id="ep",
-            task="demo",
-            seed=0,
-            started_at="now",
-            intuition_enabled=False,
-            intuition_mode=None,
-            using_label=None,
-            tags=None,
-            intuition=None,
-            schema_version="1.0.0",
-            config=None,
-            ports={},
-        )
-    assert caught, "expected noesis.summary.finalize_summary to warn"
+def _reload(module_name: str):
+    module = importlib.import_module(module_name)
+    return importlib.reload(module)
 
 
-def test_event_deprecated_alias_warns(tmp_path) -> None:
-    from noesis import events
+def _reset_deprecated(monkeypatch: pytest.MonkeyPatch, *, legacy: bool) -> None:
+    if legacy:
+        monkeypatch.setenv("NOESIS_LEGACY_SHIMS", "1")
+    else:
+        monkeypatch.delenv("NOESIS_LEGACY_SHIMS", raising=False)
+    if "noesis.deprecated" in sys.modules:
+        importlib.reload(sys.modules["noesis.deprecated"])
 
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", DeprecationWarning)
-        events.start_event(run_dir, "ep", {"task": "demo"})
-    assert caught, "expected noesis.events.start_event to warn"
+
+@pytest.fixture(autouse=True)
+def restore_default_environment(monkeypatch: pytest.MonkeyPatch):
+    yield
+    monkeypatch.delenv("NOESIS_LEGACY_SHIMS", raising=False)
+    if "noesis.deprecated" in sys.modules:
+        importlib.reload(sys.modules["noesis.deprecated"])
+    for module_name in ("noesis.summary", "noesis.events"):
+        if module_name in sys.modules:
+            importlib.reload(sys.modules[module_name])
+
+
+def test_summary_legacy_aliases_removed(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_deprecated(monkeypatch, legacy=False)
+    summary = _reload("noesis.summary")
+    assert not hasattr(summary, "load")
+    assert not hasattr(summary, "finalize_summary")
+
+
+def test_events_legacy_aliases_removed(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_deprecated(monkeypatch, legacy=False)
+    events = _reload("noesis.events")
+    for attr in (
+        "start_event",
+        "observe_event",
+        "interpret_event",
+        "plan_event",
+        "act_event",
+        "reflect_event",
+        "direction_event",
+        "ensure_act_event",
+        "terminate_event",
+    ):
+        assert not hasattr(events, attr), f"expected {attr} to be removed"
+
+
+def test_state_store_removed(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_deprecated(monkeypatch, legacy=False)
+    with pytest.raises(ImportError):
+        importlib.import_module("noesis.state.store")
+
+
+def test_legacy_env_re_enables_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_deprecated(monkeypatch, legacy=True)
+    summary = _reload("noesis.summary")
+    assert callable(summary.load)
+    assert callable(summary.finalize_summary)
+
+
+def test_legacy_env_re_enables_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_deprecated(monkeypatch, legacy=True)
+    events = _reload("noesis.events")
+    assert callable(events.start_event)
+    assert callable(events.terminate_event)
