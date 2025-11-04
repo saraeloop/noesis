@@ -52,3 +52,7 @@ Thumbs.db
 .env.local
 .env.development.local
 .env.production.local
+
+# Exclude pnpm lockfile from docs directory
+!docs/pnpm-lock.yaml
+!docs/pnpm-lock.yaml

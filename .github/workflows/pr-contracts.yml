@@ -40,15 +40,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "pnpm"
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: "10.16.1"
-          run_install: false
+      - name: Install pnpm
+        run: npm i -g pnpm@10.16.1
 
-      - name: Show pnpm version
-        run: pnpm -v
+      - name: Verify pnpm
+        run: |
+          echo "PATH=$PATH"
+          which pnpm
+          pnpm -v
 
       - name: Validate export surface
         run: python scripts/validate_exports.py --strict
