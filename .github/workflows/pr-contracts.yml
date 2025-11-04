@@ -36,6 +36,20 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v1
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.16.1"
+          run_install: false
+
+      - name: Show pnpm version
+        run: pnpm -v
+
       - name: Validate export surface
         run: python scripts/validate_exports.py --strict
 
