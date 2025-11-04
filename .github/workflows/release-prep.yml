@@ -27,6 +27,9 @@ jobs:
       - name: Sync Python dependencies
         run: uv sync
 
+      - name: Install pnpm
+        run: npm i -g pnpm@10.16.1
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -34,13 +37,10 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: "docs/pnpm-lock.yaml"
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: "8"
-
-      - name: Enable corepack
-        run: corepack enable && pnpm -v
+      - name: Verify pnpm
+        run: |
+          which pnpm
+          pnpm -v
 
       - name: Install docs dependencies
         working-directory: docs

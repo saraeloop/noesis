@@ -36,11 +36,34 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v1
 
+      - name: Sync Python dependencies
+        run: uv sync
+
+      - name: Install pnpm
+        run: npm i -g pnpm@10.16.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: "docs/pnpm-lock.yaml"
+
+      - name: Verify pnpm
+        run: |
+          echo "PATH=$PATH"
+          which pnpm
+          pnpm -v
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
       - name: Validate export surface
-        run: python scripts/validate_exports.py --strict
+        run: uv run python scripts/validate_exports.py --strict
 
       - name: Pre-release dry run
-        run: python scripts/pre_release.py --check-all
+        run: uv run python scripts/pre_release.py --check-all
 
       - name: Upload pre-release summary
         if: always()
