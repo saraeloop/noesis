@@ -25,7 +25,7 @@ jobs:
         uses: astral-sh/setup-uv@v1
 
       - name: Sync Python dependencies
-        run: uv sync
+        run: uv sync --dev
 
       - name: Install pnpm
         run: npm i -g pnpm@10.16.1
