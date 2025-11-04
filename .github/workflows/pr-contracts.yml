@@ -17,6 +17,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   dry-run-contracts:
     runs-on: ubuntu-latest
@@ -73,3 +77,45 @@ jobs:
           path: |
             .noesis/prerelease
           if-no-files-found: ignore
+
+  post-summary-comment:
+    name: Post Noēsis pre-release summary
+    needs: dry-run-contracts
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download prerelease summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prerelease-summary-*
+          path: summaries
+          merge-multiple: true
+
+      - name: Build combined summary
+        id: build
+        run: |
+          if ls summaries/*/summary.txt >/dev/null 2>&1; then
+            cat summaries/*/summary.txt > combined.txt
+          elif ls summaries/summary.txt >/dev/null 2>&1; then
+            cp summaries/summary.txt combined.txt
+          else
+            echo "No summary artifacts found" > combined.txt
+          fi
+          {
+            echo "body<<EOF"
+            echo "### 🧪 Noēsis pre-release (dry-run)"
+            echo
+            sed -e 's/^/    /' combined.txt
+            echo
+            echo "_(bot: updates on new commits)_"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.build.outputs.body }}
+          comment-id: noesis-prerelease-summary-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          edit-mode: replace
+          reactions: '+1'

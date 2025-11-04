@@ -1,0 +1,41 @@
+name: issue-triage
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.issue.title || "";
+            const body = context.payload.issue.body || "";
+            const labels = new Set();
+            if (body.includes("Paper Reference") || title.startsWith("[Paper]")) {
+              labels.add("research");
+              labels.add("cognitive-model");
+            }
+            if (title.startsWith("[Experiment]") || body.includes("Experiment / benchmark")) {
+              labels.add("research");
+              labels.add("benchmark");
+            }
+            if (title.startsWith("[Bug]")) {
+              labels.add("bug");
+            }
+            if (title.startsWith("[Feature]")) {
+              labels.add("enhancement");
+            }
+            if (title.startsWith("[Docs]")) {
+              labels.add("documentation");
+            }
+            if (labels.size) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: Array.from(labels),
+              });
+            }

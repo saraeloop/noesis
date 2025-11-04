@@ -1,0 +1,26 @@
+name-template: "Noēsis $NEXT_PATCH_VERSION"
+tag-template: "v$NEXT_PATCH_VERSION"
+categories:
+  - title: "🚀 Features"
+    labels:
+      - feat
+      - feature
+  - title: "🛠️ Fixes"
+    labels:
+      - fix
+      - bug
+      - ci
+  - title: "🧰 Chores"
+    labels:
+      - chore
+      - docs
+      - refactor
+change-template: "- $TITLE (#$NUMBER) by @$AUTHOR"
+template: |
+  ## What's changed
+  $CHANGES
+
+  ## Install
+  ```bash
+  pip install noesis==$RESOLVED_VERSION
+  ```
