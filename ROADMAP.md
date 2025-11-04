@@ -119,6 +119,41 @@ Every update strengthens three dimensions:
 
 ---
 
+## 🧠 Next Major Axis — Meta-Cognition Layer
+**Goal:** Elevate Noēsis from measuring cognition to reasoning about cognition itself.  
+**Phase:** Pre-v1.0 exploration → foundation for v1.1
+
+### Why this matters
+Noēsis already captures and governs the Observe → Interpret → Plan → Act → Reflect → Learn loop. The next step is meta-cognition: enabling the framework to analyze, adapt, and improve its own reasoning behavior across episodes. Meta-cognition turns Noēsis from a runtime of cognition into a framework for self-improving cognition — *if cognition is the loop, meta-cognition is the loop watching itself*.
+
+### Core Themes
+| Theme | Description | Prototype Ideas |
+|-------|-------------|-----------------|
+| Meta-loop reflection | Episodes introspect their own traces (plans, vetoes, metrics) and adjust heuristics mid-run. | Introduce a `ReflectOnSelf` phase that evaluates prior summaries and tunes planner thresholds or governance policies. |
+| Cognitive graph reasoning | Connect multiple episodes as a graph where edges represent influence or learning transfer. | Add a `noesis.graph` module visualizing how insights propagate between agents or runs. |
+| Policy gradient from Insight metrics | Treat `plan_adherence`, `veto_rate`, and `success_rate` as reinforcement signals. | Spin up a lightweight cognitive RL loop that updates policies from aggregated Insight data. |
+| Introspective policy proposals | Governance outcomes emit `policy_proposal` events that feed Learning. | Wire veto events directly into LearningPort to close the Governance → Learning loop. |
+| Cognitive fingerprinting | Characterize reasoning style per agent or configuration using trace embeddings. | Cluster and personalize curricula based on reasoning embeddings and planner outcomes. |
+
+### Design Principles
+1. Observability First — every self-adjustment generates a measurable artifact.  
+2. Heuristic before Heavyweight — favor interpretable rule-based tuning ahead of opaque optimization.  
+3. Episode-Graph Continuity — treat connected episodes as the new unit of reasoning.  
+4. Safe Adaptation — all meta-tuning passes through Governance validation paths before activation.
+
+### Research Alignment
+- Graph of Thoughts (2024): reasoning as interconnected DAGs → informs `noesis.graph`.  
+- Self-Discover (2024): curriculum generation via failure analysis → guides adaptive tasks.  
+- Meta-CoT & MindAgent (2025): controllers reflecting on their own planners → underpin the Noēsis Introspector.
+
+### Acceptance Vision
+- Meta-loop introspection visible in `events.jsonl` and `summary["insight"]["policy_adaptations"]`.  
+- Episode graphs rendered inside the upcoming TUI viewer.  
+- Governance vetoes emit policy proposals that LearningPort consumes automatically.  
+- Deterministic replays confirm meta-tuning boosts `policy_score` ≥ 10 % on benchmark curricula.
+
+---
+
 ## v1.0 — Curriculum, Meta-CoT & Release
 **Owner:** Platform **Dependencies:** docs pipeline, schema freeze, CI signing keys
 
@@ -131,6 +166,11 @@ Every update strengthens three dimensions:
 - Ship **Textual episode viewer (TUI)** behind `noesis[ui]` with timeline/metrics/governance panes
 - Add **`noesis new-episode --danger-demo`** helper to seed sandbox runs for demos
 - Draft **release notes** template covering migration table + viewer walkthrough
+- Document **runtime × schema × policy version matrix** in the public docs so supported combinations stay explicit.
+- Canonicalise **policy_score metric** (sourced from insight KPIs) and reuse it across learning/curriculum acceptance tests.
+- Close the loop between **Governance → Learning** by emitting policy proposal events from veto outcomes.
+- Create a unified **Reference index** (`docs/app/reference/index.mdx`) linking CLI, API surface, governance, and learning guides.
+- Declare a **v1.0 release freeze window** (e.g., three weeks before GA) to stabilise APIs and defer post-freeze work to v1.1.
 
 ### ✅ Acceptance Tests
 - Curriculum runs (smoke + regression + Meta-CoT) auto-compare outputs
@@ -138,6 +178,7 @@ Every update strengthens three dimensions:
 - Docs deploy passes link + diagram checks
 - Schema guard rejects incompatible events in CI
 - Signed release verifies artifact attestations
+- Version matrix published and verified against release artifacts
 
 ---
 
