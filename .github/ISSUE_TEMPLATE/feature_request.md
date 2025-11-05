@@ -2,7 +2,7 @@
 name: "💡 Feature request"
 about: Propose a new feature or enhancement for the Noēsis framework
 title: "[Feature] "
-labels: ["enhancement"]
+labels: ["type:feature", "needs:triage", "needs:artifacts"]
 assignees: ""
 ---
 

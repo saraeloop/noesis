@@ -305,7 +305,7 @@ noesis migrate .
 
 Version details:
 
-- **Package:** noesis **v0.9.0**
+- **Package:** noesis **v0.9.5**
 - **Schema:** summary.schema.json **v1.2.0**
 - **Python:** **≥ 3.11**
 

@@ -2,7 +2,7 @@
 name: "🐞 Bug report"
 about: Report an issue in the Noēsis runtime, CLI, or cognitive loop
 title: "[Bug] "
-labels: ["bug"]
+labels: ["type:bug", "needs:triage", "needs:artifacts"]
 assignees: ""
 ---
 

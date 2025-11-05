@@ -2,7 +2,7 @@
 name: "🧪 Experiment / benchmark"
 about: Capture results from curriculum runs, policy deltas, or insight experiments
 title: "[Experiment] "
-labels: ["research", "benchmark"]
+labels: ["type:benchmark", "needs:triage", "needs:artifacts"]
 assignees: ""
 ---
 

@@ -2,7 +2,7 @@
 name: "📄 Paper implementation"
 about: Suggest or track an implementation of a reasoning or meta-cognitive paper in Noēsis
 title: "[Paper] "
-labels: ["research", "cognitive-model"]
+labels: ["type:paper-impl", "needs:triage", "needs:artifacts"]
 assignees: ""
 ---
 

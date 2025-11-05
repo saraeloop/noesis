@@ -3,7 +3,7 @@
 ## Unreleased
 - No public changes yet.
 
-## v0.9.0 – 2025-11-04
+## v0.9.5 – 2025-11-04
 ### Breaking Changes
 | Removed | Replacement | Codemod rule |
 | --- | --- | --- |

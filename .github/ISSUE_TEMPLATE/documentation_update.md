@@ -2,7 +2,7 @@
 name: "📚 Documentation update"
 about: Request or suggest an update to Noēsis documentation or examples
 title: "[Docs] "
-labels: ["documentation"]
+labels: ["type:docs", "needs:triage", "needs:artifacts"]
 assignees: ""
 ---
 
