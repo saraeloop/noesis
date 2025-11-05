@@ -129,8 +129,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v1
-      - run: uv sync --dev
-      - run: uv run pytest
+      - run: uv sync --all-extras
+      - run: uv run python -m pytest
 
   diagnostics:
     name: diagnostics --check-all
@@ -170,5 +170,5 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v1
-      - run: uv sync --dev
-      - run: uv build
+      - run: uv sync --all-extras
+      - run: uv run python -m build
