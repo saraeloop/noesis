@@ -130,7 +130,7 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v1
       - run: uv sync --dev
-      - run: uv run python -m pytest
+      - run: uv run pytest
 
   diagnostics:
     name: diagnostics --check-all
@@ -171,4 +171,4 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@v1
       - run: uv sync --dev
-      - run: uv run python -m build
+      - run: uv build
