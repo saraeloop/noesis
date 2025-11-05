@@ -85,7 +85,28 @@ def test_success_metric(tmp_path):
 
     assert metrics["success"] == 1
     assert summary["insight"]["metrics"]["success"] is True
+
     ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
+
+
+def test_minimal_mode_events_and_insight_clean(tmp_path):
+    runs_dir = tmp_path / "runs-minimal-clean"
+    original = ns.get()
+    ns.set(runs_dir=str(runs_dir), planner_mode="minimal")
+
+    try:
+        episode_id = ns.run(task="Minimal mode cleanliness", intuition=False)
+        summary = ns.summary.read(episode_id)
+        events = list(ns.events.read(episode_id))
+
+        assert all(event.get("phase") != "direction" for event in events)
+        assert all(event.get("phase") != "governance" for event in events)
+
+        insight_metrics = summary["insight"]["metrics"]
+        assert insight_metrics["veto_count"] == 0
+        assert insight_metrics.get("plan_revisions", 0) == 0
+    finally:
+        ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
 
 
 def test_schema_version_export():

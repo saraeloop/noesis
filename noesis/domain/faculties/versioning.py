@@ -8,8 +8,8 @@ from typing import Dict
 
 FACULTY_SCHEMA_VERSIONS: Dict[str, str] = {
     "intuition": "1.0.0",
-    "direction": "1.0.0",
-    "governance": "1.0.0",
+    "direction": "1.1.0",
+    "governance": "1.1.0",
     "insight": "1.0.0",
 }
 

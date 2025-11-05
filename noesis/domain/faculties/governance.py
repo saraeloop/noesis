@@ -26,6 +26,7 @@ from typing import Any, ClassVar, Dict, Mapping, Optional, Sequence
 from uuid import UUID, uuid4
 
 from noesis.domain.state import PlanStep
+from .identifiers import GovernanceIdentifier, make_governance_identifier
 from .versioning import current_version, is_compatible
 
 __all__ = ["GovernanceDecision", "GovernanceResult", "PreActGovernor"]
@@ -70,12 +71,14 @@ class GovernanceResult:
     policy_version: str = "0.0.0"
     policy_kind: str = "rules"
     details: Optional[Dict[str, Any]] = None
+    governance_id: GovernanceIdentifier | None = None
     decision_id: UUID = field(default_factory=uuid4)
 
     def to_mapping(self) -> Dict[str, Any]:
         """Render the decision as a JSON-serializable dict."""
         payload: Dict[str, Any] = {
             "schema_version": self.schema_version,
+            "governance_id": str(self.governance_id),
             "decision_id": str(self.decision_id),
             "decision": self.decision.value,
             "rule_id": self.rule_id,
@@ -92,6 +95,23 @@ class GovernanceResult:
     def __post_init__(self) -> None:
         if self.policy_kind not in ("llm", "rules", "hybrid"):
             raise ValueError(f"Invalid policy_kind '{self.policy_kind}' for GovernanceResult")
+        identifier = self.governance_id
+        if isinstance(identifier, GovernanceIdentifier):
+            computed = identifier
+        elif isinstance(identifier, str) and _looks_like_governance_id(identifier):
+            computed = GovernanceIdentifier(identifier)
+        else:
+            computed = make_governance_identifier(
+                policy_id=self.policy_id,
+                policy_version=self.policy_version,
+                policy_kind=self.policy_kind,
+                decision=self.decision.value,
+                rule_id=self.rule_id,
+                score=self.score,
+                message=self.message,
+                details=self.details or {},
+            )
+        object.__setattr__(self, "governance_id", computed)
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "GovernanceResult":
@@ -106,6 +126,7 @@ class GovernanceResult:
             decision = GovernanceDecision(decision_raw)
         except ValueError:
             decision = GovernanceDecision.AUDIT
+        governance_id_raw = payload.get("governance_id")
         decision_id_raw = payload.get("decision_id")
         try:
             decision_id = UUID(str(decision_id_raw)) if decision_id_raw else uuid4()
@@ -117,7 +138,22 @@ class GovernanceResult:
         details = payload.get("details")
         if details is not None and not isinstance(details, dict):
             details = None
+        governance_identifier: GovernanceIdentifier | None = None
+        if isinstance(governance_id_raw, str) and _looks_like_governance_id(governance_id_raw):
+            governance_identifier = GovernanceIdentifier(governance_id_raw)
+        if governance_identifier is None:
+            governance_identifier = make_governance_identifier(
+                policy_id=str(payload.get("policy_id", "unspecified")),
+                policy_version=str(payload.get("policy_version", "0.0.0")),
+                policy_kind=policy_kind,
+                decision=decision.value,
+                rule_id=str(payload.get("rule_id", "unspecified")),
+                score=float(payload.get("score", 0.0)),
+                message=str(payload.get("message", "")),
+                details=details or {},
+            )
         return cls(
+            governance_id=governance_identifier,
             decision_id=decision_id,
             decision=decision,
             rule_id=str(payload.get("rule_id", "unspecified")),
@@ -128,6 +164,10 @@ class GovernanceResult:
             policy_kind=policy_kind,
             details=details,
         )
+
+
+def _looks_like_governance_id(value: str) -> bool:
+    return value.startswith("gov-") and len(value) > 4
 
 
 @dataclass(slots=True)

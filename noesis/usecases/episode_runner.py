@@ -7,6 +7,7 @@ while keeping orchestration logic free from infrastructure concerns.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 from uuid import UUID
@@ -336,25 +337,72 @@ class EpisodeRunner:
             metrics=metrics,
             cause=caused_by,
         )
+class DirectiveApplicationError(RuntimeError):
+    """Signals that a PlannerDirective could not be applied to the plan."""
+
+    def __init__(self, *, directive: PlannerDirective, key: str, reason: str) -> None:
+        self.directive_id = str(directive.directive_id)
+        self.policy_id = directive.policy_id
+        self.key = key
+        self.reason = reason
+        message = (
+            f"Directive {self.directive_id} from {self.policy_id} cannot mutate '{key}': {reason}"
+        )
+        super().__init__(message)
+
+
+_DESCRIPTION_PATTERN = re.compile(r"^plan\.steps\[(\d+)\]\.description$")
+_KIND_PATTERN = re.compile(r"^plan\.steps\[(\d+)\]\.kind$")
+
+
 def _apply_directive(plan: list[PlanStep], directive: PlannerDirective) -> None:
     for diff in directive.diff:
-        key = diff.key
-        if key.startswith("plan.steps[") and key.endswith("].description"):
-            index_str = key[len("plan.steps[") : -len("].description")]
+        key = diff.key.strip()
+        match = _DESCRIPTION_PATTERN.fullmatch(key)
+        if match:
+            index = int(match.group(1))
+            if not (0 <= index < len(plan)):
+                raise DirectiveApplicationError(
+                    directive=directive,
+                    key=key,
+                    reason=f"step index {index} is out of range",
+                )
+            if diff.after is None:
+                raise DirectiveApplicationError(
+                    directive=directive,
+                    key=key,
+                    reason="missing 'after' value for description",
+                )
+            plan[index].description = str(diff.after)
+            continue
+
+        match = _KIND_PATTERN.fullmatch(key)
+        if match:
+            index = int(match.group(1))
+            if not (0 <= index < len(plan)):
+                raise DirectiveApplicationError(
+                    directive=directive,
+                    key=key,
+                    reason=f"step index {index} is out of range",
+                )
+            if diff.after is None:
+                raise DirectiveApplicationError(
+                    directive=directive,
+                    key=key,
+                    reason="missing 'after' value for kind",
+                )
             try:
-                index = int(index_str)
-            except ValueError:
-                continue
-            if 0 <= index < len(plan) and diff.after is not None:
-                plan[index].description = str(diff.after)
-        elif key.startswith("plan.steps[") and key.endswith("].kind") and diff.after:
-            index_str = key[len("plan.steps[") : -len("].kind")]
-            try:
-                index = int(index_str)
-            except ValueError:
-                continue
-            if 0 <= index < len(plan):
-                try:
-                    plan[index].kind = PlanKind(str(diff.after))
-                except ValueError:
-                    continue
+                plan[index].kind = PlanKind(str(diff.after))
+            except ValueError as exc:
+                raise DirectiveApplicationError(
+                    directive=directive,
+                    key=key,
+                    reason=f"invalid plan kind '{diff.after}'",
+                ) from exc
+            continue
+
+        raise DirectiveApplicationError(
+            directive=directive,
+            key=key,
+            reason="unsupported diff key",
+        )

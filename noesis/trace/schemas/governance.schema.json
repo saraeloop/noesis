@@ -11,10 +11,14 @@
     "message",
     "policy_id",
     "policy_version",
-    "policy_kind"
+    "policy_kind",
+    "governance_id"
   ],
   "properties": {
     "schema_version": {
+      "type": "string"
+    },
+    "governance_id": {
       "type": "string"
     },
     "decision_id": {

@@ -61,6 +61,7 @@ def test_round_trip_serialization() -> None:
     directive = PlannerDirective.from_mapping(directive_payload)
     expected = dict(directive_payload)
     expected["directive_id"] = str(directive.directive_id)
+    expected["legacy_directive_id"] = str(directive.legacy_directive_id)
     assert directive.to_mapping() == expected
 
     governance_payload = {
@@ -77,6 +78,7 @@ def test_round_trip_serialization() -> None:
     governance = GovernanceResult.from_mapping(governance_payload)
     expected_governance = dict(governance_payload)
     expected_governance["decision_id"] = str(governance.decision_id)
+    expected_governance["governance_id"] = str(governance.governance_id)
     assert governance.to_mapping() == expected_governance
 
     insight_payload = {

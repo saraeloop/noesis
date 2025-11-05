@@ -12,7 +12,8 @@
     "applied",
     "policy_id",
     "policy_version",
-    "policy_kind"
+    "policy_kind",
+    "legacy_directive_id"
   ],
   "properties": {
     "schema_version": {
@@ -61,6 +62,9 @@
     "policy_kind": {
       "type": "string",
       "enum": ["llm", "rules", "hybrid"]
+    },
+    "legacy_directive_id": {
+      "type": "string"
     }
   },
   "additionalProperties": true
