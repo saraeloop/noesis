@@ -145,7 +145,7 @@ jobs:
       - run: uv run python scripts/pre_release.py --check-all
 
   docs-build:
-    name: docs: build (your Nextra/pnpm build)
+    name: "docs: build (your Nextra/pnpm build)"
     needs: dry-run-contracts
     runs-on: ubuntu-latest
     steps:
