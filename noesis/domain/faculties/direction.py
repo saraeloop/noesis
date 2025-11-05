@@ -8,6 +8,7 @@ from typing import Any, ClassVar, Dict, Mapping, Optional, Sequence
 from uuid import UUID, uuid4
 
 from .intuition import Intuition, IntuitionEvent, IntuitionMode, PolicyKind, StateSnapshot
+from .identifiers import DirectiveIdentifier, make_directive_identifier
 from .versioning import current_version, is_compatible
 
 __all__ = [
@@ -66,7 +67,8 @@ class PlannerDirective:
     policy_id: str = "unspecified"
     policy_version: str = "0.0.0"
     policy_kind: PolicyKind = "rules"
-    directive_id: UUID = field(default_factory=uuid4)
+    directive_id: DirectiveIdentifier | None = None
+    legacy_directive_id: UUID = field(default_factory=uuid4)
 
     def to_mapping(self) -> Dict[str, Any]:
         """Render the directive into a JSON-serializable mapping."""
@@ -81,11 +83,29 @@ class PlannerDirective:
             "policy_version": self.policy_version,
             "policy_kind": self.policy_kind,
             "directive_id": str(self.directive_id),
+            "legacy_directive_id": str(self.legacy_directive_id),
         }
 
     def __post_init__(self) -> None:
         if self.policy_kind not in ("llm", "rules", "hybrid"):
             raise ValueError(f"Invalid policy_kind '{self.policy_kind}' for PlannerDirective")
+        identifier = self.directive_id
+        if isinstance(identifier, DirectiveIdentifier):
+            computed = identifier
+        elif isinstance(identifier, str) and _looks_like_stable_directive_id(identifier):
+            computed = DirectiveIdentifier(identifier)
+        else:
+            computed = make_directive_identifier(
+                policy_id=self.policy_id,
+                policy_version=self.policy_version,
+                policy_kind=self.policy_kind,
+                steps=tuple(self.steps),
+                status=self.status.value,
+                reason=self.reason,
+                applied=self.applied,
+                diff=tuple(diff.to_mapping() for diff in self.diff),
+            )
+        object.__setattr__(self, "directive_id", computed)
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "PlannerDirective":
@@ -100,21 +120,40 @@ class PlannerDirective:
             status = DirectiveStatus(status_raw)
         except ValueError:
             status = DirectiveStatus.SKIPPED
-        directive_id = payload.get("directive_id")
-        try:
-            parsed_directive_id = UUID(str(directive_id)) if directive_id else uuid4()
-        except (TypeError, ValueError):
-            parsed_directive_id = uuid4()
+        directive_id_raw = payload.get("directive_id")
+        legacy_id_raw = payload.get("legacy_directive_id") or payload.get("directive_uuid")
+        legacy_uuid = _parse_uuid(legacy_id_raw)
         diff_payload = payload.get("diff")
         if not isinstance(diff_payload, (list, tuple)):
             diff_payload = []
         diff_items = [DirectiveDiff.from_mapping(item) for item in diff_payload]
+        steps_payload = payload.get("steps", ())
+        if not isinstance(steps_payload, (list, tuple)):
+            steps_payload = ()
+        steps_tuple = tuple(str(item) for item in steps_payload)
         policy_kind = payload.get("policy_kind", "rules")
         if policy_kind not in ("llm", "rules", "hybrid"):
             policy_kind = "rules"
+        stable_identifier: DirectiveIdentifier | None = None
+        if isinstance(directive_id_raw, str) and _looks_like_stable_directive_id(directive_id_raw):
+            stable_identifier = DirectiveIdentifier(directive_id_raw)
+        else:
+            if legacy_uuid is None and isinstance(directive_id_raw, str):
+                legacy_uuid = _parse_uuid(directive_id_raw)
+            stable_identifier = make_directive_identifier(
+                policy_id=str(payload.get("policy_id", "unspecified")),
+                policy_version=str(payload.get("policy_version", "0.0.0")),
+                policy_kind=policy_kind,
+                steps=steps_tuple,
+                status=status.value,
+                reason=str(payload.get("reason", "")),
+                applied=bool(payload.get("applied", False)),
+                diff=tuple(diff.to_mapping() for diff in diff_items),
+            )
+        if legacy_uuid is None:
+            legacy_uuid = uuid4()
         return cls(
-            directive_id=parsed_directive_id,
-            steps=tuple(payload.get("steps", ())),
+            steps=steps_tuple,
             status=status,
             reason=payload.get("reason", ""),
             diff=tuple(diff_items),
@@ -122,6 +161,8 @@ class PlannerDirective:
             policy_id=str(payload.get("policy_id", "unspecified")),
             policy_version=str(payload.get("policy_version", "0.0.0")),
             policy_kind=policy_kind,  # type: ignore[arg-type]
+            directive_id=stable_identifier,
+            legacy_directive_id=legacy_uuid,
         )
 
 
@@ -193,3 +234,16 @@ class DirectedIntuition(Intuition):
             target=target,
             scope=scope,
         )
+
+
+def _parse_uuid(raw: object) -> UUID | None:
+    if not isinstance(raw, str):
+        return None
+    try:
+        return UUID(raw)
+    except ValueError:
+        return None
+
+
+def _looks_like_stable_directive_id(value: str) -> bool:
+    return value.startswith("dir-") and len(value) > 4

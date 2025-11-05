@@ -7,13 +7,14 @@ import { Callout, Steps, Tabs } from 'nextra/components'
 
 # Thinking in Noēsis
 
-Noēsis helps you model and supervise agent cognition with a tiny, stable API. You bring your graphs or tools (LangGraph, CrewAI, plain functions, and more); Noēsis wraps them in an observable cognitive loop:
+Noēsis helps you model and supervise agent cognition with a tiny, stable API. You bring your graphs or tools (LangGraph, CrewAI, plain functions, and more); Noēsis wraps them in an observable cognitive loop with explicit planner modes and a hardened governance layer:
 
 - **Observe** → capture raw task and context
 - **Interpret** (**Intuition**) → extract signals, risks, and intent
-- **Plan** (**Intuition → Direction**) → propose or patch the next action (or veto it entirely)
+- **Plan** (**Intuition → Direction**) → propose or patch the next action, passing intent to governance
+- **Govern** (**Governance**) → audit, allow, or veto with a stable verdict ID
 - **Act** (**Direction**) → execute your adapter, graph, or tool
-- **Reflect** (**Insight**) → evaluate outcomes, record reasons, capture metrics
+- **Reflect** (**Insight**) → evaluate outcomes, record reasons, capture metrics and governance evidence
 - **Learn** (**Insight → Intuition**) → suggest safe adjustments for the next episode
 
 <Callout>
@@ -55,6 +56,12 @@ flowchart TD
 
 The legend highlights the three Noēsis faculties: **Intuition** (policy), **Direction** (execution), and **Insight** (evaluation). Human review slots neatly between Act and Reflect so you can approve, edit, or reject decisions before they land.
 
+<Callout type="info">
+
+**Planner modes:** `PlannerMode.META` (default) enables the full Intuition → Direction → Governance pipeline. Flip to `PlannerMode.MINIMAL` when you need legacy, planner-only behaviour—the loop still emits `events.jsonl` / `summary.json`, but Direction/Governance events and insight metrics stay empty for deterministic back-compat.
+
+</Callout>
+
 ## Intuition gives Direction
 
 While traditional agent frameworks reason and act from explicit objectives,
@@ -83,7 +90,8 @@ Noēsis does not replace your runtime (LangGraph, CrewAI, custom functions, and 
 
 - **Observe**: raw email body, tags, thread identifier, customer tier
 - **Interpret (Intuition)**: intent, risk, constraints, and highlights
-- **Plan (Intuition → Direction)**: which tool to call next, optional patches, potential veto
+- **Plan (Intuition → Direction)**: which tool to call next, optional patches, structured proposal
+- **Govern (Direction → Governance)**: audit or veto proposed actions before they execute
 - **Act (Direction)**: execute the graph/tool (search, classify, draft)
 - **Reflect (Insight)**: success/failure, reasons, latencies
 - **Learn (Insight → Intuition)**: propose tweaks such as "raise the veto threshold for PII exfiltration"
@@ -91,6 +99,8 @@ Noēsis does not replace your runtime (LangGraph, CrewAI, custom functions, and 
 <Callout type="info">
 
 **Invariant:** Even on an error or veto, Noēsis still emits an ordered trace and a summary.
+
+**Stable IDs:** Direction and Governance payloads now dual-write deterministic identifiers (`directive_id`, `governance_id`) alongside their legacy UUID fields so causal lineage stays reproducible across replays.
 
 </Callout>
 
@@ -244,13 +254,19 @@ noesis insight <EPISODE_ID> -j | jq .
 
 ```json
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "episode_id": "ep_..._s0",
   "task": "reply to: urgent billing refund for invoice #1234",
   "flags": {
     "intuition": true,
     "mode": "advisory",
-    "direction": { "applied": 1, "vetoed": 0, "policy": "SqlGuardPolicy@1.0" }
+    "direction": {
+      "applied": 1,
+      "vetoed": 0,
+      "policy": "SqlGuardPolicy@1.0",
+      "threshold": 0.75,
+      "last_diff": ["plan.steps[0].description"]
+    }
   },
   "metrics": {
     "success": 1,
@@ -265,6 +281,7 @@ noesis insight <EPISODE_ID> -j | jq .
 ```
 
 - Events arrive in order: `start → observe → interpret → plan → act → reflect → learn → insight`.
+- Direction and Governance events carry deterministic `directive_id` / `governance_id` values alongside legacy UUIDs, keeping replays and audits deterministic.
 - Only defensible metrics ship (no junk fields, no fake zero rates).
 - Artifacts are plain JSON, so serialisation, diffing, and dashboards stay simple.
 

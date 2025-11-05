@@ -38,6 +38,8 @@ def test_direction_payload_schema_round_trip() -> None:
     payload = _load_json(GOLDEN_DIR / "direction_directive.json")
     validate(instance=payload, schema=_load_schema("direction"))
     directive = PlannerDirective.from_mapping(payload)
+    payload["directive_id"] = str(directive.directive_id)
+    payload["legacy_directive_id"] = str(directive.legacy_directive_id)
     assert directive.to_mapping() == payload
 
 
@@ -45,6 +47,8 @@ def test_governance_payload_schema_round_trip() -> None:
     payload = _load_json(GOLDEN_DIR / "governance_result.json")
     validate(instance=payload, schema=_load_schema("governance"))
     result = GovernanceResult.from_mapping(payload)
+    payload["governance_id"] = str(result.governance_id)
+    payload["decision_id"] = str(result.decision_id)
     assert result.to_mapping() == payload
 
 

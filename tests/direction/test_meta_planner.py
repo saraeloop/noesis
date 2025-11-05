@@ -17,7 +17,8 @@ def test_meta_planner_generates_directive() -> None:
     diff_keys = {diff.key for diff in directive.diff}
     assert "plan.steps[0].description" in diff_keys
     assert "heuristic:belief-context" in directive.steps
-    assert directive.directive_id
+    assert str(directive.directive_id).startswith("dir-")
+    assert directive.legacy_directive_id
 
 
 def test_meta_planner_no_beliefs_skips() -> None:
