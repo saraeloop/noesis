@@ -1,14 +1,13 @@
-# Noēsis (νόησις)
-
 [![PR Contracts](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml)
 [![Release Prep](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml)
 [![PyPI - Version](https://img.shields.io/pypi/v/noesis.svg?label=PyPI&color=4f46e5)](https://pypi.org/project/noesis/)
-[stars-shield]: https://img.shields.io/github/stars/saraeloop/noesis?style=social
-[stars-url]: https://github.com/saraeloop/noesis/stargazers
+[![Stars](https://img.shields.io/github/stars/saraeloop/noesis?style=social)](https://github.com/saraeloop/noesis/stargazers)
 [![Docs](https://img.shields.io/badge/docs-observable%20cognition-0f766e)](docs/README.md)
 [![Planner Modes](https://img.shields.io/badge/planner-meta%20%E2%80%A2%20minimal-0ea5e9)](#learner-flow)
 [![Python](https://img.shields.io/badge/python-3.11+-18181b)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-64748b)](LICENSE)
+
+# Noēsis (νόησις)
 
 _Understanding, made observable._
 
@@ -23,8 +22,6 @@ Noēsis works with the graphs, tools, and runtimes you already use. It makes the
 - **Applied researchers:** capture structured cognitive traces for benchmarks, ablations, and papers without rebuilding tooling.
 - **Product & GTM leaders:** point to concrete KPIs (plan adherence, veto count, tool coverage) instead of demo scripts.
 - **Ops, compliance:** review immutable JSON traces that explain what happened, why it was allowed, and what the system learned.
-
-⸻
 
 ## Table of Contents
 
@@ -48,8 +45,6 @@ Noēsis works with the graphs, tools, and runtimes you already use. It makes the
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
-⸻
-
 ## Why Noēsis
 
 | Proof point | What it delivers |
@@ -60,8 +55,6 @@ Noēsis works with the graphs, tools, and runtimes you already use. It makes the
 | **Learning signals** | Insight metrics and `learn.emit(...)` give you structured payloads for offline tuning, evaluations, or compliance reviews. |
 
 Stay in your stack: Noēsis decorates LangGraph, CrewAI, OpenDevin, MCP, or bespoke orchestrators without swapping your model, prompts, or tools.
-
-⸻
 
 ## Artifact snapshot (immutables at a glance)
 
@@ -89,8 +82,6 @@ Every cognition loop lands in `runs/<label>/<episode_id>/`. The snippet below co
 
 Use the [artifact guide](docs/artifacts/state.md) for field-by-field callouts and recommended KPIs (plan adherence, veto count, tool coverage).
 
-⸻
-
 ## Learner flow
 
 ```mermaid
@@ -108,8 +99,6 @@ flowchart LR
 
 `planner_mode="meta"` routes every action through governance plus Insight metrics, while `"minimal"` keeps throughput-focused loops for benchmarks. Both modes emit the same immutable artifacts so you can diff cognition depth over time.
 
-⸻
-
 ## Trace gallery
 
 Bring demos to life with real traces instead of screenshots. Record a run, then surface it interactively or inline in docs:
@@ -121,9 +110,6 @@ noesis view runs/demo/ep_20251108_... --pretty
 
 The CLI view highlights plan steps, veto counts, and per-action outcomes so non-technical stakeholders can follow the narrative without searching through JSON manually.
 
-⸻
-
-⸻
 
 ## Installation
 
@@ -136,8 +122,6 @@ uv add noesis
 ```
 
 Need the CLI (`noesis run …`, `noesis solve …`, `noesis view …`, `noesis migrate …`)? Install the console script from source with `uv tool install .` or `pipx install .`. Optional pretty-printing for CLI JSON uses `jq` (`brew install jq`).
-
-⸻
 
 ## Usage
 
@@ -224,6 +208,10 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 #### Example Output:
+
+<details>
+<summary><strong>Open console output</strong></summary>
+
 ```
 === Noēsis run ===
 Episode: ep_20251108_...
@@ -237,6 +225,8 @@ Artifacts: ./runs/demo/ep_20251108_...
   ├─ state.json
   └─ events.jsonl
 ```
+
+</details>
 ### Bring your own agent / graph
 
 Noēsis is framework-agnostic. Point `solve()` at your orchestrator (LangGraph, CrewAI, custom Python), and Noēsis will wrap it with planning, reflection, trace events, and summaries.
@@ -270,7 +260,19 @@ print(list(index.iter())[:3])
 
 `context` is the agent’s scoped worldview (config + registered faculties); pass it explicitly to keep dependencies clear and tests pure.
 
-⸻
+## Examples & learning path
+
+- Start with [`examples/README.md`](examples/README.md) for a role-based tour of quickstart, governance, memory, and MCP scenarios.
+- Run `uv run python examples/demo.py` to collect your first demo artifacts, then graduate to `examples/incident_triage` or `examples/sql_guard` when you want governance pressure.
+- Show stakeholders `examples/artifacts/state_v1_example.json` or your own `runs/demo/.../state.json` while you narrate the cognitive loop.
+
+
+## Interpreting artifacts
+
+- [`runs/README.md`](runs/README.md) – cheat sheet for `summary.json`, `state.json`, `events.jsonl`, and `learn.jsonl`.
+- [`docs/artifacts/state.md`](docs/artifacts/state.md) – field-by-field breakdown of the state schema plus KPI callouts.
+- `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
+
 
 ## Examples & learning path
 
@@ -379,7 +381,6 @@ ep_20251103_181813_294994_1d16_s0: success=False vetoes=1 plan_adherence=0.3333 
 
 Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
 
-⸻
 
 ## Customizing Noēsis
 
@@ -412,7 +413,6 @@ Think of faculties like modular middleware:
 - **Insight**: evaluation/metrics roll-up
 - **Governance (optional)**: enforce policies with auditable vetoes
 
-⸻
 
 ## Sub-agents & complex workflows
 
@@ -421,19 +421,16 @@ Noēsis doesn’t force a sub-agent API—it embraces your existing one. If a La
 - Keep the isolation semantics from your framework.
 - Measure plan changes, action latency, success ratios, and long-term recall hits via Noēsis artifacts.
 
-⸻
 
 ## MCP & external tooling
 
 Adapters let Noēsis index and observe actions from MCP servers (Anthropic’s Model Context Protocol). You can keep tool execution external and safe while still capturing causal timelines and summary metrics inside `runs/`.
 
-⸻
 
 ## Sync vs async
 
 Use the same `run` / `solve` API. If your orchestrator is async, expose it via `using=` (callable or path) and Noēsis wraps timing, events, and summaries around it.
 
-⸻
 
 ## What Noēsis adds (at a glance)
 
@@ -443,7 +440,6 @@ Use the same `run` / `solve` API. If your orchestrator is async, expose it via `
 - Learning signals for improving policies/prompts over time
 - Framework freedom—LangGraph, CrewAI, OpenDevin, custom runners… all welcome
 
-⸻
 
 ## API cheatsheet
 
@@ -499,27 +495,18 @@ noesis migrate .
 
 `noesis view` highlights plan adherence, veto count, tool coverage, governance decisions, and schema validation warnings. `noesis migrate` uses LibCST to rewrite shims such as `summary.load`, `events.start_event`, and `state.store.EpisodeStore`, reporting any TODOs that need manual cleanup.
 
-⸻
 
-## Stability & versioning
-
-- Public modules to rely on today: `noesis`, `noesis.summary`, `noesis.events`, `noesis.context`, `noesis.learn`, `noesis.episode`, `noesis.io`, `noesis.trace`, plus the facades under `noesis.runtime.*`.
-- Evolving modules slated to stabilize post-0.7: `noesis.learn`, `noesis.insight`, and advanced helpers inside those packages.
-- Avoid importing from `noesis.domain.*`, `noesis.usecases.*`, `noesis.infrastructure.*`, `noesis.interfaces.*`, or underscore-prefixed modules—they remain internal.
-- Need the full matrix? See **API Surface & Stability** in the docs.
-
-Version details:
+## Version details:
 
 - **Package:** noesis **v0.9.5**
 - **Schema:** summary.schema.json **v1.2.0**
 - **Python:** **≥ 3.11**
 
-⸻
 
 ## Acknowledgements
 
-Inspired by the research and practice behind ReAct (Yao et al., 2022), Reflexion (Shinn et al., 2023), Tree-of-Thoughts (Yao et al., 2023), Voyager (Wang et al., 2023), and Meta-CoT (Zhang et al., 2024), as well as production systems such as Claude Code and Deep Research (Anthropic PBC).
+Noēsis builds upon insights from academic and production systems, including the research and practice behind **ReAct** (Yao et al., 2022), **Reflexion** (Shinn et al., 2023), **Tree-of-Thoughts** (Yao et al., 2023), **Voyager** (Wang et al., 2023), and **Meta-CoT** (Zhang et al., 2024), as well as production systems such as **Claude Code** and **Deep Research** (Anthropic PBC).
 
 ## License
 
-Apache 2.0
+Licensed under the [Apache 2.0 License](LICENSE) © 2025 Sara Loera
