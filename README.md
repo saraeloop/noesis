@@ -53,33 +53,80 @@ for ev in timeline[:5]:
 Drop this snippet in a REPL or `python demo.py` to see the cognition loop, summary, and events that Noēsis persists for every run.
 
 ```python
+from __future__ import annotations
+import json
 from pathlib import Path
+import sys
 import noesis as ns
 from noesis import events, summary
 
-# 1. Keep artifacts in a temp runs directory
-ns.set(runs_dir="./runs/demo")
+def main() -> int:
+    # 1) Where artifacts go (keep it explicit for users)
+    ns.set(runs_dir="./runs/demo")
+    # Toggle planner: "meta" (default, with governance) or "minimal" (no governance)
+    ns.set(planner_mode="meta")  # change to "minimal" for throughput demos
 
-# 2. Run a concrete task with cognition + governance enabled
-episode_id = ns.run(
-    "Turn the three most recent entries in ./CHANGELOG.md into a weekly update bullet list",
-    intuition=True,
-)
+    changelog = Path("./CHANGELOG.md")
+    if not changelog.exists():
+        print("⚠️  Expected ./CHANGELOG.md but it was not found. Create one to see real actions.")
+        changelog.write_text("# Changelog\n\n- Initial release\n- Minor fixes\n- Docs cleanup\n")
 
-# 3. Inspect the immutable summary + trace
-report = summary.read(episode_id)
-timeline = list(events.read(episode_id))
+    # 2) Run a concrete task with cognition enabled
+    episode_id = ns.run(
+        "Turn the three most recent entries in ./CHANGELOG.md into a weekly update bullet list",
+        intuition=True,
+    )
 
-print("Outcome:", report["metrics"]["success"])
-print("Plan steps:", [step["title"] for step in report["plan"]["steps"]])
+    # 3) Inspect the immutable summary + trace
+    rep = summary.read(episode_id)
+    tl = list(events.read(episode_id))
 
-act_events = [ev for ev in timeline if ev["phase"] == "act"]
-print("First action:", act_events[0]["payload"]["instruction"])
+    print("\n=== Noēsis run ===")
+    print("Episode:", episode_id)
+    print("Success metric:", rep["metrics"]["success"])
+    print("Planner mode:", rep["flags"]["mode"])
 
-print(f"Artifacts saved under ./runs/demo/{episode_id}")
-print(Path("./runs/demo") / episode_id / "events.jsonl")
+    state_path = Path("./runs/demo") / episode_id / "state.json"
+    plan_steps = []
+    if state_path.exists():
+        state = json.loads(state_path.read_text())
+        plan_steps = [s.get("description", "—") for s in state.get("plan", {}).get("steps", [])]
+    print("Plan steps:", plan_steps if plan_steps else "—")
+
+    act_events = [ev for ev in tl if ev.get("phase") == "act"]
+    if act_events:
+        action_payload = act_events[0].get("payload", {})
+        excerpt = action_payload.get("input_excerpt") or action_payload.get("adapter") or "—"
+        print("First action excerpt:", excerpt)
+        print("First action outcome:", action_payload.get("outcome", "—"))
+    else:
+        print("First action: (none recorded)")
+
+    run_dir = Path("./runs/demo") / episode_id
+    print("Artifacts:", run_dir)
+    print("  ├─ summary.json")
+    print("  ├─ state.json")
+    print("  └─ events.jsonl")
+
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
 ```
-
+#### Example Output:
+```
+=== Noēsis run ===
+Episode: ep_20251108_...
+Success metric: 1
+Planner mode: meta
+Plan steps: ['detect: read latest CHANGELOG entries', 'act: draft update bullets']
+First action excerpt: Turn latest entries into bullets
+First action outcome: ok
+Artifacts: ./runs/demo/ep_20251108_...
+  ├─ summary.json
+  ├─ state.json
+  └─ events.jsonl
+```
 ### Bring your own agent / graph
 
 Noēsis is framework-agnostic. Point `solve()` at your orchestrator (LangGraph, CrewAI, custom Python), and Noēsis will wrap it with planning, reflection, trace events, and summaries.
