@@ -59,7 +59,7 @@ Stay in your stack: Noēsis decorates LangGraph, CrewAI, OpenDevin, MCP, or besp
 
 Every cognition loop lands in `runs/<label>/<episode_id>/`. The snippet below comes from [`examples/artifacts/state_v1_example.json`](examples/artifacts/state_v1_example.json) and mirrors what you’ll see in production.
 
-<details>
+<details markdown="block">
 <summary><strong>Open JSON snapshot</strong></summary>
 
 ```json
@@ -353,12 +353,6 @@ for eid in (eid_meta, eid_veto):
 <details>
 <summary><strong>Open comparison:</strong></summary>
 
-<details>
-<summary><strong>Open comparison:</strong></summary>
-
-<details markdown="1">
-<summary><strong>View comparison</strong></summary>
-
 ```
 ep_20251103_181813_293036_f3da_s0: success=True vetoes=0 plan_adherence=1.0000 tool_coverage=1.0
 ep_20251103_181813_294994_1d16_s0: success=False vetoes=1 plan_adherence=0.3333 tool_coverage=0.0
@@ -366,7 +360,7 @@ ep_20251103_181813_294994_1d16_s0: success=False vetoes=1 plan_adherence=0.3333 
 
 **Human-in-the-loop & governance (optional)**
 
-**Human-in-the-loop & governance (optional)**
+Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
 
 ## Customizing Noēsis
 
