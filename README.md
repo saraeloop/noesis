@@ -59,7 +59,7 @@ Stay in your stack: Noēsis decorates LangGraph, CrewAI, OpenDevin, MCP, or besp
 
 Every cognition loop lands in `runs/<label>/<episode_id>/`. The snippet below comes from [`examples/artifacts/state_v1_example.json`](examples/artifacts/state_v1_example.json) and mirrors what you’ll see in production.
 
-<details>
+<details markdown="block">
 <summary><strong>Open JSON snapshot</strong></summary>
 
 ```json
