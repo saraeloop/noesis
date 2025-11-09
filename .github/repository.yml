@@ -1,0 +1,28 @@
+name: noesis
+description: "Observable cognition for agent stacks—plan, govern, and learn from every run with immutable JSON artifacts."
+documentation: "https://github.com/saraeloop/noesis#readme"
+topics:
+  - cognition
+  - agents
+  - reasoning
+  - orchestration
+  - traceability
+  - explainable-ai
+  - ai-observability
+  - ai-governance
+  - agent-telemetry
+  - structured-traces
+  - langgraph
+  - langgraph-studio
+  - langchain
+  - crewai
+  - python
+  - llm
+  - llm-agents
+  - memory-rag
+  - model-context-protocol
+  - incident-response
+license: apache-2.0
+visibility: public
+owner:
+  name: "Sara Loera"
