@@ -364,11 +364,9 @@ ep_20251103_181813_293036_f3da_s0: success=True vetoes=0 plan_adherence=1.0000 t
 ep_20251103_181813_294994_1d16_s0: success=False vetoes=1 plan_adherence=0.3333 tool_coverage=0.0
 ```
 
-</details>
-
 **Human-in-the-loop & governance (optional)**
 
-Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
+**Human-in-the-loop & governance (optional)**
 
 ## Customizing Noēsis
 
