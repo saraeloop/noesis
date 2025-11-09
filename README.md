@@ -16,7 +16,7 @@ Noēsis is a lightweight Python cognitive framework for orchestrating, tracing, 
 
 Noēsis works with the graphs, tools, and runtimes you already use. It makes them plan, act, reflect, learn, and remember in a measurable, auditable way.
 
-### Who it's for
+## Who it's for
 
 - **Builders & platform teams:** wrap existing LangGraph/CrewAI/custom graphs with a cognition loop without changing your orchestrator.
 - **Applied researchers:** capture structured cognitive traces for benchmarks, ablations, and papers without rebuilding tooling.
@@ -142,7 +142,7 @@ for ev in timeline[:5]:
     print(ev["phase"], ev.get("payload"))
 ```
 
-### Mini example: artifacts end to end
+**Mini example: artifacts end to end**
 
 Drop this snippet in a REPL or `python demo.py` to see the cognition loop, summary, and events that Noēsis persists for every run.
 
@@ -207,10 +207,8 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 ```
-#### Example Output:
-
 <details>
-<summary><strong>Open console output</strong></summary>
+<summary><strong>Open console output:</strong></summary>
 
 ```
 === Noēsis run ===
@@ -227,7 +225,8 @@ Artifacts: ./runs/demo/ep_20251108_...
 ```
 
 </details>
-### Bring your own agent / graph
+
+**Bring your own agent / graph**
 
 Noēsis is framework-agnostic. Point `solve()` at your orchestrator (LangGraph, CrewAI, custom Python), and Noēsis will wrap it with planning, reflection, trace events, and summaries.
 
@@ -242,7 +241,7 @@ episode_id = ns.solve(
 )
 ```
 
-### Runtime context & memory
+**Runtime context & memory**
 
 Register durable memory or insight evaluators via the context facade; cognition stays explicit and testable.
 
@@ -266,37 +265,20 @@ print(list(index.iter())[:3])
 - Run `uv run python examples/demo.py` to collect your first demo artifacts, then graduate to `examples/incident_triage` or `examples/sql_guard` when you want governance pressure.
 - Show stakeholders `examples/artifacts/state_v1_example.json` or your own `runs/demo/.../state.json` while you narrate the cognitive loop.
 
-
 ## Interpreting artifacts
 
 - [`runs/README.md`](runs/README.md) – cheat sheet for `summary.json`, `state.json`, `events.jsonl`, and `learn.jsonl`.
 - [`docs/artifacts/state.md`](docs/artifacts/state.md) – field-by-field breakdown of the state schema plus KPI callouts.
 - `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
 
-
-## Examples & learning path
-
-- Start with [`examples/README.md`](examples/README.md) for a role-based tour of quickstart, governance, memory, and MCP scenarios.
-- Run `uv run python examples/demo.py` to collect your first demo artifacts, then graduate to `examples/incident_triage` or `examples/sql_guard` when you want governance pressure.
-- Show stakeholders `examples/artifacts/state_v1_example.json` or your own `runs/demo/.../state.json` while you narrate the cognitive loop.
-
-⸻
-
-## Interpreting artifacts
-
-- [`runs/README.md`](runs/README.md) – cheat sheet for `summary.json`, `state.json`, `events.jsonl`, and `learn.jsonl`.
-- [`docs/artifacts/state.md`](docs/artifacts/state.md) – field-by-field breakdown of the state schema plus KPI callouts.
-- `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
-
-⸻
 
 ## Core capabilities
 
-### Planning & task decomposition
+**Planning & task decomposition**
 
 Direction turns vague goals into stepwise plans and keeps them fresh as evidence arrives (observe → interpret → plan). Plans and transitions are written to `events.jsonl` and `state.json`.
 
-### Context & trace management
+**Context & trace management**
 
 Every episode emits immutable artifacts:
 
@@ -304,11 +286,11 @@ Every episode emits immutable artifacts:
 - `summary.json` – metrics, outcomes, and cross-links
 - `state.json` – current plan and episode state
 
-### Long-term memory
+**Long-term memory**
 
 Plug in a memory port (SQLite for dev, FAISS/HNSW for semantic recall). After each summary, Noēsis persists normalized facts and episode links so future runs can retrieve relevant context.
 
-### Reflection & learning
+**Reflection & learning**
 
 Noēsis records reflections and can emit learning payloads for policy updates or offline analysis.
 
@@ -330,7 +312,7 @@ learn.emit(
 
 Use these artifacts to tune prompts, policies, or evaluators—or wire them into a governance loop.
 
-### Governance & insight
+**Governance & insight**
 
 Pre-act governance policies can audit or veto actions before the `act` phase when the planner mode is `meta` (default). On veto, the ACT phase is logged as `outcome="blocked"` and no tool invocation occurs. Direction events reflect both heuristic directives and governance verdicts, and summaries expose versioned per-episode insight metrics under `summary["insight"]["metrics"]`.
 
@@ -349,7 +331,7 @@ legacy_episode = ns.run("Draft a rollout plan for the new release")
 ns.set(planner_mode="meta")
 ```
 
-### Demo: meta vs minimal runs
+**Demo: meta vs minimal runs**
 
 ```python
 import noesis as ns
@@ -372,25 +354,29 @@ for eid in (eid_meta, eid_veto):
 
 Typical output:
 
+<details>
+<summary><strong>Open comparison:</strong></summary>
+
 ```
 ep_20251103_181813_293036_f3da_s0: success=True vetoes=0 plan_adherence=1.0000 tool_coverage=1.0
 ep_20251103_181813_294994_1d16_s0: success=False vetoes=1 plan_adherence=0.3333 tool_coverage=0.0
 ```
 
-### Human-in-the-loop & governance (optional)
+</details>
+
+**Human-in-the-loop & governance (optional)**
 
 Add pre-plan or pre-act hooks to require approval or veto risky actions. Noēsis logs `governance.audit` / `governance.veto` events so trust is measurable.
-
 
 ## Customizing Noēsis
 
 You can tailor cognition without committing to a specific runtime or library.
 
-### Model / planner
+**Model / planner**
 
 Noēsis is model-agnostic—keep whichever LLM or policy your graph already uses. Noēsis decorates execution with the cognitive loop and artifacts; it does not replace your model choice. Planner mode is configurable via `NOESIS_PLANNER=meta|minimal` (or `ns.set(planner_mode=\"...\")`) so you can opt into the depth-limited meta planner and governance gate when ready.
 
-### “System prompt”
+**“System prompt”**
 
 Rather than one mega prompt, Noēsis splits responsibilities:
 
@@ -400,11 +386,11 @@ Rather than one mega prompt, Noēsis splits responsibilities:
 
 Keep your graph’s prompts; add faculty-specific guidance when helpful.
 
-### Tools
+**Tools**
 
 Your tools remain your tools. Noēsis observes tool calls via `act` events and can route outcomes into memory and reflection automatically.
 
-### Faculties & hooks (middleware analogy)
+**Faculties & hooks (middleware analogy)**
 
 Think of faculties like modular middleware:
 
@@ -482,7 +468,7 @@ index = EpisodeIndex("./runs/_episodes", ttl_days=14)
 list(index.iter())
 ```
 
-### Inspecting & migrating from the CLI
+## Inspecting & migrating from the CLI
 
 ```bash
 # Inspect an episode timeline, governance decisions, and KPIs
