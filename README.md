@@ -274,6 +274,22 @@ print(list(index.iter())[:3])
 - `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
 
 
+## Examples & learning path
+
+- Start with [`examples/README.md`](examples/README.md) for a role-based tour of quickstart, governance, memory, and MCP scenarios.
+- Run `uv run python examples/demo.py` to collect your first demo artifacts, then graduate to `examples/incident_triage` or `examples/sql_guard` when you want governance pressure.
+- Show stakeholders `examples/artifacts/state_v1_example.json` or your own `runs/demo/.../state.json` while you narrate the cognitive loop.
+
+⸻
+
+## Interpreting artifacts
+
+- [`runs/README.md`](runs/README.md) – cheat sheet for `summary.json`, `state.json`, `events.jsonl`, and `learn.jsonl`.
+- [`docs/artifacts/state.md`](docs/artifacts/state.md) – field-by-field breakdown of the state schema plus KPI callouts.
+- `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
+
+⸻
+
 ## Core capabilities
 
 ### Planning & task decomposition
