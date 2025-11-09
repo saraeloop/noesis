@@ -112,13 +112,7 @@ The CLI view highlights plan steps, veto counts, and per-action outcomes so non-
 
 ## Installation
 
-```bash
-# pip
-pip install noesis
-
-# uv
-uv add noesis
-```
+> For now, clone the repository to explore examples and artifacts locally.
 
 Need the CLI (`noesis run …`, `noesis solve …`, `noesis view …`, `noesis migrate …`)? Install the console script from source with `uv tool install .` or `pipx install .`. Optional pretty-printing for CLI JSON uses `jq` (`brew install jq`).
 
