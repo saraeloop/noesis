@@ -350,8 +350,11 @@ for eid in (eid_meta, eid_veto):
         f"tool_coverage={insight['tool_coverage']}"
     )
 ```
+<details>
+<summary><strong>Open comparison:</strong></summary>
 
-Typical output:
+<details>
+<summary><strong>Open comparison:</strong></summary>
 
 <details markdown="1">
 <summary><strong>View comparison</strong></summary>
