@@ -350,8 +350,8 @@ for eid in (eid_meta, eid_veto):
         f"tool_coverage={insight['tool_coverage']}"
     )
 ```
-
-Typical output:
+<details>
+<summary><strong>Open comparison:</strong></summary>
 
 ```
 ep_20251103_181813_293036_f3da_s0: success=True vetoes=0 plan_adherence=1.0000 tool_coverage=1.0
