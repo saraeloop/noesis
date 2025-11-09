@@ -2,6 +2,13 @@
 
 [![PR Contracts](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml)
 [![Release Prep](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml)
+[![PyPI - Version](https://img.shields.io/pypi/v/noesis.svg?label=PyPI&color=4f46e5)](https://pypi.org/project/noesis/)
+[stars-shield]: https://img.shields.io/github/stars/saraeloop/noesis?style=social
+[stars-url]: https://github.com/saraeloop/noesis/stargazers
+[![Docs](https://img.shields.io/badge/docs-observable%20cognition-0f766e)](docs/README.md)
+[![Planner Modes](https://img.shields.io/badge/planner-meta%20%E2%80%A2%20minimal-0ea5e9)](#learner-flow)
+[![Python](https://img.shields.io/badge/python-3.11+-18181b)](pyproject.toml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-64748b)](LICENSE)
 
 _Understanding, made observable._
 
@@ -9,6 +16,112 @@ Noēsis is a lightweight Python cognitive framework for orchestrating, tracing, 
 **TL;DR:** it drops a cognitive loop on top of any agent stack, so every run is observable end-to-end context in, actions out, with advisory Intuition, steerable Direction, and measurable Insight captured as immutable artifacts.
 
 Noēsis works with the graphs, tools, and runtimes you already use. It makes them plan, act, reflect, learn, and remember in a measurable, auditable way.
+
+### Who it's for
+
+- **Builders & platform teams:** wrap existing LangGraph/CrewAI/custom graphs with a cognition loop without changing your orchestrator.
+- **Applied researchers:** capture structured cognitive traces for benchmarks, ablations, and papers without rebuilding tooling.
+- **Product & GTM leaders:** point to concrete KPIs (plan adherence, veto count, tool coverage) instead of demo scripts.
+- **Ops, compliance:** review immutable JSON traces that explain what happened, why it was allowed, and what the system learned.
+
+⸻
+
+## Table of Contents
+
+- [Why Noēsis](#why-noēsis)
+- [Artifact snapshot](#artifact-snapshot-immutables-at-a-glance)
+- [Learner flow](#learner-flow)
+- [Trace gallery](#trace-gallery)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Examples & learning path](#examples--learning-path)
+- [Interpreting artifacts](#interpreting-artifacts)
+- [Core capabilities](#core-capabilities)
+- [Customizing Noēsis](#customizing-noēsis)
+- [Sub-agents & complex workflows](#sub-agents--complex-workflows)
+- [MCP & external tooling](#mcp--external-tooling)
+- [Sync vs async](#sync-vs-async)
+- [What Noēsis adds (at a glance)](#what-noēsis-adds-at-a-glance)
+- [API cheatsheet](#api-cheatsheet)
+- [Inspecting & migrating from the CLI](#inspecting--migrating-from-the-cli)
+- [Stability & versioning](#stability--versioning)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+
+⸻
+
+## Why Noēsis
+
+| Proof point | What it delivers |
+| --- | --- |
+| **Observable cognition** | Every run emits `summary.json`, `state.json`, and `events.jsonl` so you can replay decisions, governance verdicts, and metrics later. |
+| **Direction + governance** | Planner modes (`meta` vs `minimal`) layer advisory heuristics and pre-act vetoes on top of any agent graph. |
+| **Durable memory** | Register SQLite/FAISS/HNSW memories or bring your own context provider so episodes learn across time. |
+| **Learning signals** | Insight metrics and `learn.emit(...)` give you structured payloads for offline tuning, evaluations, or compliance reviews. |
+
+Stay in your stack: Noēsis decorates LangGraph, CrewAI, OpenDevin, MCP, or bespoke orchestrators without swapping your model, prompts, or tools.
+
+⸻
+
+## Artifact snapshot (immutables at a glance)
+
+Every cognition loop lands in `runs/<label>/<episode_id>/`. The snippet below comes from [`examples/artifacts/state_v1_example.json`](examples/artifacts/state_v1_example.json) and mirrors what you’ll see in production.
+
+<details>
+<summary><strong>Open JSON snapshot</strong></summary>
+
+```json
+{
+  "episode": {"id": "ep_20250101_120000_123456_abcd_s0", "tags": {"env": "demo"}},
+  "plan": {"steps": [{"id": "step-1", "kind": "detect"}, {"id": "step-2", "kind": "act"}]},
+  "memory": {"facts": [{"key": "latency_p99_ms", "value": 840}]},
+  "outcomes": {
+    "status": "ok",
+    "summary": "Rollback reduced latency below threshold.",
+    "actions": [{"tool": "adapter:demo", "result_status": "ok"}],
+    "metrics": {"task_score": 0.85}
+  },
+  "links": {"events": "events.jsonl", "summary": "summary.json", "learn": "learn.jsonl"}
+}
+```
+
+</details>
+
+Use the [artifact guide](docs/artifacts/state.md) for field-by-field callouts and recommended KPIs (plan adherence, veto count, tool coverage).
+
+⸻
+
+## Learner flow
+
+```mermaid
+flowchart LR
+    subgraph Observe & Interpret
+        O[observe events] --> I[intuition hints]
+    end
+    I --> P{Direction plan}
+    P -->|governed| A[act / tool call]
+    A --> R[reflect]
+    R --> L[learn signal]
+    L --> M[memory + insight]
+    M --> O
+```
+
+`planner_mode="meta"` routes every action through governance plus Insight metrics, while `"minimal"` keeps throughput-focused loops for benchmarks. Both modes emit the same immutable artifacts so you can diff cognition depth over time.
+
+⸻
+
+## Trace gallery
+
+Bring demos to life with real traces instead of screenshots. Record a run, then surface it interactively or inline in docs:
+
+```bash
+noesis run "Draft a weekly engineering update" --runs-dir ./runs/demo
+noesis view runs/demo/ep_20251108_... --pretty
+```
+
+The CLI view highlights plan steps, veto counts, and per-action outcomes so non-technical stakeholders can follow the narrative without searching through JSON manually.
+
+⸻
 
 ⸻
 
@@ -20,9 +133,6 @@ pip install noesis
 
 # uv
 uv add noesis
-
-# poetry
-poetry add noesis
 ```
 
 Need the CLI (`noesis run …`, `noesis solve …`, `noesis view …`, `noesis migrate …`)? Install the console script from source with `uv tool install .` or `pipx install .`. Optional pretty-printing for CLI JSON uses `jq` (`brew install jq`).
@@ -159,6 +269,22 @@ print(list(index.iter())[:3])
 ```
 
 `context` is the agent’s scoped worldview (config + registered faculties); pass it explicitly to keep dependencies clear and tests pure.
+
+⸻
+
+## Examples & learning path
+
+- Start with [`examples/README.md`](examples/README.md) for a role-based tour of quickstart, governance, memory, and MCP scenarios.
+- Run `uv run python examples/demo.py` to collect your first demo artifacts, then graduate to `examples/incident_triage` or `examples/sql_guard` when you want governance pressure.
+- Show stakeholders `examples/artifacts/state_v1_example.json` or your own `runs/demo/.../state.json` while you narrate the cognitive loop.
+
+⸻
+
+## Interpreting artifacts
+
+- [`runs/README.md`](runs/README.md) – cheat sheet for `summary.json`, `state.json`, `events.jsonl`, and `learn.jsonl`.
+- [`docs/artifacts/state.md`](docs/artifacts/state.md) – field-by-field breakdown of the state schema plus KPI callouts.
+- `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
 
 ⸻
 
