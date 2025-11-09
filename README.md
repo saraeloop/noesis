@@ -311,6 +311,7 @@ learn.emit(
 
 Use these artifacts to tune prompts, policies, or evaluators—or wire them into a governance loop.
 
+
 **Governance & insight**
 
 Pre-act governance policies can audit or veto actions before the `act` phase when the planner mode is `meta` (default). On veto, the ACT phase is logged as `outcome="blocked"` and no tool invocation occurs. Direction events reflect both heuristic directives and governance verdicts, and summaries expose versioned per-episode insight metrics under `summary["insight"]["metrics"]`.
@@ -350,6 +351,7 @@ for eid in (eid_meta, eid_veto):
         f"tool_coverage={insight['tool_coverage']}"
     )
 ```
+
 
 Typical output:
 
