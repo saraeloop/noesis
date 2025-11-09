@@ -48,6 +48,38 @@ for ev in timeline[:5]:
     print(ev["phase"], ev.get("payload"))
 ```
 
+### Mini example: artifacts end to end
+
+Drop this snippet in a REPL or `python demo.py` to see the cognition loop, summary, and events that Noēsis persists for every run.
+
+```python
+from pathlib import Path
+import noesis as ns
+from noesis import events, summary
+
+# 1. Keep artifacts in a temp runs directory
+ns.set(runs_dir="./runs/demo")
+
+# 2. Run a concrete task with cognition + governance enabled
+episode_id = ns.run(
+    "Turn the three most recent entries in ./CHANGELOG.md into a weekly update bullet list",
+    intuition=True,
+)
+
+# 3. Inspect the immutable summary + trace
+report = summary.read(episode_id)
+timeline = list(events.read(episode_id))
+
+print("Outcome:", report["metrics"]["success"])
+print("Plan steps:", [step["title"] for step in report["plan"]["steps"]])
+
+act_events = [ev for ev in timeline if ev["phase"] == "act"]
+print("First action:", act_events[0]["payload"]["instruction"])
+
+print(f"Artifacts saved under ./runs/demo/{episode_id}")
+print(Path("./runs/demo") / episode_id / "events.jsonl")
+```
+
 ### Bring your own agent / graph
 
 Noēsis is framework-agnostic. Point `solve()` at your orchestrator (LangGraph, CrewAI, custom Python), and Noēsis will wrap it with planning, reflection, trace events, and summaries.
