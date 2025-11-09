@@ -1,6 +1,5 @@
 [![PR Contracts](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml)
 [![Release Prep](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml)
-<!-- [![PyPI - Version](https://img.shields.io/pypi/v/noesis.svg?label=PyPI&color=4f46e5)](https://pypi.org/project/noesis/) -->
 [![Stars](https://img.shields.io/github/stars/saraeloop/noesis?style=social)](https://github.com/saraeloop/noesis/stargazers)
 [![Docs](https://img.shields.io/badge/docs-observable%20cognition-0f766e)](docs/README.md)
 [![Planner Modes](https://img.shields.io/badge/planner-meta%20%E2%80%A2%20minimal-0ea5e9)](#learner-flow)
@@ -356,6 +355,9 @@ for eid in (eid_meta, eid_veto):
 
 <details>
 <summary><strong>Open comparison:</strong></summary>
+
+<details markdown="1">
+<summary><strong>View comparison</strong></summary>
 
 ```
 ep_20251103_181813_293036_f3da_s0: success=True vetoes=0 plan_adherence=1.0000 tool_coverage=1.0
