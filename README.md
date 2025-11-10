@@ -135,6 +135,19 @@ for ev in timeline[:5]:
     print(ev["phase"], ev.get("payload"))
 ```
 
+### Sessions for deterministic runs
+
+`noesis.run/solve` remain convenient, but production systems should create explicit sessions so configuration, ports, and planner modes are always scoped:
+
+```python
+from noesis.runtime.session import SessionBuilder
+
+session = SessionBuilder.from_env().with_default_tags(env="demo").build()
+episode_id = session.run("Draft a weekly engineering update", intuition=False)
+```
+
+The default CLI and `ns.*` helpers internally use the same session provider, so migrating existing code is incremental.
+
 **Mini example: artifacts end to end**
 
 Drop this snippet in a REPL or `python demo.py` to see the cognition loop, summary, and events that Noēsis persists for every run.
