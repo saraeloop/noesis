@@ -61,6 +61,34 @@ Every update strengthens three dimensions:
 
 ### Phase Sequence
 
+#### Phase 0 — No-Surprises, No-Gaps (Blocking)
+**Focus:** Lock the “trust spine” contracts (runtime owner, artifact immutability, schema governance) before landing more PRs.
+
+**Key Deliverables**
+- **Runtime RFC:** Document the single-session runtime object (threading, ownership, env-var defaults), the `ns.*` shims that wrap it, and the typed Runner/graph adapter contract used by `run/solve`.
+- **Artifact Spec:** Finalize directory layout (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`, optional `learn.jsonl`), ULID episode IDs plus derived UUIDv5 directive/governance IDs, and write-once rules (temp file → atomic rename, manifest with size + sha256 + optional HMAC).
+- **Schema Governance Doc:** Per-file `$schema_version`, field-level `stability` flags, semver policy + migration-note checklist, and glossary that pins KPI formulas (plan_adherence, tool_coverage, veto_count, success, etc.).
+- **Determinism Drill:** Paper (or notebook) replay of a vetoed episode that exercises the new IDs/manifest, a minimal-mode artifact diff proving byte-identical outputs, and a manual enforcement checklist that bridges to later CI gates.
+
+**Blocking Workstreams (PR-gated)**
+1. **ADR-001 — Runtime ownership & NoesisSession** *(Owner: Sara)*  
+   Scope: single session object, threading/reentrancy guarantees, `ns.*` shims, Runner/graph adapter contract, env-defaulting without hidden globals.
+2. **ADR-002 — Artifact immutability & manifest** *(Owner: Sara)*  
+   Scope: episode directory layout, temp→atomic write policy, `manifest.json` schema (sizes + SHA256 + optional HMAC), ULID episode IDs, UUIDv5 directive/governance IDs, and `noesis artifacts verify` behavior.
+3. **ADR-003 — Schema governance & KPIs** *(Owner: Sara)*  
+   Scope: per-file `$schema_version`, field-level stability flags, schema semver rules, mandatory migration notes, pinned KPI formulas (plan_adherence, tool_coverage, veto_count, success), and CI schema guard requirements.  
+   *Each ADR PR must include rationale, consequences, alternatives rejected, acceptance criteria, and a migration-note stub.*
+4. **Determinism Drill PR** *(Owner: Sara)*  
+   Deliverables: deterministic vetoed fixture, minimal-mode paired runs proving byte-identical artifacts, `diagnostics --replay` diff spec (lineage, duration tolerances, KPIs), and enforcement that minimal mode emits zero Direction/Governance events while meta mode shows tamper-evident manifests.
+5. **NoesisSession spike PR** *(Owner: Sara)*  
+   Deliverables: thin `NoesisSession` shell + adapters, one vertical slice (run→plan→act→summarize) on the session, concurrency guarantees, and an impact report (breaking changes, shims, touched files, migration estimate). Out of scope: full CLI migration or docs rewrite.
+
+**Exit Criteria**
+- Every engineer can whiteboard an episode lifecycle (session → IDs → artifacts → manifest) without disagreement.
+- Simulated vetoed action yields deterministic directive/governance IDs and manifest entries the team can follow step-by-step.
+- Schema bumps cannot merge without an accompanying migration note template and reviewer checklist.
+- Minimal-mode artifact pairs diff to zero when seeded identically; divergences are explained in the drill log.
+
 #### Phase 1 — Governance & Direction Hardening (v0.9.5)
 **Focus:** Stabilize directive/governance identifiers, error handling, and legacy compatibility.  
 **Key PRs**
@@ -122,6 +150,14 @@ Every update strengthens three dimensions:
 
 ---
 
+## Engineering Operating Rules (apply to every PR)
+- Follow Clean Architecture boundaries (Entities → Use Cases → Interface Adapters → Infrastructure) with strong typing, pathlib, dependency injection, and explicit namespaces (no spelunking through `core` internals).
+- Keep orchestration separate from data models; favor pure functions/dataclasses; IO stays at infrastructure edges; every feature must preserve artifact immutability (append-only events, atomic writes, manifest updates) and uphold minimal-mode guarantees (zero Direction/Governance events, empty insight metrics).
+- PR checklist template: ADR linked (or N/A) with acceptance criteria, Clean Architecture boundaries clear, mypy/pyright clean, pytest updated, determinism fixture refreshed, diagnostics plan updated (or N/A), docs + migration notes added, artifacts immutable.
+- Required tests: entities/use cases unit tests, integration run that emits expected artifacts, determinism test showing minimal-mode golden byte-identical, governance latency budget captured in diagnostics specs (hard enforcement arrives in Phase 2).
+
+---
+
 ## Future (Post v1.0.0)
 
 ### Meta-Cognition Layer (v1.1+ Exploration)
@@ -145,5 +181,5 @@ Every update strengthens three dimensions:
 
 ## Tech Debt & Intake (Ongoing Backlog)
 - Document release freeze window ahead of GA to stabilize APIs.
-- Convert staged drafts under `docs/issue-drafts/` into GitHub issues with owners.
+- Convert staged drafts under `internal_docs/issue-drafts/` into GitHub issues with owners.
 - Expand replay datasets under `benchmarks/` once the curriculum harness lands.

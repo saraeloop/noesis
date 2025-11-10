@@ -62,4 +62,4 @@ Start from a clean branch, confirm the freeze window is active, and target a tag
 ## Optional automation
 - [Manual] Run `uv run scripts/pre_release.py --check-all` if available; this helper aggregates lint, tests, docs, link checks, and version assertions into a single ✅ / ❌ summary.
 
-Keep the checklist under version control and revise it whenever the platform gains new capabilities or operational requirements. That way every public release follows the same transparent playbook.
+Let's keep checklist under version control and revise it whenever the platform gains new capabilities or operational requirements. That way every public release follows the same transparent playbook.
