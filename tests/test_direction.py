@@ -95,7 +95,12 @@ class RunArtifacts:
 
 def _run(tmpdir, *, graph, policy, min_confidence: float = 0.5) -> RunArtifacts:
     runs_dir = tmpdir / "runs"
-    ns.set(runs_dir=str(runs_dir), direction_min_confidence=min_confidence)
+    learn_dir = tmpdir / "learn"
+    ns.set(
+        runs_dir=str(runs_dir),
+        learn_home=str(learn_dir),
+        direction_min_confidence=min_confidence,
+    )
     ep = ns.solve("Demo task", using=lambda: graph, intuition=policy)
     summ = ns.summary.read(ep)
     evs = list(ns.events.read(ep))
@@ -177,7 +182,12 @@ def test_direction_multi_patch_diff(tmp_path):
 
 def test_direction_veto(tmp_path):
     runs_dir = tmp_path / "runs"
-    ns.set(runs_dir=str(runs_dir), direction_min_confidence=0.5)
+    learn_dir = tmp_path / "learn"
+    ns.set(
+        runs_dir=str(runs_dir),
+        learn_home=str(learn_dir),
+        direction_min_confidence=0.5,
+    )
 
     with pytest.raises(NoesisVeto):
         ns.solve("Danger", using=lambda: DictGraph(), intuition=VetoPolicy())

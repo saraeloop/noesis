@@ -7,7 +7,9 @@ from contextvars import ContextVar, Token
 from threading import RLock
 from typing import Iterator
 
-from .models import SessionBuilder
+from noesis.context import get_context
+
+from .models import SessionConfig
 from .session import NoesisSession
 
 __all__ = ["DefaultSessionProvider"]
@@ -31,7 +33,10 @@ class DefaultSessionProvider:
             return scoped
         with self._lock:
             if self._default_session is None:
-                self._default_session = SessionBuilder.from_env().build()
+                context = get_context()
+                snapshot = context.config_port.get()
+                config = SessionConfig(snapshot=snapshot, default_tags={})
+                self._default_session = NoesisSession(config=config, context=context)
             return self._default_session
 
     @contextmanager

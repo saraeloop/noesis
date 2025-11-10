@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 import pytest
 
+import noesis as ns
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
 from noesis.context import RuntimeContext
@@ -98,3 +99,11 @@ def test_default_session_provider_scoped_override(tmp_path: Path) -> None:
     with provider.use(custom_session):
         assert provider.current() is custom_session
     assert provider.current() is baseline
+
+
+def test_ns_run_respects_session_override(tmp_path: Path) -> None:
+    provider = ns.session_provider()
+    custom_session = _session(tmp_path)
+    with provider.use(custom_session):
+        episode_id = ns.run("Ensure override works", intuition=False)
+    assert (tmp_path / episode_id / "summary.json").exists()

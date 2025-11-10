@@ -114,8 +114,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     renderer = _select_renderer(ctx, options)
 
     command = args.command_obj
+    provider = ns.session_provider()
     try:
-        return command.run(args, ctx, renderer)
+        with provider.use(ctx.session):
+            return command.run(args, ctx, renderer)
     except ns.NoesisVeto as veto:  # type: ignore[name-defined]
         print(veto.advice or "Vetoed by policy", file=sys.stderr)
         return EXIT_VETO

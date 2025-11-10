@@ -1,24 +1,114 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import Any, Dict, Optional
 from warnings import warn
 
 from .trace.schema import SUMMARY_SCHEMA_VERSION
+from .intuition import Intuition
+from .loader import GraphSource
+from .runtime.session import (
+    DefaultSessionProvider,
+    NoesisSession,
+    SessionBuilder,
+)
 
 # Package metadata
 __version__ = "0.9.5"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
-# Core execution API
-from .core import run, solve, set
+# Legacy config access (kept for compatibility)
 from .context import get_config_port  # re-exported via deprecated alias
 from . import context as _context, events as _events, learn as _learn, summary as _summary
 
+_SESSION_PROVIDER = DefaultSessionProvider()
+
+
+def session_provider() -> DefaultSessionProvider:
+    """Expose the global session provider for advanced integrations."""
+    return _SESSION_PROVIDER
+
+
+def create_session(builder: SessionBuilder | None = None) -> NoesisSession:
+    """Build a new session (factory for tests, services, or CLIs)."""
+    return (builder or SessionBuilder.from_env()).build()
+
+
+def _current_session() -> NoesisSession:
+    return _SESSION_PROVIDER.current()
+
+
+def run(
+    task: str,
+    *,
+    seed: int = 0,
+    intuition: bool | Intuition | None = True,
+    tags: Optional[Dict[str, Any]] = None,
+    context: Any | None = None,
+) -> str:
+    """Execute a task using the default session (planner derived from config)."""
+    if context is not None:
+        from .core import run as core_run
+
+        return core_run(
+            task=task,
+            seed=seed,
+            intuition=intuition,
+            tags=tags,
+            context=context,
+        )
+    return _current_session().run(
+        task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+    )
+
+
+def solve(
+    task: str,
+    *,
+    using: GraphSource,
+    seed: int = 0,
+    intuition: bool | Intuition | None = True,
+    tags: Optional[Dict[str, Any]] = None,
+    context: Any | None = None,
+) -> str:
+    """Execute a task using an explicit graph/adapter."""
+    if context is not None:
+        from .core import run_using as core_run_using
+
+        return core_run_using(
+            using=using,
+            task=task,
+            seed=seed,
+            intuition=intuition,
+            tags=tags,
+            context=context,
+        )
+    return _current_session().solve(
+        using=using,
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+    )
+
+
+def set(*, context: Any | None = None, **overrides: object) -> None:
+    """
+    Apply config overrides for either a provided runtime context or the default session.
+    """
+    if context is not None:
+        from .core import set as core_set
+
+        core_set(context=context, **overrides)
+        return
+    _current_session().configure(**overrides)
 
 def get() -> dict[str, Any]:
     """Public accessor returning a mapping of the current runtime configuration."""
-    return get_config_port().get().to_mapping()
+    return _current_session().config_snapshot.to_mapping()
 
 summary = _summary
 events = _events
@@ -30,6 +120,8 @@ __all__ = (
     "solve",
     "set",
     "get",
+    "create_session",
+    "session_provider",
     "summary",
     "events",
     "context",
