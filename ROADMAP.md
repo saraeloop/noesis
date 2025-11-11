@@ -39,6 +39,12 @@ Every update strengthens three dimensions:
 - ✅ Hook-order validator and LangGraph adapter fixtures (`tests/runtime/test_hook_order.py`, `tests/integration/test_cognitive_events.py`).
 - ✅ Insight finalize tests to protect metric determinism (`tests/insight/test_finalize_metrics.py`).
 
+### Artifact Immutability & Manifests (ADR-002 — Stable)
+- ✅ ULID-based episode IDs plus deterministic Directive/Governance UUIDv5 derivations (`runtime/artifacts/ids.py`, `usecases/episode_runner.py`).
+- ✅ Atomic JSON writers with dir fsyncs for `state.json`/`summary.json`, manifest builder + HMAC signing (`runtime/artifacts/*`, `infrastructure/state_repository.py`).
+- ✅ CLI + diagnostics enforcement for `manifest.json` (`noesis artifacts verify`, `diagnostics`), plus `noesis.artifacts.verify_manifest` public API surface and `noesis.io` manifest rehash guards.
+- ✅ Tests: tamper/missing/extra/mutex coverage, ULID ordering stress, CLI exit codes, and HMAC canonicalization fixtures (`tests/runtime/test_artifacts.py`, `tests/runtime/test_ids.py`, `tests/cli/test_artifacts_cli.py`).
+
 ### Accepted Baseline Metrics
 | Capability | Target | Status |
 |------------|--------|--------|
@@ -61,7 +67,7 @@ Every update strengthens three dimensions:
 
 ### Phase Sequence
 
-#### Phase 0 — (Blocking)
+#### Phase 0 — (Blocking — ADR-003/Determinism Drill remaining)
 **Focus:** Lock the “trust spine” contracts (runtime owner, artifact immutability, schema governance) before landing more PRs.
 
 **Key Deliverables**
@@ -71,9 +77,9 @@ Every update strengthens three dimensions:
 - **Determinism Drill:** Paper (or notebook) replay of a vetoed episode that exercises the new IDs/manifest, a minimal-mode artifact diff proving byte-identical outputs, and a manual enforcement checklist that bridges to later CI gates.
 
 **Blocking Workstreams (PR-gated)**
-1. **ADR-001 — Runtime ownership & NoesisSession** *(Owner: Sara)*  
+1. ~~**ADR-001 — Runtime ownership & NoesisSession** *(Owner: Sara)*~~ **(Completed)**  
    Scope: single session object, threading/reentrancy guarantees, `ns.*` shims, Runner/graph adapter contract, env-defaulting without hidden globals.
-2. **ADR-002 — Artifact immutability & manifest** *(Owner: Sara)*  
+2. ~~**ADR-002 — Artifact immutability & manifest** *(Owner: Sara)*~~ **(Completed)**  
    Scope: episode directory layout, temp→atomic write policy, `manifest.json` schema (sizes + SHA256 + optional HMAC), ULID episode IDs, UUIDv5 directive/governance IDs, and `noesis artifacts verify` behavior.
 3. **ADR-003 — Schema governance & KPIs** *(Owner: Sara)*  
    Scope: per-file `$schema_version`, field-level stability flags, schema semver rules, mandatory migration notes, pinned KPI formulas (plan_adherence, tool_coverage, veto_count, success), and CI schema guard requirements.  

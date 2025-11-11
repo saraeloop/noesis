@@ -15,6 +15,8 @@
 > Use `noesis migrate` to apply the codemod. The tool prints `{renamed, replaced, skipped}` counts and TODO files that still reference removed symbols.
 
 ### Added
+- `NoesisSession` ownership model with `ns.session_provider()`, `noesis.create_session(...)`, and CLI wiring so orchestrators can safely pin configs/ports per session (ADR-001).
+- End-to-end artifact immutability: ULID episode IDs, deterministic directive/governance UUIDv5 helpers, atomic writers, `manifest.json` with optional HMAC signatures, and the `noesis.artifacts` public API + `noesis artifacts verify` CLI (ADR-002).
 - `noesis migrate` codemod with JSON/pretty output, TODO summaries, and `--dry-run` for safe previews.
 - `noesis view` CLI viewer showing episode header, KPIs, governance decisions, and a humanised timeline (`--grep`, `--json`, `--events`, `--fail-on-invalid`).
 - Legacy escape hatch `NOESIS_LEGACY_SHIMS=1` (prints a prominent warning) to temporarily re-enable removed APIs for one patch release.
