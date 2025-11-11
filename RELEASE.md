@@ -24,6 +24,7 @@ Start from a clean branch, confirm the freeze window is active, and target a tag
 ## 2. Validate runtime durability
 - [Manual] Run `uv run python -m pytest` (or your standard runner) and confirm all suites pass.
 - [Manual] Execute two representative episodes (minimal + external adapter) and archive `events.jsonl` + summaries.
+- [Manual] Run `noesis artifacts verify <episode_dir>` for each archived run and confirm manifest integrity.
 - [Manual] Run `noesis diagnostics --replay tests/fixtures/demo_run` and confirm metrics match the golden tolerance.
 - [Manual] Terminate a governed run mid-flight (SIGINT) and verify `summary.status="aborted"` with valid `phase_ms`.
 - [Manual] Run a governed episode (`PlannerMode=governed`) and confirm veto propagation through governance → direction → insight logs.

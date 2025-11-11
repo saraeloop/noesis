@@ -8,7 +8,7 @@ while keeping orchestration logic free from infrastructure concerns.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence
 from uuid import UUID
 
@@ -25,6 +25,7 @@ from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb,
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
+from noesis.runtime.artifacts.ids import directive_uuid, governance_uuid
 from noesis.trace.events import read_events
 from .hooks.meta_phase import CompositeMetaPhaseHook, MetaPhaseHook, NullMetaPhaseHook
 
@@ -176,13 +177,15 @@ class EpisodeRunner:
         plan = self._deps.planner.build_plan(goal=request.goal, beliefs=request.beliefs)
         directive: PlannerDirective | None = None
         if self._deps.direction_planner is not None:
-            directive = self._deps.direction_planner.propose(
+            proposed = self._deps.direction_planner.propose(
                 goal=request.goal,
                 beliefs=request.beliefs,
                 base_plan=plan,
             )
-            if directive.applied:
-                _apply_directive(plan, directive)
+            if proposed is not None:
+                directive = _with_stable_directive_id(proposed, context.episode_id)
+                if directive.applied:
+                    _apply_directive(plan, directive)
         metrics = self._clock.stop(token)
         rationale = "minimal planner"
         if directive and directive.applied:
@@ -223,6 +226,7 @@ class EpisodeRunner:
         governance_event_id: Optional[UUID] = None
         if self._deps.governance_policy is not None:
             governance_result = self._deps.governance_policy.evaluate(goal=request.goal, plan=plan)
+            governance_result = _with_stable_governance_id(governance_result, context.episode_id)
             governance_event_id = self._deps.event_bus.emit_governance(
                 result=governance_result,
                 caused_by=latest_direction_id or plan_anchor,
@@ -238,6 +242,7 @@ class EpisodeRunner:
                     policy_version=governance_result.policy_version,
                     policy_kind=governance_result.policy_kind,
                 )
+                veto_directive = _with_stable_directive_id(veto_directive, context.episode_id)
                 latest_direction_id = self._deps.event_bus.emit_direction(
                     directive=veto_directive,
                     caused_by=governance_event_id,
@@ -406,3 +411,38 @@ def _apply_directive(plan: list[PlanStep], directive: PlannerDirective) -> None:
             key=key,
             reason="unsupported diff key",
         )
+
+
+def _with_stable_directive_id(directive: PlannerDirective, episode_id: str) -> PlannerDirective:
+    """Attach a deterministic UUIDv5 legacy ID derived from the episode."""
+    step_index = _extract_directive_step_index(directive)
+    rule = f"{directive.policy_id}:{directive.reason or 'directive'}"
+    stable_id = directive_uuid(episode_id, step_index, rule)
+    return replace(directive, legacy_directive_id=stable_id)
+
+
+def _with_stable_governance_id(result: GovernanceResult, episode_id: str) -> GovernanceResult:
+    """Attach a deterministic UUIDv5 decision ID derived from the episode."""
+    rule_token = result.rule_id or result.policy_id or result.decision.value
+    stable_id = governance_uuid(episode_id, rule_token)
+    return replace(result, decision_id=stable_id)
+
+
+def _extract_directive_step_index(directive: PlannerDirective) -> int:
+    for diff in directive.diff:
+        index = _match_step_index(diff.key)
+        if index is not None:
+            return index
+    return 0
+
+
+def _match_step_index(key: str) -> int | None:
+    normalized = key.strip()
+    for pattern in (_DESCRIPTION_PATTERN, _KIND_PATTERN):
+        match = pattern.fullmatch(normalized)
+        if match:
+            try:
+                return int(match.group(1))
+            except ValueError:
+                return None
+    return None

@@ -22,6 +22,8 @@ import json
 import os
 import tempfile
 
+from noesis._fs import fsync_dir
+
 SUMMARY_FILE = "summary.json"
 
 __all__ = ["SUMMARY_FILE", "write_summary", "read_summary"]
@@ -41,6 +43,7 @@ def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
         os.fsync(tmp.fileno())
         tmp_path = Path(tmp.name)
     tmp_path.replace(path)  # POSIX atomic move
+    fsync_dir(path.parent)
 
 
 

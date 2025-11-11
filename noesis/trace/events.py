@@ -22,10 +22,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterator, List
 import json
+import warnings
 
 from noesis.domain.state.cognitive import CognitiveEvent
 
 EVENTS_FILE = "events.jsonl"
+_MANIFEST_FILE = "manifest.json"
 
 # Canonical phases for event.phase
 VERB_PHASES: set[str] = {
@@ -133,6 +135,7 @@ def write_event(dir_path: Path, event: Dict[str, Any], *, validate: bool = True)
     """Append a single JSON event line (optionally schema-validated)."""
     if validate:
         _validate_event_schema(event)
+    _ensure_manifest_not_sealed(dir_path)
     dir_path.mkdir(parents=True, exist_ok=True)
     with (dir_path / EVENTS_FILE).open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
@@ -172,3 +175,14 @@ def iter_events(dir_path: Path) -> Iterator[Dict[str, Any]]:
 def read_events(dir_path: Path) -> List[Dict[str, Any]]:
     """Return all events ([] if none)."""
     return list(iter_events(dir_path) or ())
+
+
+def _ensure_manifest_not_sealed(dir_path: Path) -> None:
+    manifest_path = dir_path / _MANIFEST_FILE
+    if manifest_path.exists():
+        warnings.warn(
+            f"Manifest {manifest_path} already exists; refusing to append events.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        raise RuntimeError("cannot append events after manifest is finalized")

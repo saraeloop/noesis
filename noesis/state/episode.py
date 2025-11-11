@@ -10,11 +10,11 @@ Purpose
 
 ID Format
 ---------
-    ep_YYYYMMDD_HHMMSS_microseconds_<4hex>_s{seed}
+    ep_<ULID>
 
 Guarantees
 ----------
-- IDs include UTC wall-clock time plus random nonce for uniqueness.
+- IDs include ULID-based timestamps plus entropy for uniqueness.
 - `begin_episode()` creates the run directory with retry-on-collision.
 - `EpisodeSummary` is a plain dataclass designed for stable JSON output.
 
@@ -28,12 +28,12 @@ Usage
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 import hashlib
 import time
-from os import urandom
+
+from noesis.runtime.artifacts.ids import new_episode_ulid
 
 __all__ = ["new_episode_id", "EpisodeSummary", "hash_config", "begin_episode"]
 
@@ -44,12 +44,8 @@ def new_episode_id(seed: int) -> str:
     """
     Return a collision-resistant episode ID.
 
-    Format:
-        ep_YYYYMMDD_HHMMSS_microseconds_<4hex>_s{seed}
     """
-    now = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-    nonce = urandom(2).hex()  # 4 hex chars
-    return f"ep_{now}_{nonce}_s{seed}"
+    return f"ep_{new_episode_ulid(seed)}"
 
 
 # State

@@ -16,6 +16,7 @@ from .commands.validate_ports import COMMAND as VALIDATE_COMMAND
 from .commands.diagnostics import COMMAND as DIAGNOSTICS_COMMAND
 from .commands.migrate import COMMAND as MIGRATE_COMMAND
 from .commands.view import COMMAND as VIEW_COMMAND
+from .commands.artifacts import COMMAND as ARTIFACTS_COMMAND
 
 
 COMMANDS: Dict[str, Command] = {cmd.name: cmd for cmd in (
@@ -31,6 +32,7 @@ COMMANDS: Dict[str, Command] = {cmd.name: cmd for cmd in (
     DIAGNOSTICS_COMMAND,
     MIGRATE_COMMAND,
     VIEW_COMMAND,
+    ARTIFACTS_COMMAND,
 )}
 
 

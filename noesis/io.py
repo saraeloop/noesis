@@ -20,6 +20,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from .trace.events import EVENTS_FILE, read_events
 from .trace.summary import SUMMARY_FILE, read_summary
+from .runtime.artifacts.manifest import MANIFEST_FILE_NAME, compute_sha256
 from .context import RuntimeContext, get_config_snapshot
 
 
@@ -62,6 +63,7 @@ def list_runs(
     since: Optional[str] = None,
     *,
     context: RuntimeContext | None = None,
+    strict_manifest: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Return a list of recent runs with brief metadata.
@@ -87,12 +89,20 @@ def list_runs(
             continue
 
         s = read_summary(p)
+        manifest_meta = s.get("manifest") or {}
+        manifest_status = None
+        if strict_manifest:
+            manifest_status = _verify_manifest(p, manifest_meta)
+            if manifest_meta is not None and manifest_status is not None:
+                manifest_meta["status"] = manifest_status
         rows.append({
             "episode_id": s.get("episode_id"),
             "task": s.get("task"),
             "started_at": s.get("started_at"),
             "flags": s.get("flags", {}),
             "success": s.get("metrics", {}).get("success"),
+            "manifest": manifest_meta,
+            "manifest_status": manifest_status,
         })
 
     rows.sort(key=lambda r: r.get("started_at") or "", reverse=True)
@@ -112,6 +122,7 @@ def paths(episode_id: str, *, context: RuntimeContext | None = None) -> Dict[str
         "dir": str(d),
         "events": str(d / EVENTS_FILE),
         "summary": str(d / SUMMARY_FILE),
+        "manifest": str(d / MANIFEST_FILE_NAME),
     }
 
 
@@ -121,3 +132,15 @@ def paths(episode_id: str, *, context: RuntimeContext | None = None) -> Dict[str
 def _run_dir(episode_id: str, *, context: RuntimeContext | None = None) -> Path:
     """Resolve the filesystem directory for a given episode."""
     return _config_snapshot(context).runs_dir / episode_id
+
+
+def _verify_manifest(run_dir: Path, manifest_meta: Dict[str, Any]) -> str | None:
+    path = manifest_meta.get("path") or MANIFEST_FILE_NAME
+    sha = manifest_meta.get("sha256")
+    manifest_path = run_dir / path
+    if not manifest_path.exists():
+        return "missing"
+    actual = compute_sha256(manifest_path)
+    if sha and actual != sha:
+        return "mismatch"
+    return "ok"
