@@ -1,0 +1,13 @@
+# Artifact Manifest Guarantees
+Every episode now emits `manifest.json` alongside `summary.json`, `state.json`, and `events.jsonl`. The manifest records each artifact’s path, size, and SHA-256 hash (plus optional HMAC signatures) after the run finishes. Because we hash the bytes that hit disk and refuse any further `events.jsonl` appends once the manifest exists, replay tooling can treat the manifest as the canonical ledger for tamper-evidence and deduplication. Verifying it is as simple as `noesis artifacts verify <episode_dir>` or calling `noesis.artifacts.verify_manifest(...)`, which replays every hash and surfaces per-file status. You can also import the module directly (`import noesis.artifacts`) when building custom verification or bundling workflows.
+
+# What It Doesn’t Guarantee
+A manifest does not encrypt payloads, enforce retention, or make remote storage immutable. If you sync episodes to S3, pair manifests with bucket versioning or object-lock to keep the blobs immutable. The HMAC signature attests to integrity, not secrecy: protect your keys and rotate them on a schedule, but assume anyone with read access can inspect artifacts. Cross-device atomic renames also rely on the OS; we fsync directories for durability but still recommend colocating runs on a single filesystem (documented: NFS/SMB without atomic rename may degrade guarantees, and Windows uses the same `replace` semantics starting with NTFS 3.1).
+
+# Key Rotation Playbook
+Store HMAC keys outside the repo (e.g., env var or secrets manager) and expose them via `HMACManifestSigner(key_id="2024-Q4", secret=...)`. Each manifest stores `alg`, `kid`, `ts`, and optional `ctx`, so verifiers can maintain a simple keyring: keep old keys until their manifests age out, load both old/new IDs into `HMACSignatureVerifier`, and rotate quarterly. Document your `kid -> key material` mapping, announce rotations ahead of the cut-over, and record the signing timestamp to aid forensic audits.
+
+# Why It Matters Next
+- Determinism Drill gains an objective metric: you can diff manifests across replays and fail on drift instead of eyeballing JSON.
+- Release gating becomes mechanical—CI can run `noesis artifacts verify` on sampled runs before tagging.
+- Compliance/audit teams can accept a run folder plus keyring and independently verify it without importing the full codebase.

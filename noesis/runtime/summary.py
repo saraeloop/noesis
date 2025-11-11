@@ -153,4 +153,7 @@ def finalize_summary(
         direction_flags["policy"] = policy_tag
     summary.setdefault("flags", {})["direction"] = direction_flags
 
+    manifest_meta = summary.setdefault("manifest", {})
+    manifest_meta.setdefault("path", "manifest.json")
+
     write_summary(run_dir, summary)

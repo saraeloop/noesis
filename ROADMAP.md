@@ -61,7 +61,7 @@ Every update strengthens three dimensions:
 
 ### Phase Sequence
 
-#### Phase 0 — No-Surprises, No-Gaps (Blocking)
+#### Phase 0 — (Blocking)
 **Focus:** Lock the “trust spine” contracts (runtime owner, artifact immutability, schema governance) before landing more PRs.
 
 **Key Deliverables**

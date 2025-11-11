@@ -33,7 +33,7 @@ from .state import (
     OUTCOME_STATUS_PARTIAL,
 )
 from .domain.state import LineageTracker
-from .state.episode import new_episode_id, begin_episode
+from .state.episode import begin_episode
 from .episode import EpisodeIndex
 # Domain / use-case layer imports
 from .domain.planner.minimal import MinimalActuator, MinimalPlanner
@@ -61,6 +61,9 @@ from .runtime.events import (
 )
 from .runtime.summary import finalize_summary as _finalize_summary
 from .trace.schema import SUMMARY_SCHEMA_VERSION
+from .runtime.artifacts.ids import EpisodeIds
+from .runtime.artifacts.writer import ManifestWriter
+from .runtime.artifacts.manifest import MANIFEST_SCHEMA_VERSION, MANIFEST_FILE_NAME, compute_sha256
 from .usecases.episode_runner import (
     EpisodeDependencies,
     EpisodeInstrumentation,
@@ -108,6 +111,13 @@ def _plan_steps_from_labels(labels: List[str]) -> List[PlanStep]:
             )
         )
     return steps
+
+
+def _finalize_manifest(ctx: _EpCtx) -> tuple[Path, str]:
+    writer = ManifestWriter(run_dir=ctx.run_dir, episode_id=ctx.episode_id)
+    writer.finalize()
+    digest = compute_sha256(writer.manifest_path)
+    return writer.manifest_path, digest
 
 
 def _normalize_intuition(
@@ -272,9 +282,13 @@ def solve(
 
 @dataclass(slots=True)
 class _EpCtx:
-    episode_id: str
+    ids: EpisodeIds
     run_dir: Path
     started_at: str
+
+    @property
+    def episode_id(self) -> str:
+        return self.ids.episode_id
 
 
 def _run_impl(
@@ -292,9 +306,9 @@ def _run_impl(
     runs_dir = str(cfg.runs_dir)
     dir_min = cfg.direction_min_confidence
 
-    episode_id = new_episode_id(seed)
-    run_dir = begin_episode(runs_dir, episode_id)
-    ctx = _EpCtx(episode_id=episode_id, run_dir=run_dir, started_at=_now())
+    ids = EpisodeIds.mint(seed=seed)
+    run_dir = begin_episode(runs_dir, ids.episode_id)
+    ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=_now())
 
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
 
@@ -371,7 +385,12 @@ def _run_impl(
         _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
 
         state = result.state
-        state.set_links(events="events.jsonl", summary="summary.json", learn="learn.jsonl")
+        state.set_links(
+            events="events.jsonl",
+            summary="summary.json",
+            learn="learn.jsonl",
+            manifest="manifest.json",
+        )
         state_repo.persist(state)
 
         _finalize_summary(
@@ -392,6 +411,8 @@ def _run_impl(
 
         persist_episode_memory(run_dir=ctx.run_dir, context=context)
 
+        manifest_path, manifest_sha = _finalize_manifest(ctx)
+
         try:
             store_root = Path(runs_dir) / "_episodes"
             summary_path = ctx.run_dir / "summary.json"
@@ -405,6 +426,9 @@ def _run_impl(
                 provenance={
                     "schema_version": state.version,
                     "state_schema_version": state.state_schema_version,
+                    "manifest_path": str(manifest_path),
+                    "manifest_sha256": manifest_sha,
+                    "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
                 },
             )
         except Exception:
@@ -531,6 +555,8 @@ def _run_impl(
 
     persist_episode_memory(run_dir=ctx.run_dir, context=context)
 
+    manifest_path, manifest_sha = _finalize_manifest(ctx)
+
     try:
         store_root = Path(runs_dir) / "_episodes"
         summary_path = ctx.run_dir / "summary.json"
@@ -544,6 +570,9 @@ def _run_impl(
             provenance={
                 "schema_version": state.version,
                 "state_schema_version": state.state_schema_version,
+                "manifest_path": str(manifest_path),
+                "manifest_sha256": manifest_sha,
+                "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
             },
         )
     except Exception:
@@ -554,6 +583,7 @@ def _run_impl(
         events="events.jsonl",
         summary="summary.json",
         learn="learn.jsonl",
+        manifest="manifest.json",
     )
     state_repo.persist(state)
 

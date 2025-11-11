@@ -33,6 +33,7 @@ def build_parser(formatter_class: type[argparse.HelpFormatter]) -> tuple[argpars
         "  view      timeline + governance report\n"
         "  events    stream events\n"
         "  insight   computed metrics snapshot\n"
+        "  artifacts verify <episode>  verify manifest integrity\n"
         "  migrate   update deprecated shims\n"
         "  version   CLI + core versions\n"
         "  new       experimental scaffolder"

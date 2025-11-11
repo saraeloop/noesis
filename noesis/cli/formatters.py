@@ -18,5 +18,9 @@ def format_rows_for_plain(rows: Iterable[Dict[str, str]]) -> List[str]:
         started = truncate(row.get("started_at", "")[:25], max_width=25)
         episode = truncate(row.get("episode_id", "")[:28], max_width=28)
         task = row.get("task", "")
-        lines.append(f"{started:>25}  {episode:28}  {task}")
+        manifest_status = row.get("manifest_status")
+        note = ""
+        if manifest_status and manifest_status not in {"ok", None}:
+            note = f"  [manifest:{manifest_status}]"
+        lines.append(f"{started:>25}  {episode:28}  {task}{note}")
     return lines

@@ -13,6 +13,8 @@ from typing import Iterable, Literal
 from noesis.domain.state.models import STATE_SCHEMA_VERSION, STATE_VERSION
 from noesis.interfaces.config import ConfigSnapshot
 from noesis.runtime.config_provider import get_config_snapshot
+from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
+from noesis.runtime.artifacts.verify import ManifestVerifier
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 
 from ..context import CLIContext
@@ -115,6 +117,7 @@ class DiagnosticsCommand:
         yield self._check_ports(ports)
         yield self._check_config_snapshot(snapshot)
         yield self._check_latest_summary(snapshot.runs_dir)
+        yield self._check_latest_manifest(snapshot.runs_dir)
 
     def _check_runs_dir(self, path: Path) -> CheckResult:
         expanded = path.expanduser()
@@ -202,6 +205,27 @@ class DiagnosticsCommand:
                 f"{summary_path} schema_version={schema}",
             )
         return CheckResult("latest_summary", "ok", "no summary artifacts found")
+
+    def _check_latest_manifest(self, runs_dir: Path) -> CheckResult:
+        base = runs_dir.expanduser()
+        if not base.exists() or not base.is_dir():
+            return CheckResult("artifact_manifest", "ok", "no runs directory")
+        candidates = sorted((p for p in base.glob("ep_*") if p.is_dir()), reverse=True)
+        for candidate in candidates:
+            manifest_path = candidate / MANIFEST_FILE_NAME
+            if not manifest_path.is_file():
+                continue
+            try:
+                verifier = ManifestVerifier(run_dir=candidate)
+                report = verifier.verify_path(manifest_path)
+            except Exception:
+                return CheckResult("artifact_manifest", "warn", f"{manifest_path} unreadable")
+            if report.status == "ok":
+                return CheckResult("artifact_manifest", "ok", f"{manifest_path}")
+            issue = report.issues[0] if report.issues else None
+            detail = issue.detail if issue else "verification failed"
+            return CheckResult("artifact_manifest", "error", f"{manifest_path}: {detail}")
+        return CheckResult("artifact_manifest", "warn", "no manifest found")
 
     @staticmethod
     def _overall_status(checks: Iterable[CheckResult]) -> Literal["ok", "warn", "error"]:
