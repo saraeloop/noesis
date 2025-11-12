@@ -1,0 +1,86 @@
+name: Schema Guard
+
+on:
+  pull_request:
+    paths:
+      - "internal_docs/schema/**"
+      - "docs/schema/**"
+      - "scripts/gen_schema.py"
+      - "scripts/schema_guard.py"
+      - "MIGRATIONS*"
+      - "pyproject.toml"
+      - ".github/workflows/schema-guard.yml"
+      - "docs/app/reference/schema-index.mdx"
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+
+      - name: Schema generator check
+        id: schema_gen
+        continue-on-error: true
+        run: uv run --with dev python scripts/gen_schema.py --check
+
+      - name: Schema guard
+        id: schema_guard
+        if: always()
+        run: |
+          # Run schema guard and capture JSON output to file, stderr to logs
+          # Allow command to fail (|| true) so we can always check the output file
+          uv run --with dev python scripts/schema_guard.py --strict --json --base-ref origin/${{ github.event.pull_request.base.ref }} > schema_guard.json 2>&1 || true
+          # Ensure file exists and contains valid JSON
+          if [ ! -s schema_guard.json ] || ! python3 -m json.tool schema_guard.json > /dev/null 2>&1; then
+            echo '{"status": "error", "findings": [{"code": 5, "file": "scripts/schema_guard.py", "message": "Schema guard failed without emitting valid JSON output", "details": {}}]}' > schema_guard.json
+          fi
+
+      - name: Annotate guard findings
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('schema_guard.json')) {
+              core.info('Schema guard report not found.');
+              return;
+            }
+            let report;
+            try {
+              const raw = fs.readFileSync('schema_guard.json', 'utf8').trim();
+              if (!raw) {
+                throw new Error('schema_guard.json is empty');
+              }
+              report = JSON.parse(raw);
+            } catch (error) {
+              core.warning(`schema_guard.json could not be parsed: ${error.message}`);
+              core.summary.addHeading('Schema Guard', 2)
+                .addRaw('Schema guard failed before emitting a JSON report. Check previous step logs for details.')
+                .write();
+              core.setFailed('Schema guard output parse error');
+              return;
+            }
+            if (!report.findings.length) {
+              core.summary.addHeading('Schema Guard', 2)
+                .addRaw('All schema checks passed. ✅')
+                .write();
+              return;
+            }
+            const tableRows = [['Check', 'Code', 'File', 'Details']];
+            for (const finding of report.findings) {
+              const details = JSON.stringify(finding.details || {});
+              core.error(finding.message, { file: finding.file, title: `Schema Guard (code ${finding.code})` });
+              tableRows.push([finding.message, String(finding.code), finding.file, details]);
+            }
+            core.summary.addHeading('Schema Guard', 2).addTable(tableRows).write();
+            if (report.status === 'ok') {
+              core.setFailed('Schema guard reported findings but status=ok?');
+            }

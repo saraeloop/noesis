@@ -1,0 +1,158 @@
+schema:
+  name: summary
+  version: "1.0.0"
+  title: "Noēsis Summary Artifact"
+  description: >-
+    Run-level rollup capturing KPIs, governance flags, output text, and links to
+    other immutable artifacts. Every summary document must embed the semver
+    string that matches this schema version.
+  stability: stable
+  owners:
+    - Core Engineering
+json_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - schema_version
+    - episode_id
+    - started_at
+    - duration_sec
+    - metrics
+    - flags
+    - links
+  properties:
+    schema_version:
+      type: string
+      description: Semver string that identifies the document schema.
+      enum: ["1.0.0"]
+      stability: stable
+    episode_id:
+      type: string
+      description: ULID assigned when the episode directory is created.
+      pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
+      stability: stable
+    task:
+      type: string
+      description: Natural-language description of the requested work.
+      stability: beta
+    seed:
+      type: integer
+      description: RNG seed captured for deterministic replays.
+      minimum: 0
+      stability: stable
+    started_at:
+      type: string
+      description: ISO-8601 timestamp for when orchestration began.
+      format: date-time
+      stability: stable
+    duration_sec:
+      type: number
+      description: Wall-clock time from `started_at` to completion in seconds.
+      minimum: 0
+      stability: stable
+    agents_config_hash:
+      type: string
+      description: SHA256 of the agent graph configuration applied to this run.
+      pattern: "^[a-f0-9]{64}$"
+      stability: stable
+    flags:
+      type: object
+      description: Execution settings that influence orchestration.
+      required: [mode]
+      additionalProperties: false
+      stability: beta
+      properties:
+        mode:
+          type: string
+          description: Planner mode used for the episode.
+          enum: ["META", "MINIMAL"]
+          stability: stable
+        intuition:
+          type: boolean
+          description: Indicates whether Intuition faculty executed.
+          stability: beta
+        using:
+          type: string
+          description: Name/version of the orchestration preset.
+          stability: stable
+        direction:
+          type: object
+          description: Direction phase metadata (non-empty in META mode).
+          additionalProperties: true
+          stability: experimental
+    answer:
+      type: object
+      description: Final assistant answer chunks and citations.
+      additionalProperties: true
+      stability: stable
+    metrics:
+      type: object
+      description: KPI outputs pinned by ADR-003.
+      additionalProperties: false
+      required:
+        - plan_adherence
+        - tool_coverage
+        - veto_count
+        - success
+      stability: stable
+      properties:
+        plan_adherence:
+          type: number
+          description: Completed planner steps divided by total planned steps.
+          minimum: 0
+          maximum: 1
+          stability: stable
+        tool_coverage:
+          type: number
+          description: Distinct tools used divided by tools allowed in the plan.
+          minimum: 0
+          maximum: 1
+          stability: stable
+        veto_count:
+          type: integer
+          description: Governance vetoes (severity >= warning) emitted.
+          minimum: 0
+          stability: stable
+        success:
+          type: number
+          description: Weighted score combining plan adherence, coverage, veto penalty, and outcome score.
+          minimum: 0
+          maximum: 1
+          stability: stable
+    tags:
+      type: object
+      description: Arbitrary string/boolean metadata propagated from the caller.
+      additionalProperties:
+        type: [string, boolean, number]
+      stability: beta
+    links:
+      type: object
+      description: Relative pointers to sibling artifacts in the episode folder.
+      required:
+        - events
+        - summary
+        - state
+      additionalProperties: false
+      stability: stable
+      properties:
+        events:
+          type: string
+          description: Relative path to `events.jsonl`.
+          stability: stable
+        summary:
+          type: string
+          description: Relative path to this document (self-link).
+          stability: stable
+        state:
+          type: string
+          description: Relative path to `state.json`.
+          stability: stable
+        learn:
+          type: string
+          description: Relative path to `learn.jsonl` if produced.
+          stability: beta
+    insight:
+      type: object
+      description: Aggregated insights and reviewer-facing metrics.
+      additionalProperties: true
+      stability: experimental

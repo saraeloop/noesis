@@ -1,0 +1,83 @@
+schema:
+  name: events
+  version: "1.0.0"
+  title: "Noēsis Event Stream"
+  description: >-
+    Canonical shape of each JSON object appended to events.jsonl. The stream is
+    append-only and powers replay tooling, diagnostics, and analytics.
+  stability: stable
+  owners:
+    - Core Engineering
+json_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - schema_version
+    - id
+    - episode_id
+    - timestamp
+    - phase
+    - payload
+  properties:
+    schema_version:
+      type: string
+      description: Semver string for the event schema revision.
+      enum: ["1.0.0"]
+      stability: stable
+    id:
+      type: string
+      description: UUIDv5 derived from episode_id + phase-local counter.
+      pattern: "^[0-9a-fA-F-]{36}$"
+      stability: stable
+    episode_id:
+      type: string
+      description: ULID shared with other artifacts.
+      pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
+      stability: stable
+    agent_id:
+      type: string
+      description: Identifier of the faculty/adapter emitting the event.
+      stability: beta
+    timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 timestamp when the event was recorded.
+      stability: stable
+    phase:
+      type: string
+      description: Cognitive phase that produced the event.
+      enum: ["intuition", "direction", "governance", "insight", "runtime"]
+      stability: stable
+    payload:
+      type: object
+      description: Phase-specific payload; schema depends on faculty.
+      additionalProperties: true
+      stability: stable
+    evidence_ids:
+      type: array
+      description: Identifiers of upstream events supporting this payload.
+      items:
+        type: string
+      stability: beta
+    caused_by:
+      type: string
+      description: Event id that triggered this record (for causal graphs).
+      stability: experimental
+    metrics:
+      type: object
+      description: Timing metadata for the action captured by this event.
+      additionalProperties: false
+      stability: beta
+      properties:
+        started_at:
+          type: string
+          format: date-time
+          stability: beta
+        completed_at:
+          type: string
+          format: date-time
+          stability: beta
+        duration_ms:
+          type: number
+          minimum: 0
+          stability: beta

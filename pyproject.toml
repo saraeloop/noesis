@@ -19,7 +19,9 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 # Runtime deps only (none yet)
-dependencies = []
+dependencies = [
+  "ruamel.yaml>=0.18",
+]
 
 [project.optional-dependencies]
 migrate = ["libcst>=1.5.0"]
@@ -35,6 +37,7 @@ dev = [
   "ruff>=0.5",
   "import-linter>=2.0",
   "build>=1.0.0",
+  "ruamel.yaml>=0.18",
 ]
 langgraph = [
   "langgraph>=0.0.45",
@@ -48,6 +51,7 @@ dev = [
   "ruff>=0.5",
   "import-linter>=2.0",
   "build>=1.0.0",
+  "ruamel.yaml>=0.18",
 ]
 ui = [
   "rich>=14.2.0",

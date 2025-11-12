@@ -1,0 +1,202 @@
+{
+  "$id": "https://schemas.noesis.dev/summary/1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "summary",
+  "$schema_version": "1.0.0",
+  "additionalProperties": false,
+  "description": "Run-level rollup capturing KPIs, governance flags, output text, and links to other immutable artifacts. Every summary document must embed the semver string that matches this schema version.",
+  "properties": {
+    "agents_config_hash": {
+      "description": "SHA256 of the agent graph configuration applied to this run.",
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "answer": {
+      "additionalProperties": true,
+      "description": "Final assistant answer chunks and citations.",
+      "type": "object",
+      "x-stability": "stable"
+    },
+    "duration_sec": {
+      "description": "Wall-clock time from `started_at` to completion in seconds.",
+      "minimum": 0,
+      "type": "number",
+      "x-stability": "stable"
+    },
+    "episode_id": {
+      "description": "ULID assigned when the episode directory is created.",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "flags": {
+      "additionalProperties": false,
+      "description": "Execution settings that influence orchestration.",
+      "properties": {
+        "direction": {
+          "additionalProperties": true,
+          "description": "Direction phase metadata (non-empty in META mode).",
+          "type": "object",
+          "x-stability": "experimental"
+        },
+        "intuition": {
+          "description": "Indicates whether Intuition faculty executed.",
+          "type": "boolean",
+          "x-stability": "beta"
+        },
+        "mode": {
+          "description": "Planner mode used for the episode.",
+          "enum": [
+            "META",
+            "MINIMAL"
+          ],
+          "type": "string",
+          "x-stability": "stable"
+        },
+        "using": {
+          "description": "Name/version of the orchestration preset.",
+          "type": "string",
+          "x-stability": "stable"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object",
+      "x-stability": "beta"
+    },
+    "insight": {
+      "additionalProperties": true,
+      "description": "Aggregated insights and reviewer-facing metrics.",
+      "type": "object",
+      "x-stability": "experimental"
+    },
+    "links": {
+      "additionalProperties": false,
+      "description": "Relative pointers to sibling artifacts in the episode folder.",
+      "properties": {
+        "events": {
+          "description": "Relative path to `events.jsonl`.",
+          "type": "string",
+          "x-stability": "stable"
+        },
+        "learn": {
+          "description": "Relative path to `learn.jsonl` if produced.",
+          "type": "string",
+          "x-stability": "beta"
+        },
+        "state": {
+          "description": "Relative path to `state.json`.",
+          "type": "string",
+          "x-stability": "stable"
+        },
+        "summary": {
+          "description": "Relative path to this document (self-link).",
+          "type": "string",
+          "x-stability": "stable"
+        }
+      },
+      "required": [
+        "events",
+        "summary",
+        "state"
+      ],
+      "type": "object",
+      "x-stability": "stable"
+    },
+    "metrics": {
+      "additionalProperties": false,
+      "description": "KPI outputs pinned by ADR-003.",
+      "properties": {
+        "plan_adherence": {
+          "description": "Completed planner steps divided by total planned steps.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number",
+          "x-stability": "stable"
+        },
+        "success": {
+          "description": "Weighted score combining plan adherence, coverage, veto penalty, and outcome score.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number",
+          "x-stability": "stable"
+        },
+        "tool_coverage": {
+          "description": "Distinct tools used divided by tools allowed in the plan.",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number",
+          "x-stability": "stable"
+        },
+        "veto_count": {
+          "description": "Governance vetoes (severity >= warning) emitted.",
+          "minimum": 0,
+          "type": "integer",
+          "x-stability": "stable"
+        }
+      },
+      "required": [
+        "plan_adherence",
+        "tool_coverage",
+        "veto_count",
+        "success"
+      ],
+      "type": "object",
+      "x-stability": "stable"
+    },
+    "schema_version": {
+      "description": "Semver string that identifies the document schema.",
+      "enum": [
+        "1.0.0"
+      ],
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "seed": {
+      "description": "RNG seed captured for deterministic replays.",
+      "minimum": 0,
+      "type": "integer",
+      "x-stability": "stable"
+    },
+    "started_at": {
+      "description": "ISO-8601 timestamp for when orchestration began.",
+      "format": "date-time",
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "tags": {
+      "additionalProperties": {
+        "type": [
+          "string",
+          "boolean",
+          "number"
+        ]
+      },
+      "description": "Arbitrary string/boolean metadata propagated from the caller.",
+      "type": "object",
+      "x-stability": "beta"
+    },
+    "task": {
+      "description": "Natural-language description of the requested work.",
+      "type": "string",
+      "x-stability": "beta"
+    }
+  },
+  "required": [
+    "schema_version",
+    "episode_id",
+    "started_at",
+    "duration_sec",
+    "metrics",
+    "flags",
+    "links"
+  ],
+  "title": "Noēsis Summary Artifact",
+  "type": "object",
+  "x-owners": [
+    "Core Engineering"
+  ],
+  "x-stability": "stable"
+}
