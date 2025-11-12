@@ -219,7 +219,23 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Emit findings as JSON for CI annotations.")
     args = parser.parse_args(argv)
 
-    findings = run_guard(base_ref=args.base_ref)
+    findings: List[SchemaGuardFinding] = []
+
+    try:
+        findings = run_guard(base_ref=args.base_ref)
+    except Exception as e:
+        # Always emit JSON on error when --json is set
+        if args.json:
+            error_finding = SchemaGuardFinding(
+                code=5,
+                file="scripts/schema_guard.py",
+                message=f"Schema guard crashed: {type(e).__name__}: {str(e)}",
+                details={"error": str(e), "type": type(e).__name__},
+            )
+            findings = [error_finding]
+            _emit_json(findings, strict=args.strict)
+        raise
+
     if args.json:
         _emit_json(findings, strict=args.strict)
 

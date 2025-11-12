@@ -35,8 +35,13 @@ jobs:
         id: schema_guard
         if: always()
         run: |
-          set -o pipefail
-          uv run --with dev python scripts/schema_guard.py --strict --json --base-ref origin/${{ github.event.pull_request.base.ref }} | tee schema_guard.json
+          # Run schema guard and capture JSON output to file, stderr to logs
+          # Allow command to fail (|| true) so we can always check the output file
+          uv run --with dev python scripts/schema_guard.py --strict --json --base-ref origin/${{ github.event.pull_request.base.ref }} > schema_guard.json 2>&1 || true
+          # Ensure file exists and contains valid JSON
+          if [ ! -s schema_guard.json ] || ! python3 -m json.tool schema_guard.json > /dev/null 2>&1; then
+            echo '{"status": "error", "findings": [{"code": 5, "file": "scripts/schema_guard.py", "message": "Schema guard failed without emitting valid JSON output", "details": {}}]}' > schema_guard.json
+          fi
 
       - name: Annotate guard findings
         if: always()
