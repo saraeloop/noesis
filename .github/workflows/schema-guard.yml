@@ -48,7 +48,21 @@ jobs:
               core.info('Schema guard report not found.');
               return;
             }
-            const report = JSON.parse(fs.readFileSync('schema_guard.json', 'utf8'));
+            let report;
+            try {
+              const raw = fs.readFileSync('schema_guard.json', 'utf8').trim();
+              if (!raw) {
+                throw new Error('schema_guard.json is empty');
+              }
+              report = JSON.parse(raw);
+            } catch (error) {
+              core.warning(`schema_guard.json could not be parsed: ${error.message}`);
+              core.summary.addHeading('Schema Guard', 2)
+                .addRaw('Schema guard failed before emitting a JSON report. Check previous step logs for details.')
+                .write();
+              core.setFailed('Schema guard output parse error');
+              return;
+            }
             if (!report.findings.length) {
               core.summary.addHeading('Schema Guard', 2)
                 .addRaw('All schema checks passed. ✅')
