@@ -46,12 +46,12 @@ Noēsis works with the graphs, tools, and runtimes you already use. It makes the
 
 ## Why Noēsis
 
-| Proof point | What it delivers |
-| --- | --- |
-| **Observable cognition** | Every run emits `summary.json`, `state.json`, and `events.jsonl` so you can replay decisions, governance verdicts, and metrics later. |
-| **Direction + governance** | Planner modes (`meta` vs `minimal`) layer advisory heuristics and pre-act vetoes on top of any agent graph. |
-| **Durable memory** | Register SQLite/FAISS/HNSW memories or bring your own context provider so episodes learn across time. |
-| **Learning signals** | Insight metrics and `learn.emit(...)` give you structured payloads for offline tuning, evaluations, or compliance reviews. |
+| Proof point                | What it delivers                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Observable cognition**   | Every run emits `summary.json`, `state.json`, and `events.jsonl` so you can replay decisions, governance verdicts, and metrics later. |
+| **Direction + governance** | Planner modes (`meta` vs `minimal`) layer advisory heuristics and pre-act vetoes on top of any agent graph.                           |
+| **Durable memory**         | Register SQLite/FAISS/HNSW memories or bring your own context provider so episodes learn across time.                                 |
+| **Learning signals**       | Insight metrics and `learn.emit(...)` give you structured payloads for offline tuning, evaluations, or compliance reviews.            |
 
 Stay in your stack: Noēsis decorates LangGraph, CrewAI, OpenDevin, MCP, or bespoke orchestrators without swapping your model, prompts, or tools.
 
@@ -64,22 +64,35 @@ Every cognition loop lands in `runs/<label>/<episode_id>/`. The snippet below co
 
 ```json
 {
-  "episode": {"id": "ep_20250101_120000_123456_abcd_s0", "tags": {"env": "demo"}},
-  "plan": {"steps": [{"id": "step-1", "kind": "detect"}, {"id": "step-2", "kind": "act"}]},
-  "memory": {"facts": [{"key": "latency_p99_ms", "value": 840}]},
+  "episode": {
+    "id": "ep_20250101_120000_123456_abcd_s0",
+    "tags": { "env": "demo" }
+  },
+  "plan": {
+    "steps": [
+      { "id": "step-1", "kind": "detect" },
+      { "id": "step-2", "kind": "act" }
+    ]
+  },
+  "memory": { "facts": [{ "key": "latency_p99_ms", "value": 840 }] },
   "outcomes": {
     "status": "ok",
     "summary": "Rollback reduced latency below threshold.",
-    "actions": [{"tool": "adapter:demo", "result_status": "ok"}],
-    "metrics": {"task_score": 0.85}
+    "actions": [{ "tool": "adapter:demo", "result_status": "ok" }],
+    "metrics": { "task_score": 0.85 }
   },
-  "links": {"events": "events.jsonl", "summary": "summary.json", "learn": "learn.jsonl"}
+  "links": {
+    "events": "events.jsonl",
+    "summary": "summary.json",
+    "learn": "learn.jsonl"
+  }
 }
 ```
 
 </details>
 
-Use the [artifact guide](docs/artifacts/state.md) for field-by-field callouts and recommended KPIs (plan adherence, veto count, tool coverage).
+Use the [artifact guide](docs/artifacts/state.md) for field-by-field callouts and recommended KPIs (plan adherence, veto count, tool coverage).  
+Need tamper-evidence? [`manifest.json`](docs/app/reference/manifest.mdx) captures SHA-256 + size for every artifact via atomic writes, so you can prove nothing changed between generation and export.
 
 ## Learner flow
 
@@ -108,7 +121,6 @@ noesis view runs/demo/ep_20251108_... --pretty
 ```
 
 The CLI view highlights plan steps, veto counts, and per-action outcomes so non-technical stakeholders can follow the narrative without searching through JSON manually.
-
 
 ## Installation
 
@@ -213,6 +225,7 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 ```
+
 <details>
 <summary><strong>Open console output:</strong></summary>
 
@@ -277,6 +290,11 @@ print(list(index.iter())[:3])
 - [`docs/artifacts/state.md`](docs/artifacts/state.md) – field-by-field breakdown of the state schema plus KPI callouts.
 - `noesis view runs/<label>/<episode_id> --pretty` – CLI walkthrough that links plan steps, governance decisions, and metrics in one place.
 
+### Schema governance & KPIs
+
+- Human-editable schema sources live in `internal_docs/schema/*.yaml` (summary, state, events, KPI registry); run `python scripts/gen_schema.py` to emit canonical JSON under `docs/schema/**` plus the [schema index](docs/app/reference/schema-index.mdx).
+- `scripts/schema_guard.py --strict --json` enforces semver rules, migration notes, and KPI pinning locally and in CI (see `.github/workflows/schema-guard.yml`).
+- Migration history splits along ownership: `MIGRATIONS.schema.md` for artifacts and `MIGRATIONS.kpi.md` for formula changes; every breaking change must land an entry there before shipping.
 
 ## Core capabilities
 
@@ -291,6 +309,7 @@ Every episode emits immutable artifacts:
 - `events.jsonl` – timeline of phases (observe/interpret/plan/act/reflect/learn) with causal IDs
 - `summary.json` – metrics, outcomes, and cross-links
 - `state.json` – current plan and episode state
+- `manifest.json` – hash ledger covering every artifact written during the run (ADR-002)
 
 **Long-term memory**
 
@@ -317,7 +336,6 @@ learn.emit(
 ```
 
 Use these artifacts to tune prompts, policies, or evaluators—or wire them into a governance loop.
-
 
 **Governance & insight**
 
@@ -358,7 +376,6 @@ for eid in (eid_meta, eid_veto):
         f"tool_coverage={insight['tool_coverage']}"
     )
 ```
-
 
 Typical output:
 
@@ -402,7 +419,6 @@ Think of faculties like modular middleware:
 - **Insight**: evaluation/metrics roll-up
 - **Governance (optional)**: enforce policies with auditable vetoes
 
-
 ## Sub-agents & complex workflows
 
 Noēsis doesn’t force a sub-agent API—it embraces your existing one. If a LangGraph/CrewAI/OpenDevin workflow spawns subordinate agents, Noēsis traces them and persists their outcomes like any other steps:
@@ -410,16 +426,13 @@ Noēsis doesn’t force a sub-agent API—it embraces your existing one. If a La
 - Keep the isolation semantics from your framework.
 - Measure plan changes, action latency, success ratios, and long-term recall hits via Noēsis artifacts.
 
-
 ## MCP & external tooling
 
 Adapters let Noēsis index and observe actions from MCP servers (Anthropic’s Model Context Protocol). You can keep tool execution external and safe while still capturing causal timelines and summary metrics inside `runs/`.
 
-
 ## Sync vs async
 
 Use the same `run` / `solve` API. If your orchestrator is async, expose it via `using=` (callable or path) and Noēsis wraps timing, events, and summaries around it.
-
 
 ## What Noēsis adds (at a glance)
 
@@ -428,7 +441,6 @@ Use the same `run` / `solve` API. If your orchestrator is async, expose it via `
 - Memory that matters (SQLite/FAISS) for cross-episode recall
 - Learning signals for improving policies/prompts over time
 - Framework freedom—LangGraph, CrewAI, OpenDevin, custom runners… all welcome
-
 
 ## API cheatsheet
 
@@ -484,13 +496,11 @@ noesis migrate .
 
 `noesis view` highlights plan adherence, veto count, tool coverage, governance decisions, and schema validation warnings. `noesis migrate` uses LibCST to rewrite shims such as `summary.load`, `events.start_event`, and `state.store.EpisodeStore`, reporting any TODOs that need manual cleanup.
 
-
 ## Version details:
 
 - **Package:** noesis **v0.9.5**
-- **Schema:** summary.schema.json **v1.2.0**
+- **Schema pack:** summary/state/events/kpi **v1.0.0** (generated via `python scripts/gen_schema.py`, see [schema index](docs/app/reference/schema-index.mdx))
 - **Python:** **≥ 3.11**
-
 
 ## Acknowledgements
 
