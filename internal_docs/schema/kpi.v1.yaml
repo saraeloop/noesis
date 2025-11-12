@@ -1,0 +1,79 @@
+schema:
+  name: kpi
+  version: "1.0.0"
+  title: "Noēsis KPI Registry"
+  description: >-
+    Canonical formulas and clamps for the core KPIs tracked in summary.json and
+    downstream dashboards. Changes to any definition require a schema_version
+    bump plus migration notes per ADR-003.
+  stability: stable
+  owners:
+    - Research & Insight
+kpis:
+  plan_adherence:
+    description: Ratio of completed planner steps to total planned steps.
+    owner: Research & Insight
+    stability: stable
+    formula: completed_steps / max(planned_steps, 1)
+    clamp:
+      min: 0.0
+      max: 1.0
+    inputs:
+      completed_steps:
+        type: integer
+        description: Count of plan steps whose status == "done".
+      planned_steps:
+        type: integer
+        description: Total number of plan steps emitted.
+    semver_rule: bump patch for documentation tweaks, minor for additive metadata, major for formula change.
+  tool_coverage:
+    description: Fraction of allowed tools invoked at least once.
+    owner: Research & Insight
+    stability: stable
+    formula: unique_tools_used / max(tools_allowed, 1)
+    clamp:
+      min: 0.0
+      max: 1.0
+    inputs:
+      unique_tools_used:
+        type: integer
+        description: Distinct tool identifiers executed.
+      tools_allowed:
+        type: integer
+        description: Count of tools available in the orchestrated plan.
+    semver_rule: bump major when denominator definition changes.
+  veto_count:
+    description: Total number of governance veto events with severity >= warning.
+    owner: Core Governance
+    stability: stable
+    formula: sum(governance_events where severity >= "warning" and action == "veto")
+    clamp:
+      min: 0
+      max: null
+    inputs:
+      governance_events:
+        type: array
+        description: Governance outputs with severity + action metadata.
+    semver_rule: bump minor for inclusive/exclusive boundary changes.
+  success:
+    description: Weighted aggregate of plan adherence, tool coverage, veto penalty, and outcome score.
+    owner: Research & Insight
+    stability: stable
+    formula: 0.35*plan_adherence + 0.35*tool_coverage - 0.2*veto_penalty + 0.5*outcome_score
+    clamp:
+      min: 0.0
+      max: 1.0
+    inputs:
+      plan_adherence:
+        type: number
+      tool_coverage:
+        type: number
+      veto_penalty:
+        type: number
+        description: Normalized veto impact derived from veto_count / steps.
+      outcome_score:
+        type: number
+        description: Domain-specific success rating between 0 and 1.
+    notes:
+      - Weights must sum to 1.0; default set documents Baseline META pipeline.
+    semver_rule: bump major when weights change or clamp adjusted.

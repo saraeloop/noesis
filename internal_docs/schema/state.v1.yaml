@@ -1,0 +1,190 @@
+schema:
+  name: state
+  version: "1.0.0"
+  title: "Noēsis State Artifact"
+  description: >-
+    Snapshot of the orchestration inputs, evolving plan, beliefs, memory, and
+    tool outcomes that drive a run. Provides richer reconstruction context than
+    summary.json and is the source of truth for plan adherence.
+  stability: stable
+  owners:
+    - Core Engineering
+json_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - schema_version
+    - episode
+    - plan
+    - links
+  properties:
+    schema_version:
+      type: string
+      description: Semver string for the state schema revision.
+      enum: ["1.0.0"]
+      stability: stable
+    episode:
+      type: object
+      required:
+        - id
+        - label
+        - using
+        - seed
+      additionalProperties: false
+      stability: stable
+      properties:
+        id:
+          type: string
+          description: ULID shared across all artifacts in the run folder.
+          pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
+          stability: stable
+        label:
+          type: string
+          description: Human-friendly folder label (e.g., runs/demo).
+          stability: beta
+        using:
+          type: string
+          description: Identifier of the orchestration preset/graph.
+          stability: stable
+        seed:
+          type: integer
+          minimum: 0
+          description: RNG seed.
+          stability: stable
+        tags:
+          type: object
+          description: Arbitrary metadata for downstream filters.
+          additionalProperties:
+            type: [string, boolean, number]
+          stability: beta
+    goal:
+      type: object
+      additionalProperties: false
+      stability: beta
+      properties:
+        task:
+          type: string
+          description: Original instruction provided to the run.
+          stability: stable
+        context:
+          type: string
+          description: Supplemental context appended to the task.
+          stability: experimental
+    beliefs:
+      type: array
+      description: Optional structured beliefs derived while interpreting evidence.
+      stability: experimental
+      items:
+        type: object
+        required: [statement, confidence]
+        properties:
+          statement:
+            type: string
+            stability: beta
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
+            stability: beta
+          evidence_ids:
+            type: array
+            items:
+              type: string
+            stability: experimental
+    plan:
+      type: object
+      description: Planner graph plus ordered steps executed by Direction.
+      required: [steps]
+      additionalProperties: false
+      stability: stable
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          stability: stable
+          items:
+            type: object
+            required: [id, kind, status, summary]
+            properties:
+              id:
+                type: string
+                stability: stable
+              kind:
+                type: string
+                enum: ["think", "act", "reflect"]
+                stability: stable
+              status:
+                type: string
+                enum: ["pending", "in_progress", "done", "skipped", "blocked"]
+                stability: stable
+              summary:
+                type: string
+                stability: stable
+              depends_on:
+                type: array
+                items:
+                  type: string
+                stability: beta
+              tool:
+                type: string
+                description: Tool invoked when kind == "act".
+                stability: beta
+        adherence_window:
+          type: integer
+          description: Step count used when calculating plan adherence.
+          minimum: 1
+          stability: beta
+    memory:
+      type: object
+      description: Facts promoted to long-term memory plus scratchpad content.
+      additionalProperties: true
+      stability: experimental
+    outcomes:
+      type: object
+      description: Final action traces and reviewer-facing verdicts.
+      additionalProperties: false
+      stability: beta
+      properties:
+        actions:
+          type: array
+          items:
+            type: object
+            required: [tool, result_status]
+            properties:
+              tool:
+                type: string
+                stability: beta
+              result_status:
+                type: string
+                enum: ["ok", "error", "blocked"]
+                stability: stable
+              artifacts:
+                type: array
+                items:
+                  type: string
+                stability: beta
+        scorecard:
+          type: object
+          additionalProperties: true
+          stability: experimental
+    links:
+      type: object
+      required:
+        - events
+        - summary
+        - state
+      additionalProperties: false
+      stability: stable
+      properties:
+        events:
+          type: string
+          stability: stable
+        summary:
+          type: string
+          stability: stable
+        state:
+          type: string
+          stability: stable
+        learn:
+          type: string
+          stability: beta

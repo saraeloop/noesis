@@ -1,0 +1,109 @@
+{
+  "$id": "https://schemas.noesis.dev/events/1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "events",
+  "$schema_version": "1.0.0",
+  "additionalProperties": false,
+  "description": "Canonical shape of each JSON object appended to events.jsonl. The stream is append-only and powers replay tooling, diagnostics, and analytics.",
+  "properties": {
+    "agent_id": {
+      "description": "Identifier of the faculty/adapter emitting the event.",
+      "type": "string",
+      "x-stability": "beta"
+    },
+    "caused_by": {
+      "description": "Event id that triggered this record (for causal graphs).",
+      "type": "string",
+      "x-stability": "experimental"
+    },
+    "episode_id": {
+      "description": "ULID shared with other artifacts.",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "evidence_ids": {
+      "description": "Identifiers of upstream events supporting this payload.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "x-stability": "beta"
+    },
+    "id": {
+      "description": "UUIDv5 derived from episode_id + phase-local counter.",
+      "pattern": "^[0-9a-fA-F-]{36}$",
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "metrics": {
+      "additionalProperties": false,
+      "description": "Timing metadata for the action captured by this event.",
+      "properties": {
+        "completed_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-stability": "beta"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "type": "number",
+          "x-stability": "beta"
+        },
+        "started_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-stability": "beta"
+        }
+      },
+      "type": "object",
+      "x-stability": "beta"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "description": "Phase-specific payload; schema depends on faculty.",
+      "type": "object",
+      "x-stability": "stable"
+    },
+    "phase": {
+      "description": "Cognitive phase that produced the event.",
+      "enum": [
+        "intuition",
+        "direction",
+        "governance",
+        "insight",
+        "runtime"
+      ],
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "schema_version": {
+      "description": "Semver string for the event schema revision.",
+      "enum": [
+        "1.0.0"
+      ],
+      "type": "string",
+      "x-stability": "stable"
+    },
+    "timestamp": {
+      "description": "RFC 3339 timestamp when the event was recorded.",
+      "format": "date-time",
+      "type": "string",
+      "x-stability": "stable"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "episode_id",
+    "timestamp",
+    "phase",
+    "payload"
+  ],
+  "title": "Noēsis Event Stream",
+  "type": "object",
+  "x-owners": [
+    "Core Engineering"
+  ],
+  "x-stability": "stable"
+}
