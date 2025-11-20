@@ -25,4 +25,5 @@ def test_deterministic_rng_seeds_stdlib_and_bytes() -> None:
 def test_deterministic_rng_uuid_namespace() -> None:
     rng = DeterministicRNG(seed=7)
     ns = UUID("00000000-0000-0000-0000-000000000001")
-    assert rng.uuid_namespace(ns, "rule") == UUID("cfa246ad-09b7-5da1-b0c8-dca087e97099")
+    # uuid5 is deterministic given namespace+name; seed does not alter uuid5 output.
+    assert rng.uuid_namespace(ns, "rule") == UUID("83e12049-6bb1-5b51-a8cb-0fd0f1beade5")
