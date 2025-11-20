@@ -19,10 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 import json
-import os
-import tempfile
 
-from noesis._fs import fsync_dir
+from noesis.runtime.serialization import atomic_write_json
 
 SUMMARY_FILE = "summary.json"
 
@@ -34,16 +32,7 @@ __all__ = ["SUMMARY_FILE", "write_summary", "read_summary"]
 
 def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
     """Write JSON atomically to avoid partial writes on crash."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", delete=False, dir=str(path.parent)
-    ) as tmp:
-        json.dump(data, tmp, ensure_ascii=False, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)  # POSIX atomic move
-    fsync_dir(path.parent)
+    atomic_write_json(path, data)
 
 
 

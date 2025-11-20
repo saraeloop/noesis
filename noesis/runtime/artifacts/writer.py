@@ -3,10 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from typing import Dict, Iterator, Protocol
-import os
-import tempfile
 
-from noesis._fs import fsync_dir
+from noesis.runtime.serialization import atomic_write_text
 
 from .manifest import (
     ArtifactFile,
@@ -35,17 +33,6 @@ class ManifestSigner(Protocol):
     name: str
 
     def sign(self, manifest: ArtifactManifest, payload: bytes) -> ManifestSignature: ...
-
-
-def _atomic_write(path: Path, data: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent)) as tmp:
-        tmp.write(data)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)
-    fsync_dir(path.parent)
 
 
 class ManifestWriter:
@@ -97,15 +84,15 @@ class ManifestWriter:
             schema_version=self._schema_version,
             files=files,
         )
-        payload = manifest.to_json()
+        payload = manifest.canonical_json()
         signer = self._signer
         if signer is not None:
             unsigned = manifest.without_signature()
             canonical = unsigned.canonical_json()
             signature = signer.sign(unsigned, canonical.encode("utf-8"))
             manifest = replace(manifest, signer=getattr(signer, "name", signature.key_id), signature=signature)
-            payload = manifest.to_json()
-        _atomic_write(self.manifest_path, payload)
+            payload = manifest.canonical_json()
+        atomic_write_text(self.manifest_path, payload)
         return manifest
 
     def _build_artifact(self, relative: Path, *, kind: ArtifactKind) -> ArtifactFile:

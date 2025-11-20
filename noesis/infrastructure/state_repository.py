@@ -10,13 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
-
-import json
-import os
-import tempfile
-
-from noesis._fs import fsync_dir
-
+from noesis.runtime.serialization import atomic_write_json
 from noesis.domain.state import NoesisState, create_state
 
 
@@ -75,11 +69,4 @@ class RuntimeStateRepository(StateRepository):
 
 def _write_state(path: Path, state: NoesisState) -> None:
     payload = state.to_dict()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent)) as tmp:
-        json.dump(payload, tmp, ensure_ascii=False, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)
-    fsync_dir(path.parent)
+    atomic_write_json(path, payload)
