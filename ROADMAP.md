@@ -67,115 +67,95 @@ Every update strengthens three dimensions:
 
 ### Guiding Objectives
 
-- Deterministic governance/direction lineage with stable identifiers.
+- Deterministic cognition: stable governance/direction lineage and byte-identical minimal runs.
 - Version-safe schemas with developer-friendly diagnostics.
-- Reproducible curricula and replay harness for scientific validation.
 - Transparent documentation and schema references for contributors.
 - Signed releases with enforced replay gates and migration reporting.
 
 ### Phase Sequence
 
-#### Phase 0 — (Blocking — ADR-003/Determinism Drill remaining)
+#### Phase 0 — Trust Spine (DONE except determinism drill)
 
-**Focus:** Lock the “trust spine” contracts (runtime owner, artifact immutability, schema governance) before landing more PRs.
+**Focus:** Lock the “trust spine” contracts (runtime owner, artifact immutability, schema governance).
 
 **Key Deliverables**
 
-- **Runtime RFC:** Document the single-session runtime object (threading, ownership, env-var defaults), the `ns.*` shims that wrap it, and the typed Runner/graph adapter contract used by `run/solve`.
-- **Artifact Spec:** Finalize directory layout (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`, optional `learn.jsonl`), ULID episode IDs plus derived UUIDv5 directive/governance IDs, and write-once rules (temp file → atomic rename, manifest with size + sha256 + optional HMAC).
-- **Schema Governance Doc:** Per-file `$schema_version`, field-level `stability` flags, semver policy + migration-note checklist, and glossary that pins KPI formulas (plan_adherence, tool_coverage, veto_count, success, etc.).
-- **Determinism Drill:** Paper (or notebook) replay of a vetoed episode that exercises the new IDs/manifest, a minimal-mode artifact diff proving byte-identical outputs, and a manual enforcement checklist that bridges to later CI gates.
+- **Runtime RFC:** Document the single-session runtime object (threading, ownership, env-var defaults), the `ns.*` shims that wrap it, and the typed Runner/graph adapter contract used by `run/solve`. (Implemented; ADR-001 pending acceptance.)
+- **Artifact Spec:** Finalize directory layout (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`, optional `learn.jsonl`), ULID episode IDs plus derived UUIDv5 directive/governance IDs, and write-once rules (temp file → atomic rename, manifest with size + sha256 + optional HMAC). (ADR-002 completed.)
+- **Schema Governance Doc:** Per-file `$schema_version`, field-level `stability` flags, semver policy + migration-note checklist, and glossary that pins KPI formulas (plan_adherence, tool_coverage, veto_count, success, etc.). (ADR-003 completed.)
+- **Determinism Drill:** Paper (or notebook) replay of a vetoed episode that exercises the new IDs/manifest, a minimal-mode artifact diff proving byte-identical outputs, and a manual enforcement checklist that bridges to later CI gates. (Still open.)
 
 **Blocking Workstreams (PR-gated)**
 
-1. ~~**ADR-001 — Runtime ownership & NoesisSession** _(Owner: Sara)_~~ **(Completed)**  
-   Scope: single session object, threading/reentrancy guarantees, `ns.*` shims, Runner/graph adapter contract, env-defaulting without hidden globals.
+1. ~~**ADR-001 — Runtime ownership & NoesisSession** _(Owner: Sara)_~~ **(Implemented; ADR status pending acceptance)**  
+   Scope: single session object, threading/reentrancy guarantees, `ns.*` shims, Runner/graph adapter contract, env-defaulting without hidden globals; formal GA and acceptance still required.
 2. ~~**ADR-002 — Artifact immutability & manifest** _(Owner: Sara)_~~ **(Completed)**  
    Scope: episode directory layout, temp→atomic write policy, `manifest.json` schema (sizes + SHA256 + optional HMAC), ULID episode IDs, UUIDv5 directive/governance IDs, and `noesis artifacts verify` behavior.
-3. **ADR-003 — Schema governance & KPIs** _(Owner: Sara)_  
-   Scope: per-file `$schema_version`, field-level stability flags, schema semver rules, mandatory migration notes, pinned KPI formulas (plan_adherence, tool_coverage, veto_count, success), and CI schema guard requirements.  
-   _Each ADR PR must include rationale, consequences, alternatives rejected, acceptance criteria, and a migration-note stub._
+3. ~~**ADR-003 — Schema governance & KPIs** _(Owner: Sara)_~~ **(Completed)**  
+   Scope: per-file `$schema_version`, field-level stability flags, schema semver rules, mandatory migration notes, pinned KPI formulas (plan_adherence, tool_coverage, veto_count, success), and CI schema guard requirements.
 4. **Determinism Drill PR** _(Owner: Sara)_  
    Deliverables: deterministic vetoed fixture, minimal-mode paired runs proving byte-identical artifacts, `diagnostics --replay` diff spec (lineage, duration tolerances, KPIs), and enforcement that minimal mode emits zero Direction/Governance events while meta mode shows tamper-evident manifests.
-5. **NoesisSession spike PR** _(Owner: Sara)_  
-   Deliverables: thin `NoesisSession` shell + adapters, one vertical slice (run→plan→act→summarize) on the session, concurrency guarantees, and an impact report (breaking changes, shims, touched files, migration estimate). Out of scope: full CLI migration or docs rewrite.
 
 **Exit Criteria**
 
 - Every engineer can whiteboard an episode lifecycle (session → IDs → artifacts → manifest) without disagreement.
 - Simulated vetoed action yields deterministic directive/governance IDs and manifest entries the team can follow step-by-step.
-- Schema bumps cannot merge without an accompanying migration note template and reviewer checklist.
-- Minimal-mode artifact pairs diff to zero when seeded identically; divergences are explained in the drill log.
+- Schema bumps cannot merge without an accompanying migration note template and reviewer checklist. (Met by ADR-003 guard.)
+- Minimal-mode artifact pairs diff to zero when seeded identically; divergences are explained in the drill log. (Pending determinism drill.)
 
-#### Phase 1 — Governance & Direction Hardening (v0.9.5)
+#### Phase 1 — Determinism Drill (Blocking for v1.0.0)
 
-**Focus:** Stabilize directive/governance identifiers, error handling, and legacy compatibility.  
-**Key PRs**
+**Focus:** Prove deterministic cognition and governance lineage.
 
-- `PR-1a` Stable IDs (dual-write): emit `directive_id` / `governance_id` alongside legacy fields, add `schema_version`, document in `MIGRATIONS.md`, and cover lineage determinism + dual-field presence.
-- `PR-1b` `_apply_directive` errors: tighten word-boundary matching, include directive ID and matched rule in failure messages, snapshot diagnostics.
-- `PR-1c` Minimal-mode regression: guarantee zero Direction/Governance events and no `summary["insight"]` side-effects under `PlannerMode=minimal`.
-  **Exit Criteria**
-- Direction→Governance→Act events carry stable IDs and deterministic lineage.
-- Minimal planner mode remains free of governance artifacts (events and summaries).
-- Error surfaces actionable context for operator debugging.
+**Key Deliverables**
 
-#### Phase 2 — Schema Registry & Diagnostics (v0.9.6)
+- `diagnostics --replay` (or equivalent) that diffs lineage, durations (with tolerance), and KPIs.
+- Paired meta/minimal runs with goldens; minimal-mode artifacts are byte-identical across seeds.
+- Simulated veto scenario exercising ULID→UUIDv5 lineage and manifest verification.
+- CI gate that fails on replay drift.
 
-**Focus:** Centralize schema management with CI enforcement and developer tooling.  
-**Key PRs**
+**Exit Criteria**
 
-- `PR-2a` Schema registry + guard: move versioned JSON Schemas into `docs/schema/`, add registry loader, fail CI on unversioned diffs (expect `pyproject.toml` / `uv.lock` churn).
-- `PR-2b` Diagnostics integration: run schema checks inside `noesis diagnostics --check-all` and `scripts/pre_release.py`; document recovery steps for schema drift.
-  **Exit Criteria**
-- Local diagnostics flag schema mismatches before CI.
-- PRs without schema version bumps are blocked automatically.
-- README/Contributing detail remediation workflow.
+- Minimal-mode artifacts are bit-for-bit identical across runs.
+- Replay tool reports zero drift for goldens.
+- Governance lineage is deterministic and validated by goldens.
 
-#### Phase 3 — Curriculum & Replay (v0.9.7)
+#### Phase 2 — NoesisSession GA (ADR-001 → Accepted)
 
-**Focus:** Ship reproducible curricula and episode replay harness.  
-**Key PRs**
+**Focus:** Make the session the public, deterministic entrypoint.
 
-- `PR-3a` Replay harness: add `diagnostics --replay` with golden diffs for lineage, durations, and insight metrics; fixtures live under `tests/fixtures/`.
-- `PR-3b` Curriculum runner: define `curriculum.jsonl` format, sampling rules, and example dataset; integration tests with golden directories (call out review time).
-  **Exit Criteria**
-- Replay CLI returns non-zero on drift beyond thresholds.
-- Curriculum runner executes published datasets with deterministic artifacts.
-- Integration suite stable on Linux/py311/py312.
+**Key Deliverables**
 
-#### Phase 4 — Documentation & Schema Reference (v0.9.8)
+- Promote ADR-001 from Proposed to Accepted with reentrancy/threading guarantees.
+- Document `NoesisSession` / `ns.run/solve` surface as GA; add migration notes.
+- Concurrency and ownership tests proving determinism.
+- README/docs updated to show session-first usage.
 
-**Focus:** Make cognition and schema contracts transparent.  
-**Key PRs**
+**Exit Criteria**
 
-- `PR-4a` Docs build discipline: require `pnpm --dir docs install && pnpm --dir docs run build` in every PR checklist.
-- `PR-4b` Auto schema pages: generate schema reference MDX with cache-bust and extend “Contracts” page with Stable vs Experimental matrix.
-  **Exit Criteria**
-- Docs build runs in CI and locally with identical commands.
-- Schema references publish examples alongside version metadata.
-- Faculty lifecycle diagrams accessible from `docs/app/reference/index.mdx`.
+- Senior engineers can adopt Noēsis without guessing about runtime scope or threading.
+- Public API surface and shims are documented; ADR-001 marked Accepted.
 
-#### Phase 5 — Release Integrity (v1.0.0)
+#### Phase 3 — Real LLM Example (LangGraph/CrewAI-style)
 
-**Focus:** Production-grade releases with attestations and migrations.  
-**Key PRs**
+**Focus:** Prove real-world integration with a live LLM-backed flow.
 
-- `PR-5a` Signing workflow: configure artifact attestations, coordinate secrets/permissions task before merge, and gate releases on replay success.
-- `PR-5b` Migration report: keep migration diff in `RELEASE.md`, link from docs, and have CI generate migration snippets automatically.
-  **Exit Criteria**
-- Tagged releases fail if replay gate detects drift.
-- Distributed artifacts are signed and publish attestations.
-- Release notes include autogenerated changelog + migration guidance.
+**Key Deliverables**
+
+- One LangGraph or CrewAI-esque example hitting a real LLM.
+- Emits full artifacts + manifest; replay passes with the determinism drill.
+- Docs showing how to wrap external tools/graphs with Noēsis.
+
+**Exit Criteria**
+
+- Example reproducible by users with artifacts they can inspect and replay.
+- Demonstrates cognitive loop value (plan/govern/reflect) on a real model/tool call.
 
 ### v1.0.0 Release Gate
 
-- Curriculum runs (smoke + regression + Meta-CoT) auto-compare outputs.
-- Reasoning-depth score increases ≥ 10 % between policy versions.
-- Docs deploy passes link + diagram checks.
-- Schema guard rejects incompatible events in CI.
-- Signed release verifies artifact attestations.
-- Version matrix published and validated against release artifacts.
+- Determinism drill goldens pass locally and in CI (including replay gate).
+- Session API is GA and documented.
+- LLM example artifacts replay without drift.
 
 ---
 
@@ -190,24 +170,31 @@ Every update strengthens three dimensions:
 
 ## Future (Post v1.0.0)
 
-### Meta-Cognition Layer (v1.1+ Exploration)
+### Schema Registry & Diagnostics Polish (v1.1+)
 
-- Meta-loop reflection: allow episodes to introspect traces and adjust heuristics mid-run (potential `ReflectOnSelf` phase).
-- Cognitive graph reasoning: connect episodes in a graph to visualize influence and learning transfer.
-- Policy gradient from insight metrics: treat `plan_adherence`, `veto_rate`, and `success_rate` as reinforcement signals for adaptive policies.
-- Introspective policy proposals: route governance veto outcomes into LearningPort.
-- Cognitive fingerprinting: cluster reasoning styles via trace embeddings and personalize curricula.
+- Harden schema registry UX and diagnostics integrations beyond current guard.
+- Expand local tooling and CI dashboards for schema/KPI drift.
 
-### Ecosystem Enhancements
+### Curriculum & Replay Harness Scale (v1.1+)
 
-- Textual episode viewer (TUI) behind `noesis[ui]` with timeline/metrics/governance panes.
-- `noesis new-episode --danger-demo` helper for sandbox demos.
-- Meta-CoT & Self-Discover benchmarks expanded inside curriculum metrics.
-- Canonicalized `policy_score` metric reused across learning and curriculum acceptance tests.
-- Runtime × schema × policy version matrix maintained in public docs.
-- LangGraph + human approval incident triage demo refactor.
-- Strict phase typing and logging hooks in `noesis/trace/events.py`.
-- Workflow automation tests for CI bots and issue templates.
+- Curriculum runner and larger replay datasets.
+- Replay CLI thresholds for scale scenarios.
+
+### Documentation & Schema References (v1.1+)
+
+- Auto-generated schema pages and contracts matrix.
+- Docs build discipline and reference updates.
+
+### Release Integrity & Signing (v1.1+)
+
+- Signing/attestations gate releases once replay gates are stable.
+- Automated migration snippets in release notes.
+
+### Meta-Cognition & Ecosystem Enhancements (v1.1+ Exploration)
+
+- Meta-loop reflection and cognitive graph reasoning.
+- TUI episode viewer, `noesis new-episode --danger-demo`, benchmarks expansion.
+- Policy score canonicalization, runtime × schema × policy version matrix.
 
 ---
 
