@@ -29,7 +29,7 @@ def _encode_base32(value: int, length: int) -> str:
     return "".join(chars)
 
 
-def new_episode_ulid(seed: int = 0) -> str:
+def new_episode_ulid(seed: int = 0, *, timestamp_ms: int | None = None) -> str:
     """
     Return a monotonic-friendly ULID string (26 Crockford base32 chars).
 
@@ -38,7 +38,7 @@ def new_episode_ulid(seed: int = 0) -> str:
     """
     global _last_timestamp_ms, _last_entropy
     with _ulid_lock:
-        ts_ms = _current_ms()
+        ts_ms = _current_ms() if timestamp_ms is None else timestamp_ms & _TIMESTAMP_MASK
         entropy = _random_entropy(seed)
         if ts_ms < _last_timestamp_ms:
             ts_ms = _last_timestamp_ms
@@ -106,8 +106,8 @@ class EpisodeIds:
     governance_namespace: UUID
 
     @classmethod
-    def mint(cls, *, seed: int = 0) -> "EpisodeIds":
-        ulid = new_episode_ulid(seed)
+    def mint(cls, *, seed: int = 0, timestamp_ms: int | None = None) -> "EpisodeIds":
+        ulid = new_episode_ulid(seed, timestamp_ms=timestamp_ms)
         episode_id = f"ep_{ulid}"
         directive_ns = uuid5(_DIRECTIVE_ROOT_NAMESPACE, ulid)
         governance_ns = uuid5(_GOVERNANCE_ROOT_NAMESPACE, ulid)

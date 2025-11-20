@@ -25,6 +25,7 @@ import json
 import warnings
 
 from noesis.domain.state.cognitive import CognitiveEvent
+from noesis.runtime.serialization import canonical_dumps
 
 EVENTS_FILE = "events.jsonl"
 _MANIFEST_FILE = "manifest.json"
@@ -137,8 +138,9 @@ def write_event(dir_path: Path, event: Dict[str, Any], *, validate: bool = True)
         _validate_event_schema(event)
     _ensure_manifest_not_sealed(dir_path)
     dir_path.mkdir(parents=True, exist_ok=True)
+    payload = canonical_dumps(event)
     with (dir_path / EVENTS_FILE).open("a", encoding="utf-8") as f:
-        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        f.write(payload + "\n")
 
 
 def write_cognitive_event(

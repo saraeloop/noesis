@@ -9,11 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 import hashlib
-import json
 
 from noesis.state.episode import EpisodeSummary
 from noesis.trace.events import read_events, write_event
 from noesis.trace.summary import write_summary
+from noesis.runtime.serialization import canonical_dumps
 from noesis.domain.faculties import validate_hook_sequence
 from noesis.domain.faculties.insight import compute_metrics, build_insight_metrics
 from noesis.intuition import Intuition, IntuitionMode
@@ -36,7 +36,7 @@ def _agents_config_hash(using_label: Optional[str], intuition: Optional[Intuitio
             "version": getattr(intuition, "__version__", getattr(intuition, "version", None)),
             "mode": getattr(getattr(intuition, "mode", None), "value", None),
         }
-    payload = json.dumps(descriptor, sort_keys=True, default=str).encode("utf-8")
+    payload = canonical_dumps(descriptor, default=str).encode("utf-8")
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
