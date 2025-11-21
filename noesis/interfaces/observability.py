@@ -8,8 +8,9 @@ emission helpers so the use cases remain framework-agnostic.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
-from uuid import UUID
+from datetime import datetime, timezone
+from typing import Callable, Sequence
+from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.faculties.direction import PlannerDirective
@@ -36,6 +37,8 @@ class RuntimeEventBus(EventBus):
     emitter: CognitiveEventEmitter
     lineage: LineageTracker
     clock: RuntimeClock = field(default_factory=RuntimeClock)
+    now: Callable[[], datetime] = field(default_factory=lambda: (lambda: datetime.now(timezone.utc)))
+    event_id_factory: Callable[[], UUID] = uuid4
     _plan_steps: list[str] = field(default_factory=list, init=False, repr=False)
     _reflect_snapshot: dict[str, object] = field(default_factory=dict, init=False, repr=False)
 
@@ -60,6 +63,8 @@ class RuntimeEventBus(EventBus):
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.PLAN,
             payload=payload,
+            timestamp=event_metrics.started_at,
+            event_id=self.event_id_factory(),
         )
         if event_metrics:
             event = event.with_metrics(event_metrics)
@@ -81,6 +86,8 @@ class RuntimeEventBus(EventBus):
             payload,
             agent=directive.policy_id,
             caused_by=str(caused_by) if caused_by else None,
+            now_fn=lambda: self.now().isoformat(),
+            id_factory=self.event_id_factory,
         )
         return event_id
 
@@ -97,6 +104,8 @@ class RuntimeEventBus(EventBus):
             payload,
             agent=result.policy_id,
             caused_by=str(caused_by) if caused_by else None,
+            now_fn=lambda: self.now().isoformat(),
+            id_factory=self.event_id_factory,
         )
         return event_id
 
@@ -118,6 +127,8 @@ class RuntimeEventBus(EventBus):
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.ACT,
             payload=payload,
+            timestamp=metrics.started_at,
+            event_id=self.event_id_factory(),
         )
         if metrics:
             event = event.with_metrics(metrics)
@@ -145,6 +156,8 @@ class RuntimeEventBus(EventBus):
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.REFLECT,
             payload=payload,
+            timestamp=metrics.started_at,
+            event_id=self.event_id_factory(),
         )
         if metrics:
             event = event.with_metrics(metrics)

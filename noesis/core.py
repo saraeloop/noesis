@@ -20,7 +20,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, List, Final, Protocol
+from typing import Any, Dict, Optional, List, Final, Protocol, TYPE_CHECKING, Callable
+from uuid import uuid4
+from datetime import datetime, timezone
 
 from .state import (
     PlanStep,
@@ -72,6 +74,9 @@ from .usecases.episode_runner import (
 )
 from .usecases.memory_sync import persist_episode_memory
 from .context import RuntimeContext, get_context
+
+if TYPE_CHECKING:
+    from .runtime.session.models import DeterminismConfig
 
 # Soft-depend on adapters
 try:
@@ -145,16 +150,22 @@ def _maybe_intuition(
     enabled: bool,
     intuition: Intuition,
     snapshot: Dict[str, Any],
+    *,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], Any] | None = None,
 ) -> IntuitionEvent | None:
     if not enabled:
         return None
     evt: IntuitionEvent | None = intuition.advise(snapshot)
     if not evt:
         return None
+    now_fn = now_fn or _now
+    id_factory = id_factory or uuid4
     write_event(
         run_dir,
         {
-            "timestamp": _now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": "intuition",
             "phase": "intuition",
@@ -178,6 +189,8 @@ def _maybe_intuition(
         signals=signals,
         reasons=reasons,
         source="intuition",
+        now_fn=now_fn,
+        id_factory=id_factory,
     )
 
     plan_steps: List[str] = [f"{evt.kind}→{evt.target}"]
@@ -189,6 +202,8 @@ def _maybe_intuition(
         steps=plan_steps,
         rationale=evt.rationale,
         source="intuition",
+        now_fn=now_fn,
+        id_factory=id_factory,
     )
     return evt
 
@@ -252,7 +267,8 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
     return _CallableAdapter(graph_obj)
 
 
-# Public API 
+# Public API
+
 
 def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
     app = context or get_context()
@@ -268,6 +284,7 @@ def solve(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
     return run_using(
@@ -277,6 +294,7 @@ def solve(
         intuition=intuition,
         tags=tags,
         context=app,
+        determinism=determinism,
     )
 
 
@@ -299,6 +317,7 @@ def _run_impl(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
     context: RuntimeContext,
+    determinism: "_DeterminismConfig | None",
 ) -> str:
     config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
     cfg = config_port.get()
@@ -306,9 +325,31 @@ def _run_impl(
     runs_dir = str(cfg.runs_dir)
     dir_min = cfg.direction_min_confidence
 
-    ids = EpisodeIds.mint(seed=seed)
+    if determinism:
+        # Ensure deterministic ULID generation is not affected by prior runs.
+        from .runtime.artifacts.ids import reset_ulid_state
+
+        reset_ulid_state()
+        ids = EpisodeIds.mint(
+            seed=seed,
+            timestamp_ms=determinism.episode_timestamp_ms,
+            entropy=determinism.rng.bytes(10),
+        )
+    else:
+        ids = EpisodeIds.mint(seed=seed)
     run_dir = begin_episode(runs_dir, ids.episode_id)
-    ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=_now())
+    # Create a fresh clock instance for each run to ensure determinism
+    if determinism:
+        from noesis.runtime.determinism import DeterministicClock
+        run_clock = DeterministicClock(
+            start_at=determinism.clock.start_at,
+            tick_ms=determinism.clock.tick_ms,
+        )
+        now_str: Callable[[], str] = lambda: run_clock.now().isoformat()
+    else:
+        run_clock = None
+        now_str = _now
+    ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_str())
 
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
 
@@ -333,7 +374,8 @@ def _run_impl(
     state_path = ctx.run_dir / "state.json"
 
     start_payload = {"task": task, "seed": seed, "using": raw_using_label}
-    _start_event(ctx.run_dir, ctx.episode_id, start_payload)
+    pre_event_id_factory = determinism.rng.event_id_factory(ids.directive_namespace) if determinism else None
+    _start_event(ctx.run_dir, ctx.episode_id, start_payload, now_fn=now_str if determinism else None, id_factory=pre_event_id_factory)
 
     if minimal_mode:
         snapshot = {
@@ -342,21 +384,43 @@ def _run_impl(
             "history": [],
             "tools_seen": [],
             "tags": tags or {},
-            "state_path": str(state_path),
+            "state_path": str(state_path.relative_to(ctx.run_dir)),
             "state": state.to_dict(),
             "using": raw_using_label,
         }
-        _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
-        _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
+        _observe_event(
+            ctx.run_dir,
+            ctx.episode_id,
+            task=task,
+            tags=tags,
+            snapshot=snapshot,
+            now_fn=now_str if determinism else None,
+            id_factory=pre_event_id_factory,
+        )
+        _maybe_intuition(
+            ctx.run_dir,
+            ctx.episode_id,
+            intuition_enabled,
+            intuition_impl,
+            snapshot,
+            now_fn=now_str if determinism else None,
+            id_factory=pre_event_id_factory,
+        )
 
         lineage = LineageTracker()
-        clock = RuntimeClock()
+        # Use the run clock created earlier
+        if determinism:
+            clock = run_clock
+        else:
+            clock = RuntimeClock()
         emitter = CognitiveEventEmitter(run_dir=ctx.run_dir)
         event_bus = RuntimeEventBus(
             context=episode_ctx,
             emitter=emitter,
             lineage=lineage,
             clock=clock,
+            now=clock.now if determinism else (lambda: datetime.now(timezone.utc)),
+            event_id_factory=pre_event_id_factory or uuid4,
         )
         direction_planner = MetaPlanner() if cfg.planner_mode is PlannerMode.META else None
         governance_policy = PreActGovernor() if cfg.planner_mode is PlannerMode.META else None
@@ -372,6 +436,8 @@ def _run_impl(
             clock=clock,
             emitter=emitter,
             lineage=lineage,
+            now=clock.now if determinism else (lambda: datetime.now(timezone.utc)),
+            event_id_factory=pre_event_id_factory or uuid4,
             hooks=(),
         )
         runner = EpisodeRunner(deps, instrumentation=instrumentation)
@@ -382,7 +448,13 @@ def _run_impl(
         if result.outcome.summary:
             status_payload["message"] = result.outcome.summary
 
-        _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
+        _terminate_event(
+            ctx.run_dir,
+            ctx.episode_id,
+            status_payload,
+            now_fn=now_str if determinism else None,
+            id_factory=pre_event_id_factory,
+        )
 
         state = result.state
         state.set_links(
@@ -443,7 +515,7 @@ def _run_impl(
         "history": [],
         "tools_seen": [],
         "tags": tags or {},
-        "state_path": str(state_path),
+        "state_path": str(state_path.relative_to(ctx.run_dir)),
         "state": state.to_dict(),
         "using": raw_using_label,
     }
@@ -521,21 +593,21 @@ def _run_impl(
         step_id=plan_step_objs[-1].id if plan_step_objs else None,
     )
 
-    _reflect_event(ctx.run_dir, ctx.episode_id, success=success, reasons=reflect_reasons or None)
-    _terminate_event(ctx.run_dir, ctx.episode_id, status_payload)
+    _reflect_event(
+        ctx.run_dir,
+        ctx.episode_id,
+        success=success,
+        deltas=None,
+        reasons=reflect_reasons,
+    )
 
-    if state.plan_steps:
-        if not success and status_payload["status"] == "blocked":
-            state.plan_steps[-1].status = StepStatus.VETOED
-        elif not success:
-            state.plan_steps[-1].status = StepStatus.FAILED
-        else:
-            state.plan_steps[-1].status = StepStatus.DONE
-
-    normalized_outcome_status = _normalize_outcome_status(status_payload["status"], success=success)
-    state.set_outcome(status=normalized_outcome_status, summary=result_excerpt or None, metrics=None)
+    # Summarize and persist outcome
+    state.set_outcome(
+        status=action_status,
+        summary=status_payload.get("message"),
+        metrics={"success": 1.0 if success else 0.0},
+    )
     state_repo.persist(state)
-    snapshot["state"] = state.to_dict()
 
     _finalize_summary(
         run_dir=ctx.run_dir,
@@ -564,7 +636,7 @@ def _run_impl(
             episode_id=ctx.episode_id,
             summary_path=summary_path,
             state_path=state_path,
-            status=status_payload["status"],
+            status=state.outcome_status,
             task=task,
             using=adapter_label,
             provenance={
@@ -576,19 +648,8 @@ def _run_impl(
             },
         )
     except Exception:
-        # Episode registry should never break execution; failures are logged via events.
         pass
 
-    state.set_links(
-        events="events.jsonl",
-        summary="summary.json",
-        learn="learn.jsonl",
-        manifest="manifest.json",
-    )
-    state_repo.persist(state)
-
-    if veto_error is not None:
-        raise veto_error
     return ctx.episode_id
 
 
@@ -599,6 +660,7 @@ def run(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
     return _run_impl(
@@ -608,6 +670,7 @@ def run(
         tags=tags,
         using=None,
         context=app,
+        determinism=determinism,
     )
 
 
@@ -619,6 +682,7 @@ def run_using(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
     return _run_impl(
@@ -628,6 +692,7 @@ def run_using(
         tags=tags,
         using=using,
         context=app,
+        determinism=determinism,
     )
 
 
@@ -639,6 +704,7 @@ def run_graph(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     return run_using(
         using=kind,
@@ -647,4 +713,10 @@ def run_graph(
         intuition=intuition,
         tags=tags,
         context=context,
+        determinism=determinism,
     )
+
+
+_DeterminismConfig = None
+if TYPE_CHECKING:
+    from .runtime.session.models import DeterminismConfig as _DeterminismConfig

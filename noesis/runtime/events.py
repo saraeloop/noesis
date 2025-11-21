@@ -7,8 +7,8 @@ Public facade replacing the legacy `_events` module.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from typing import Any, Callable, Dict, List, Optional
+from uuid import UUID, uuid4
 
 from noesis.trace.events import read_events, write_event
 
@@ -29,12 +29,21 @@ __all__ = [
 ]
 
 
-def start_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> None:
+def start_event(
+    run_dir: Path,
+    episode_id: str,
+    payload: Dict[str, Any],
+    *,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
+) -> None:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
-            "timestamp": now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": "system",
             "phase": "start",
@@ -51,8 +60,12 @@ def observe_event(
     task: str,
     tags: Optional[Dict[str, Any]],
     snapshot: Optional[Dict[str, Any]] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> None:
-    ts = now()
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
+    ts = now_fn()
     payload: Dict[str, Any] = {
         "task": task,
         "tags": tags or {},
@@ -63,7 +76,7 @@ def observe_event(
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
+            "id": str(id_factory()),
             "timestamp": ts,
             "episode_id": episode_id,
             "agent_id": "system",
@@ -81,7 +94,11 @@ def interpret_event(
     signals: List[str],
     reasons: Optional[List[str]] = None,
     source: str = "system",
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> None:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
     payload: Dict[str, Any] = {"signals": signals}
     if reasons:
         payload["reasons"] = reasons
@@ -89,8 +106,8 @@ def interpret_event(
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
-            "timestamp": now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": source,
             "phase": "interpret",
@@ -107,7 +124,11 @@ def plan_event(
     steps: List[str],
     rationale: Optional[str] = None,
     source: str = "system",
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> None:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
     payload: Dict[str, Any] = {"steps": steps}
     if rationale:
         payload["rationale"] = rationale
@@ -115,8 +136,8 @@ def plan_event(
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
-            "timestamp": now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": source,
             "phase": "plan",
@@ -135,7 +156,11 @@ def act_event(
     input_excerpt: str,
     outcome: str,
     error: Optional[str] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> None:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
     payload: Dict[str, Any] = {
         "input_excerpt": input_excerpt,
         "outcome": outcome,
@@ -149,8 +174,8 @@ def act_event(
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
-            "timestamp": now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": adapter or tool or "system",
             "phase": "act",
@@ -167,7 +192,11 @@ def reflect_event(
     success: bool,
     deltas: Optional[List[str]] = None,
     reasons: Optional[List[str]] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> None:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
     payload: Dict[str, Any] = {"success": success}
     if deltas:
         payload["deltas"] = deltas
@@ -176,8 +205,8 @@ def reflect_event(
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
-            "timestamp": now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": "system",
             "phase": "reflect",
@@ -195,11 +224,15 @@ def direction_event(
     agent: str = "system",
     caused_by: Optional[str] = None,
     metrics: Optional[Dict[str, Any]] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> UUID:
-    event_id = uuid4()
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
+    event_id = id_factory()
     record: Dict[str, Any] = {
         "id": str(event_id),
-        "timestamp": now(),
+        "timestamp": now_fn(),
         "episode_id": episode_id,
         "agent_id": agent,
         "phase": "direction",
@@ -221,11 +254,15 @@ def governance_event(
     *,
     agent: str = "system",
     caused_by: Optional[str] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
 ) -> UUID:
-    event_id = uuid4()
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
+    event_id = id_factory()
     record: Dict[str, Any] = {
         "id": str(event_id),
-        "timestamp": now(),
+        "timestamp": now_fn(),
         "episode_id": episode_id,
         "agent_id": agent,
         "phase": "governance",
@@ -258,12 +295,21 @@ def ensure_act_event(
     )
 
 
-def terminate_event(run_dir: Path, episode_id: str, payload: Dict[str, Any]) -> None:
+def terminate_event(
+    run_dir: Path,
+    episode_id: str,
+    payload: Dict[str, Any],
+    *,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
+) -> None:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
     write_event(
         run_dir,
         {
-            "id": str(uuid4()),
-            "timestamp": now(),
+            "id": str(id_factory()),
+            "timestamp": now_fn(),
             "episode_id": episode_id,
             "agent_id": "system",
             "phase": "terminate",

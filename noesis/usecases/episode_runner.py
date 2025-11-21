@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional, Sequence
-from uuid import UUID
+from datetime import datetime, timezone
+from typing import Callable, Dict, List, Optional, Sequence
+from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import (
     Actuator,
@@ -68,6 +69,9 @@ class EpisodeInstrumentation:
     clock: RuntimeClock
     emitter: CognitiveEventEmitter
     lineage: LineageTracker
+    now: Callable[[], datetime] = field(default_factory=lambda: datetime.now(timezone.utc))
+    event_id_factory: Callable[[], UUID] = uuid4
+    rng: object | None = None
     hooks: Sequence[MetaPhaseHook] = field(default_factory=lambda: (NullMetaPhaseHook(),))
 
 
@@ -89,11 +93,16 @@ class EpisodeRunner:
                 clock=RuntimeClock(),
                 emitter=CognitiveEventEmitter(run_dir=context.run_dir),
                 lineage=LineageTracker(),
+                now=datetime.now,
+                event_id_factory=uuid4,
                 hooks=(NullMetaPhaseHook(),),
             )
         self._clock = instrumentation.clock
         self._emitter = instrumentation.emitter
         self._lineage = instrumentation.lineage
+        self._now = instrumentation.now
+        factory = instrumentation.event_id_factory
+        self._event_id_factory = factory if callable(factory) else (lambda: factory)
         hooks = instrumentation.hooks or (NullMetaPhaseHook(),)
         self._hooks = CompositeMetaPhaseHook(tuple(hooks))
         self._context = context
@@ -145,10 +154,13 @@ class EpisodeRunner:
         agent_id: str = "system",
         cause: UUID | None = None,
     ) -> CognitiveEvent:
+        event_id = self._event_id_factory()
         event = CognitiveEvent(
             episode_id=context.episode_id,
             verb=verb,
             payload=payload,
+            timestamp=metrics.started_at or self._now(),
+            event_id=event_id,
         ).with_metrics(metrics)
         linked = self._lineage.register(event, cause=cause)
         self._emitter.emit(linked, agent_id=agent_id)

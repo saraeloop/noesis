@@ -69,6 +69,7 @@ class NoesisSession:
                 intuition=intuition,
                 tags=merged_tags,
                 context=self._context,
+                determinism=self._config.determinism,
             )
 
     def solve(
@@ -92,6 +93,7 @@ class NoesisSession:
                 intuition=intuition,
                 tags=merged_tags,
                 context=self._context,
+                determinism=self._config.determinism,
             )
 
     def with_ports(self, **ports: tuple[Any, str]) -> "NoesisSession":

@@ -4,16 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Mapping, MutableMapping, TYPE_CHECKING
+from typing import Any, Dict, Mapping, MutableMapping, TYPE_CHECKING, Optional
 
 from noesis.context import RuntimeContext, create_runtime_context
 from noesis.infrastructure.config import EnvTomlConfig
 from noesis.interfaces.config import ConfigPort, ConfigSnapshot
+from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
 
 if TYPE_CHECKING:
     from .session import NoesisSession
 
-__all__ = ["SessionConfig", "SessionBuilder"]
+__all__ = ["SessionConfig", "SessionBuilder", "DeterminismConfig"]
+
+
+@dataclass(slots=True, frozen=True)
+class DeterminismConfig:
+    """Optional deterministic instrumentation injected into a session run."""
+
+    clock: DeterministicClock
+    rng: DeterministicRNG
+    episode_timestamp_ms: Optional[int] = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -27,6 +37,7 @@ class SessionConfig:
 
     snapshot: ConfigSnapshot
     default_tags: Mapping[str, Any] = field(default_factory=dict)
+    determinism: Optional[DeterminismConfig] = None
 
     @property
     def runs_dir(self) -> Path:
@@ -52,6 +63,7 @@ class SessionBuilder:
     config_port: ConfigPort = field(default_factory=EnvTomlConfig)
     default_tags: MutableMapping[str, Any] = field(default_factory=dict)
     ports: MutableMapping[str, tuple[Any, str]] = field(default_factory=dict)
+    determinism: Optional[DeterminismConfig] = None
 
     @classmethod
     def from_env(cls) -> "SessionBuilder":
@@ -70,11 +82,26 @@ class SessionBuilder:
         self.default_tags.update(tags)
         return self
 
+    def with_determinism(
+        self,
+        *,
+        clock: DeterministicClock,
+        rng: DeterministicRNG,
+        episode_timestamp_ms: Optional[int] = None,
+    ) -> "SessionBuilder":
+        """Attach deterministic instrumentation for reproducible runs."""
+        self.determinism = DeterminismConfig(clock=clock, rng=rng, episode_timestamp_ms=episode_timestamp_ms)
+        return self
+
     def build(self) -> "NoesisSession":
         """Materialize a new NoesisSession with the collected dependencies."""
         from .session import NoesisSession
 
         context = create_runtime_context(config_port=self.config_port, ports=dict(self.ports))
         snapshot = self.config_port.get()
-        config = SessionConfig(snapshot=snapshot, default_tags=dict(self.default_tags))
+        config = SessionConfig(
+            snapshot=snapshot,
+            default_tags=dict(self.default_tags),
+            determinism=self.determinism,
+        )
         return NoesisSession(config=config, context=context)
