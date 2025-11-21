@@ -26,6 +26,8 @@ detail and can change without notice.
 | `noesis.insight` | 🟡 Evolving | v0.4.0 |
 | `noesis.diagnostics` | 🟡 Evolving | v0.6.0 |
 | `noesis.adapters.*` | 🟡 Example | v0.4.0 |
+| `noesis.session` | ✅ Stable | v1.0.0 |
+| `noesis.determinism` | ✅ Stable | v1.0.0 |
 | `noesis.runtime.events` | ✅ Stable (facade) | v0.4.0 |
 | `noesis.runtime.summary` | ✅ Stable (facade) | v0.4.0 |
 | `noesis.runtime.learning` | ✅ Stable (facade) | v0.4.0 |
@@ -54,6 +56,8 @@ temporarily set `NOESIS_LEGACY_SHIMS=1` to finish the migration.
 | `from noesis.runtime._utils import …` | `from noesis.runtime.utils import …` | v0.9.0 |
 | `from noesis.runtime.config_provider import …` | `from noesis.context import …` | v0.9.0 |
 | `from noesis.state.store import EpisodeStore` | `from noesis.episode import EpisodeIndex` | v0.9.0 |
+| `from noesis.runtime.session import …` | `from noesis.session import …` | v1.0.0 |
+| `from noesis.runtime.determinism import …` | `from noesis.determinism import …` | v1.0.0 |
 
 ## Things the codemod can’t fix
 
@@ -87,6 +91,8 @@ Re-run `noesis migrate` afterwards to confirm the workspace is clean.
 | `noesis.learn` / `noesis.insight` | Learning and insight programmatic helpers. |
 | `noesis.diagnostics` | Run comparison and drift detection (`compare_runs`, `DriftResult`, `DriftMismatch`). |
 | `noesis.adapters.*` | Reference adapters (LangGraph, CrewAI, etc.). Treat as examples. |
+| `noesis.session` | Session construction and management (`SessionBuilder`, `NoesisSession`, `DefaultSessionProvider`). |
+| `noesis.determinism` | Deterministic clock and RNG helpers (`DeterministicClock`, `DeterministicRNG`). |
 
 <Callout type="info" emoji="🧠">
 Stick to the root facade for orchestration (`ns.run`, `ns.solve`) and the module surfaces for everything else.
