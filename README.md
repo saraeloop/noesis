@@ -160,6 +160,24 @@ episode_id = session.run("Draft a weekly engineering update", intuition=False)
 
 The default CLI and `ns.*` helpers internally use the same session provider, so migrating existing code is incremental.
 
+**Deterministic sessions (replay-friendly)**
+
+```python
+from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
+from noesis.runtime.session import SessionBuilder
+from datetime import datetime, timezone
+
+clock = DeterministicClock(start_at=datetime(2030, 1, 1, tzinfo=timezone.utc), tick_ms=5.0)
+rng = DeterministicRNG(seed=123)
+session = (
+    SessionBuilder.from_env()
+    .with_determinism(clock=clock, rng=rng, episode_timestamp_ms=1_735_689_600_000)
+    .build()
+)
+ep = session.run("Deterministic hello", intuition=False)
+# Later: uv run noesis diagnostics replay <run_a> <run_b> to confirm NO DRIFT
+```
+
 **Mini example: artifacts end to end**
 
 Drop this snippet in a REPL or `python demo.py` to see the cognition loop, summary, and events that Noēsis persists for every run.

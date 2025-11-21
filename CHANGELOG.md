@@ -3,6 +3,17 @@
 ## Unreleased
 - No public changes yet.
 
+## v1.0.0 – 2025-11-21
+### Highlights
+- Runtime ownership (ADR-001) is GA: `NoesisSession`/`SessionBuilder` + `DefaultSessionProvider` back all `ns.*`/CLI entrypoints, with determinism plumbed through sessions.
+- Determinism substrate and drill (ADR-004): canonical JSON writers, deterministic clock/RNG/ULID/UUID lineage, and replay comparator CLI (`noesis diagnostics replay`) backed by a deterministic golden fixture.
+- Artifact immutability (ADR-002) + schema governance (ADR-003) remain enforced; manifests, summary/state/events stay canonical with atomic writes.
+- CLI gains replay diagnostics and retains artifacts verification; tests guard structural determinism and replay drift.
+
+### Notes
+- Prompt Provenance (ADR-005) remains experimental/non-blocking for 1.0.0.
+- Existing `ns.run/solve/set` shims delegate to sessions; migrate code incrementally by constructing explicit sessions where needed.
+
 ## v0.9.5 – 2025-11-04
 ### Breaking Changes
 | Removed | Replacement | Codemod rule |
