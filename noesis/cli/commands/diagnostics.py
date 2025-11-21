@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterable, Literal
 
 from noesis.domain.state.models import STATE_SCHEMA_VERSION, STATE_VERSION
+from noesis.diagnostics import DriftResult, compare_runs
 from noesis.interfaces.config import ConfigSnapshot
 from noesis.runtime.config_provider import get_config_snapshot
 from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
@@ -47,15 +48,25 @@ class CheckResult:
 
 class DiagnosticsCommand:
     name = "diagnostics"
-    help = "Run stability and environment diagnostics"
+    help = "Run stability diagnostics or replay comparison"
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "mode",
+            nargs="?",
+            choices=["replay"],
+            help="Optional subcommand: 'replay' compares two episode directories",
+        )
+        parser.add_argument("run_a", nargs="?", help="First episode directory (replay mode)")
+        parser.add_argument("run_b", nargs="?", help="Second episode directory (replay mode)")
         parser.add_argument("-j", "--json", action="store_true", help="Emit JSON output")
         parser.add_argument("-q", "--quiet", action="store_true", help="Suppress human-readable output")
         parser.add_argument("--strict", action="store_true", help="Exit non-zero on warnings")
         parser.add_argument("--checks", help="Comma-separated list of checks to run")
 
     def run(self, args: argparse.Namespace, ctx: CLIContext, renderer: OutputRenderer) -> int:
+        if args.mode == "replay":
+            return self._run_replay(args, renderer)
         snapshot = ctx.config_snapshot
         selected_checks = self._parse_checks(args.checks)
         port_map = ctx.runtime_context.list_ports()
@@ -226,6 +237,28 @@ class DiagnosticsCommand:
             detail = issue.detail if issue else "verification failed"
             return CheckResult("artifact_manifest", "error", f"{manifest_path}: {detail}")
         return CheckResult("artifact_manifest", "warn", "no manifest found")
+
+    def _run_replay(self, args: argparse.Namespace, renderer: OutputRenderer) -> int:
+        run_a = args.run_a
+        run_b = args.run_b
+        if not run_a or not run_b:
+            renderer.echo("usage: noesis diagnostics replay <run_a_dir> <run_b_dir>")
+            return 2
+        result = compare_runs(Path(run_a), Path(run_b))
+        if args.json:
+            payload = {
+                "status": result.status,
+                "mismatches": [{"artifact": m.artifact, "detail": m.detail} for m in result.mismatches],
+            }
+            renderer.json(payload)
+        elif not args.quiet:
+            if result.is_drift:
+                renderer.echo("DRIFT detected:")
+                for mismatch in result.mismatches:
+                    renderer.echo(f"- {mismatch.artifact}: {mismatch.detail}")
+            else:
+                renderer.echo("NO DRIFT")
+        return 1 if result.is_drift else 0
 
     @staticmethod
     def _overall_status(checks: Iterable[CheckResult]) -> Literal["ok", "warn", "error"]:
