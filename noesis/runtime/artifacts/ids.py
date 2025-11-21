@@ -29,7 +29,12 @@ def _encode_base32(value: int, length: int) -> str:
     return "".join(chars)
 
 
-def new_episode_ulid(seed: int = 0, *, timestamp_ms: int | None = None) -> str:
+def new_episode_ulid(
+    seed: int = 0,
+    *,
+    timestamp_ms: int | None = None,
+    entropy: bytes | None = None,
+) -> str:
     """
     Return a monotonic-friendly ULID string (26 Crockford base32 chars).
 
@@ -39,13 +44,13 @@ def new_episode_ulid(seed: int = 0, *, timestamp_ms: int | None = None) -> str:
     global _last_timestamp_ms, _last_entropy
     with _ulid_lock:
         ts_ms = _current_ms() if timestamp_ms is None else timestamp_ms & _TIMESTAMP_MASK
-        entropy = _random_entropy(seed)
+        entropy = _random_entropy(seed, entropy_override=entropy)
         if ts_ms < _last_timestamp_ms:
             ts_ms = _last_timestamp_ms
         if ts_ms == _last_timestamp_ms:
             if _last_entropy == _RANDOM_MASK:
                 ts_ms = _wait_next_ms(ts_ms)
-                entropy = _random_entropy(seed)
+                entropy = _random_entropy(seed, entropy_override=entropy)
                 _assign_state(ts_ms, entropy)
             else:
                 entropy = (_last_entropy + 1) & _RANDOM_MASK
@@ -69,8 +74,9 @@ def _wait_next_ms(current: int) -> int:
         time.sleep(0.0001)
 
 
-def _random_entropy(seed: int) -> int:
-    entropy = int.from_bytes(os.urandom(10), "big") & _RANDOM_MASK
+def _random_entropy(seed: int, *, entropy_override: bytes | None = None) -> int:
+    source = entropy_override if entropy_override is not None else os.urandom(10)
+    entropy = int.from_bytes(source, "big") & _RANDOM_MASK
     if seed:
         seed_bytes = hashlib.blake2b(str(seed).encode("utf-8"), digest_size=10).digest()
         entropy ^= int.from_bytes(seed_bytes, "big")
@@ -82,6 +88,13 @@ def _assign_state(timestamp_ms: int, entropy: int) -> None:
     global _last_timestamp_ms, _last_entropy
     _last_timestamp_ms = timestamp_ms
     _last_entropy = entropy & _RANDOM_MASK
+
+
+def reset_ulid_state() -> None:
+    """Reset ULID monotonic state (used for deterministic fixtures)."""
+    global _last_timestamp_ms, _last_entropy
+    _last_timestamp_ms = -1
+    _last_entropy = 0
 
 
 def _extract_ulid(episode_id: str) -> str:
@@ -106,8 +119,14 @@ class EpisodeIds:
     governance_namespace: UUID
 
     @classmethod
-    def mint(cls, *, seed: int = 0, timestamp_ms: int | None = None) -> "EpisodeIds":
-        ulid = new_episode_ulid(seed, timestamp_ms=timestamp_ms)
+    def mint(
+        cls,
+        *,
+        seed: int = 0,
+        timestamp_ms: int | None = None,
+        entropy: bytes | None = None,
+    ) -> "EpisodeIds":
+        ulid = new_episode_ulid(seed, timestamp_ms=timestamp_ms, entropy=entropy)
         episode_id = f"ep_{ulid}"
         directive_ns = uuid5(_DIRECTIVE_ROOT_NAMESPACE, ulid)
         governance_ns = uuid5(_GOVERNANCE_ROOT_NAMESPACE, ulid)
@@ -155,4 +174,5 @@ __all__ = [
     "directive_uuid",
     "governance_uuid",
     "new_episode_ulid",
+    "reset_ulid_state",
 ]

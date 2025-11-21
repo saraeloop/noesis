@@ -29,6 +29,16 @@ class DeterministicClock:
     tick_ms: float = 1.0
     _ticks: int = 0
 
+    def reset(self) -> None:
+        """Reset the clock's tick counter to ensure deterministic runs."""
+        self._ticks = 0
+
+    def now(self) -> datetime:
+        """Deterministic timestamp that advances with each call."""
+        current = self.start_at + timedelta(milliseconds=self._ticks * self.tick_ms)
+        self._ticks += 1
+        return current
+
     def start(self, _: object | None = None) -> int:
         token = self._ticks
         self._ticks += 1
@@ -70,6 +80,19 @@ class DeterministicRNG:
 
     def uuid_namespace(self, namespace: UUID, name: str) -> UUID:
         return uuid5(namespace, name)
+
+    def event_id_factory(self, namespace: UUID) -> Callable[[], UUID]:
+        """
+        Deterministic event-id factory based on a namespace and monotone counter.
+        """
+        counter = {"i": 0}
+
+        def factory() -> UUID:
+            value = uuid5(namespace, f"event:{counter['i']}")
+            counter["i"] += 1
+            return value
+
+        return factory
 
     def context(self) -> Iterator[None]:
         """Context manager to apply deterministic seeds."""
