@@ -152,7 +152,7 @@ for ev in timeline[:5]:
 `noesis.run/solve` remain convenient, but production systems should create explicit sessions so configuration, ports, and planner modes are always scoped:
 
 ```python
-from noesis.runtime.session import SessionBuilder
+from noesis.session import SessionBuilder
 
 session = SessionBuilder.from_env().with_default_tags(env="demo").build()
 episode_id = session.run("Draft a weekly engineering update", intuition=False)
@@ -163,8 +163,8 @@ The default CLI and `ns.*` helpers internally use the same session provider, so 
 **Deterministic sessions (replay-friendly)**
 
 ```python
-from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
-from noesis.runtime.session import SessionBuilder
+from noesis.determinism import DeterministicClock, DeterministicRNG
+from noesis.session import SessionBuilder
 from datetime import datetime, timezone
 
 clock = DeterministicClock(start_at=datetime(2030, 1, 1, tzinfo=timezone.utc), tick_ms=5.0)

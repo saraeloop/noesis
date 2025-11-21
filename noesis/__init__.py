@@ -12,6 +12,7 @@ from .runtime.session import (
     NoesisSession,
     SessionBuilder,
 )
+from .runtime.determinism import DeterministicClock, DeterministicRNG
 
 # Package metadata
 __version__ = "1.0.0"
@@ -122,6 +123,11 @@ __all__ = (
     "get",
     "create_session",
     "session_provider",
+    "NoesisSession",
+    "SessionBuilder",
+    "DefaultSessionProvider",
+    "DeterministicClock",
+    "DeterministicRNG",
     "summary",
     "events",
     "context",
