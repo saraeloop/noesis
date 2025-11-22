@@ -15,32 +15,15 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
-import json
 import os
 import tempfile
 
 from noesis._fs import fsync_dir
+from noesis.trace.events import canonical_dumps
 
 JsonDefault = Callable[[Any], Any]
 
 __all__ = ["canonical_dumps", "atomic_write_json", "atomic_write_text"]
-
-
-def canonical_dumps(value: Any, *, default: JsonDefault | None = None) -> str:
-    """
-    Render a JSON string with stable ordering and formatting.
-
-    - ensure_ascii=False to preserve UTF-8
-    - sort_keys=True for deterministic key order
-    - separators=(",", ":") for compact, consistent output
-    """
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=default,
-    )
 
 
 def atomic_write_json(path: Path, value: Any, *, default: JsonDefault | None = None) -> None:

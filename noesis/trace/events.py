@@ -20,12 +20,30 @@ Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Callable
 import json
 import warnings
 
 from noesis.domain.state.cognitive import CognitiveEvent
-from noesis.runtime.serialization import canonical_dumps
+
+JsonDefault = Callable[[Any], Any]
+
+
+def canonical_dumps(value: Any, *, default: JsonDefault | None = None) -> str:
+    """
+    Render a JSON string with stable ordering and formatting.
+
+    - ensure_ascii=False to preserve UTF-8
+    - sort_keys=True for deterministic key order
+    - separators=(",", ":") for compact, consistent output
+    """
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=default,
+    )
 
 EVENTS_FILE = "events.jsonl"
 _MANIFEST_FILE = "manifest.json"
@@ -77,6 +95,7 @@ __all__ = [
     "PHASES",
     "REQUIRED_EVENT_KEYS",
     "RECOMMENDED_EVENT_KEYS",
+    "canonical_dumps",
     "write_event",
     "write_cognitive_event",
     "iter_events",

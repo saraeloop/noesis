@@ -48,6 +48,9 @@ from .trace.events import write_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
+from .direction import DirectiveKind
+from .runtime.events import direction_event
+from copy import deepcopy
 from .runtime.utils import now as _now
 from .runtime.clock import RuntimeClock
 from .runtime.events_emitter import CognitiveEventEmitter
@@ -77,12 +80,6 @@ from .context import RuntimeContext, get_context
 
 if TYPE_CHECKING:
     from .runtime.session.models import DeterminismConfig
-
-# Soft-depend on adapters
-try:
-    from .adapters.langgraph import LangGraphAdapter  # type: ignore
-except Exception:  # noqa: BLE001
-    LangGraphAdapter = None  # type: ignore[assignment]
 
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EXCERPT_IN_LEN: Final[int] = 120
@@ -238,13 +235,45 @@ class _Adapter(Protocol):
 
 
 def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
-    # Wrap LangGraph-like objects that use .invoke OR .run
-    if LangGraphAdapter is not None and (hasattr(graph_obj, "invoke") or hasattr(graph_obj, "run")):
-        return LangGraphAdapter(graph_obj, min_confidence=min_confidence)
+    """
+    Select a simple adapter for the given graph-like object.
+
+    We intentionally avoid importing noesis.adapters.* here so that core/runtime
+    stay decoupled from adapter implementations. Integration layers can wrap
+    LangGraph/CrewAI/etc. explicitly.
+    """
 
     class _CallableAdapter:
-        def __init__(self, obj: Any):
+        def __init__(self, obj: Any, min_conf: float):
             self.obj = obj
+            self._min_conf = min_conf
+            # Check for input mapper attribute (like DictGraph has)
+            self._input_mapper = getattr(obj, "__noesis_input_mapper__", None)
+
+        def _policy_tag(self, intuition: Optional[Intuition]) -> str:
+            if not intuition:
+                return "None"
+            name = intuition.__class__.__name__
+            version = getattr(intuition, "__version__", None) or getattr(intuition, "version", None) or "unspecified"
+            return f"{name}@{version}"
+
+        def _apply_patch(self, inp: Any, patch: Dict[str, Any]) -> tuple[Any, bool, list[Dict[str, Any]], str]:
+            """Apply a patch to input and compute diff."""
+            if isinstance(inp, dict):
+                out = deepcopy(inp)
+                diff = []
+                for k, v in patch.items():
+                    diff.append({"key": k, "before": out.get(k), "after": v})
+                    out[k] = v
+                return out, True, diff, "applied"
+            
+            # Special case: rewrite string input with "rewrite" key in patch
+            if isinstance(inp, str) and "rewrite" in patch:
+                rewritten = str(patch["rewrite"])
+                diff = [{"key": "rewrite", "before": inp, "after": rewritten}]
+                return rewritten, True, diff, "rewritten"
+            
+            return inp, False, [], "not_patchable_input"
 
         def execute(
             self,
@@ -256,19 +285,98 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
             seed: int = 0,
             tags: Optional[Dict[str, Any]] = None,
         ) -> Any:
+            policy = self._policy_tag(intuition)
+            directive: Optional[IntuitionEvent] = None
+
+            # Get input object (may be mapped)
+            if self._input_mapper:
+                input_obj = self._input_mapper(task)
+            else:
+                input_obj = task
+
+            # Handle intuition/direction
+            if intuition:
+                snapshot = {
+                    "task": task,
+                    "seed": seed,
+                    "history": [],
+                    "tools_seen": [],
+                    "tags": tags or {},
+                }
+                directive = intuition.advise(snapshot)
+
+            if directive:
+                # Emit intuition event
+                write_event(
+                    run_dir,
+                    {
+                        "id": str(uuid4()),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "episode_id": episode_id,
+                        "agent_id": "adapter.callable",
+                        "phase": "intuition",
+                        "payload": {
+                            "kind": directive.kind,
+                            "advice": directive.advice,
+                            "confidence": directive.confidence,
+                            "applied": directive.applied,
+                            "rationale": directive.rationale,
+                            "target": directive.target,
+                            "scope": directive.scope,
+                            "blocking": directive.blocking,
+                            "patch_keys": sorted(directive.patch.keys()) if directive.patch else [],
+                            "policy": policy,
+                        },
+                        "evidence_ids": [],
+                    },
+                )
+
+                # Handle direction based on directive kind
+                payload: Dict[str, Any] = {
+                    "kind": directive.kind,
+                    "advice": directive.advice,
+                    "confidence": directive.confidence,
+                    "target": directive.target,
+                    "scope": directive.scope,
+                    "policy": policy,
+                    "threshold": self._min_conf,
+                }
+
+                # Handle veto
+                if directive.blocking or directive.kind == DirectiveKind.VETO.value:
+                    payload.update({"applied": False, "status": "blocked", "reason": "veto"})
+                    direction_event(run_dir, episode_id, payload, agent=policy)
+                    raise NoesisVeto(advice=directive.advice, target=directive.target, scope=directive.scope)
+
+                # Handle intervention
+                if directive.kind == DirectiveKind.INTERVENTION.value:
+                    patch = directive.patch or {}
+                    if directive.confidence < self._min_conf:
+                        payload.update({"applied": False, "patch": patch, "reason": "policy_low_confidence", "diff": []})
+                        direction_event(run_dir, episode_id, payload, agent=policy)
+                    elif not patch:
+                        payload.update({"applied": False, "patch": {}, "reason": "empty_patch", "diff": []})
+                        direction_event(run_dir, episode_id, payload, agent=policy)
+                    else:
+                        adjusted, applied, diff, reason = self._apply_patch(input_obj, patch)
+                        payload.update({"applied": applied, "patch": patch, "reason": reason, "diff": diff})
+                        direction_event(run_dir, episode_id, payload, agent=policy)
+                        if applied:
+                            input_obj = adjusted
+
+            # Execute graph with (possibly patched) input
             if hasattr(self.obj, "invoke"):
-                return self.obj.invoke(task)
+                return self.obj.invoke(input_obj)
             if hasattr(self.obj, "run"):
-                return self.obj.run(task)
+                return self.obj.run(input_obj)
             if callable(self.obj):
-                return self.obj(task)
+                return self.obj(input_obj)
             raise TypeError("object is neither runnable nor callable")
 
-    return _CallableAdapter(graph_obj)
+    return _CallableAdapter(graph_obj, min_confidence)
 
 
 # Public API
-
 
 def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
     app = context or get_context()
