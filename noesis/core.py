@@ -78,12 +78,6 @@ from .context import RuntimeContext, get_context
 if TYPE_CHECKING:
     from .runtime.session.models import DeterminismConfig
 
-# Soft-depend on adapters
-try:
-    from .adapters.langgraph import LangGraphAdapter  # type: ignore
-except Exception:  # noqa: BLE001
-    LangGraphAdapter = None  # type: ignore[assignment]
-
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EXCERPT_IN_LEN: Final[int] = 120
 EXCERPT_OUT_LEN: Final[int] = 400
@@ -238,9 +232,13 @@ class _Adapter(Protocol):
 
 
 def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
-    # Wrap LangGraph-like objects that use .invoke OR .run
-    if LangGraphAdapter is not None and (hasattr(graph_obj, "invoke") or hasattr(graph_obj, "run")):
-        return LangGraphAdapter(graph_obj, min_confidence=min_confidence)
+    """
+    Select a simple adapter for the given graph-like object.
+
+    We intentionally avoid importing noesis.adapters.* here so that core/runtime
+    stay decoupled from adapter implementations. Integration layers can wrap
+    LangGraph/CrewAI/etc. explicitly.
+    """
 
     class _CallableAdapter:
         def __init__(self, obj: Any):
@@ -256,6 +254,7 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
             seed: int = 0,
             tags: Optional[Dict[str, Any]] = None,
         ) -> Any:
+            # LangGraph-like + other graph-ish APIs:
             if hasattr(self.obj, "invoke"):
                 return self.obj.invoke(task)
             if hasattr(self.obj, "run"):
@@ -268,7 +267,6 @@ def _select_adapter(graph_obj: Any, min_confidence: float) -> _Adapter:
 
 
 # Public API
-
 
 def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
     app = context or get_context()

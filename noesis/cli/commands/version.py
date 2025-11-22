@@ -34,7 +34,7 @@ class VersionCommand:
             })
             return 0
 
-        renderer.echo(f"noesis {ctx.version} (core {ctx.version}, adapters: {', '.join(adapters)})")
+        renderer.echo(f"Noesis {ctx.version} (core {ctx.version}, adapters: {', '.join(adapters)})")
         return 0
 
 

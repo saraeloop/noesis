@@ -38,7 +38,7 @@ def build_parser(formatter_class: type[argparse.HelpFormatter]) -> tuple[argpars
         "  version   CLI + core versions\n"
         "  new       experimental scaffolder"
     )
-    version_line = f"noesis {getattr(ns, '__version__', 'unknown')}"
+    version_line = f"Noesis {getattr(ns, '__version__', 'unknown')}"
     parser = argparse.ArgumentParser(
         prog="noesis",
         description="✨ Noēsis CLI ✨\nrun, steer, and observe agentic workflows",

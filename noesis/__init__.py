@@ -15,7 +15,7 @@ from .runtime.session import (
 from .runtime.determinism import DeterministicClock, DeterministicRNG
 
 # Package metadata
-__version__ = "1.0.0"
+__version__ = "v1.0.0"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
 # Legacy config access (kept for compatibility)

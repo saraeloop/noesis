@@ -1,7 +1,8 @@
 [![PR Contracts](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/pr-contracts.yml)
 [![Release Prep](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml/badge.svg)](https://github.com/saraeloop/noesis/actions/workflows/release-prep.yml)
 [![Stars](https://img.shields.io/github/stars/saraeloop/noesis?style=social)](https://github.com/saraeloop/noesis/stargazers)
-[![Docs](https://img.shields.io/badge/docs-observable%20cognition-0f766e)](docs/README.md)
+[![Docs](https://img.shields.io/badge/docs-DeepWiki%20overview-0f766e)](https://deepwiki.com/saraeloop/noesis)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/saraeloop/noesis)
 [![Planner Modes](https://img.shields.io/badge/planner-meta%20%E2%80%A2%20minimal-0ea5e9)](#learner-flow)
 [![Python](https://img.shields.io/badge/python-3.11+-18181b)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-64748b)](LICENSE)
@@ -516,7 +517,7 @@ noesis migrate .
 
 ## Version details:
 
-- **Package:** noesis **v0.9.5**
+- **Package:** noesis **v1.0.0**
 - **Schema pack:** summary/state/events/kpi **v1.0.0** (generated via `python scripts/gen_schema.py`, see [schema index](docs/app/reference/schema-index.mdx))
 - **Python:** **≥ 3.11**
 
