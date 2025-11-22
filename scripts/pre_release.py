@@ -27,7 +27,7 @@ class Check:
 CHECKS: List[Check] = [
     Check(
         name="unit-tests",
-        command=["uv", "run", "python", "-m", "pytest"],
+        command=["uv", "run", "--group", "dev", "python", "-m", "pytest"],
         description="Execute the full Python test suite.",
     ),
     Check(
@@ -74,7 +74,7 @@ CHECKS: List[Check] = [
     ),
     Check(
         name="build-wheel",
-        command=["uv", "run", "python", "-m", "build"],
+        command=["uv", "run", "--group", "dev", "python", "-m", "build"],
         description="Build distribution artifacts to confirm packaging health.",
     ),
 ]
