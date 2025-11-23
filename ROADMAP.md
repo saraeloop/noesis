@@ -186,8 +186,8 @@ Every update strengthens three dimensions:
 
 **Exit Criteria (for v0.1)**
 
-- When `prompt_provenance_enabled=true`, `prompts.jsonl` is created for at least one example scenario.
-- Lines contain the minimal field set and join correctly on `episode_id`.
+- When `prompt_provenance_enabled=true`, `prompts.jsonl` is created for at least one example scenario. ✅
+- Lines contain the minimal field set and join correctly on `episode_id`. ✅
 - A small deterministic test case asserts identical `prompts.jsonl` between two runs under the same `DeterminismConfig` (or the feature is explicitly disabled in deterministic mode for v1.0.0).
 
 > **Note:** Phase 2.5 is explicitly **non-blocking** for the v1.0.0 release gate. It can be skipped if capacity is tight; ADR-005 remains Proposed/Experimental and is fully realized in v1.1+.

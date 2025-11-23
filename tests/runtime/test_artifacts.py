@@ -58,6 +58,22 @@ def test_manifest_verifier_detects_tampering(tmp_path: Path, filename: str) -> N
     assert any(issue.name == filename for issue in tamper_report.issues)
 
 
+def test_manifest_verifier_detects_prompt_tampering(tmp_path: Path) -> None:
+    run_dir = _prepare_run_dir(tmp_path, "ep_prompt")
+    (run_dir / "prompts.jsonl").write_text('{"prompt": "original"}\n', encoding="utf-8")
+
+    writer = ManifestWriter(run_dir=run_dir, episode_id="ep_prompt")
+    writer.finalize()
+
+    verifier = ManifestVerifier(run_dir=run_dir)
+    assert verifier.verify_path(run_dir / MANIFEST_FILE_NAME).status == "ok"
+
+    (run_dir / "prompts.jsonl").write_text('{"prompt": "tampered"}\n', encoding="utf-8")
+    tamper_report = verifier.verify_path(run_dir / MANIFEST_FILE_NAME)
+    assert tamper_report.status == "error"
+    assert any(issue.name == "prompts.jsonl" for issue in tamper_report.issues)
+
+
 def test_manifest_verifier_reports_missing_file(tmp_path: Path) -> None:
     run_dir = _prepare_run_dir(tmp_path, "ep_missing")
     writer = ManifestWriter(run_dir=run_dir, episode_id="ep_missing")

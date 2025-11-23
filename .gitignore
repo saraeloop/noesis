@@ -8,6 +8,8 @@ dist/
 build/
 .eggs/
 runs/
+!docs/runs/
+!docs/runs/README.md
 .noesis/
 .pytest_cache/
 .coverage
