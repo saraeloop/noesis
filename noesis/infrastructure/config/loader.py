@@ -37,6 +37,8 @@ _ENV_KEY_MAP: dict[str, str] = {
     "NOESIS_LEARN_HOME": "learn_home",
     "NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES": "learn_auto_apply_min_successes",
     "NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE": "learn_auto_apply_min_confidence",
+    "NOESIS_PROMPT_PROVENANCE_ENABLED": "prompt_provenance_enabled",
+    "NOESIS_PROMPT_PROVENANCE_MODE": "prompt_provenance_mode",
 }
 
 
@@ -145,6 +147,8 @@ class EnvTomlConfig(ConfigPort):
             learn_home=config.learn_home,
             learn_auto_apply_min_successes=config.learn_auto_apply_min_successes,
             learn_auto_apply_min_confidence=config.learn_auto_apply_min_confidence,
+            prompt_provenance_enabled=config.prompt_provenance_enabled,
+            prompt_provenance_mode=config.prompt_provenance_mode,
         )
 
     @staticmethod

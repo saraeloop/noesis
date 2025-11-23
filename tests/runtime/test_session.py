@@ -66,6 +66,8 @@ def _snapshot_for(tmp_path: Path, *, planner: PlannerMode = PlannerMode.MINIMAL)
         "learn_home": str(learn_home),
         "learn_auto_apply_min_successes": 1,
         "learn_auto_apply_min_confidence": 0.5,
+        "prompt_provenance_enabled": False,
+        "prompt_provenance_mode": "hash_only",
     }
     return ConfigSnapshot.from_mapping(payload)
 

@@ -65,11 +65,14 @@ def _runtime_context(tmp_path: Path) -> RuntimeContext:
             "timeout_sec": 60,
             "intuition_mode": "advisory",
             "direction_min_confidence": 0.5,
+            "planner_mode": "minimal",
             "policy_aliases": {},
             "learn_mode": "off",
             "learn_home": str(tmp_path / "learn"),
             "learn_auto_apply_min_successes": 1,
             "learn_auto_apply_min_confidence": 0.8,
+            "prompt_provenance_enabled": False,
+            "prompt_provenance_mode": "hash_only",
         }
     )
     context = RuntimeContext(config_port=DummyConfigPort(snapshot))
