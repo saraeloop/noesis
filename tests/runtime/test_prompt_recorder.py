@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -29,7 +30,7 @@ def test_prompt_recorder_disabled(tmp_path: Path) -> None:
     assert recorder.is_enabled() is False
     assert recorder.mode == "hash_only"
     # The skeleton no-ops even when invoked.
-    recorder.record(phase="plan")
+    recorder.record(phase="plan", agent_id="planner.test", rendered="ignored")
 
 
 def test_prompt_recorder_enabled_full_mode(tmp_path: Path) -> None:
@@ -37,3 +38,29 @@ def test_prompt_recorder_enabled_full_mode(tmp_path: Path) -> None:
     assert recorder.is_enabled() is True
     assert recorder.mode == "full"
 
+
+def test_prompt_recorder_writes_prompts_file(tmp_path: Path) -> None:
+    recorder = PromptRecorder.from_context(_context(tmp_path, enabled=True, mode="full"))
+    recorder.record(phase="plan", agent_id="planner.test", rendered="demo prompt")
+
+    path = tmp_path / "prompts.jsonl"
+    assert path.exists()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["rendered"] == "demo prompt"
+    assert payload["fingerprint"].startswith("sha256:")
+    assert payload["episode_id"] == "ep_test"
+    assert payload["phase"] == "plan"
+
+
+def test_prompt_recorder_hash_only_omits_rendered(tmp_path: Path) -> None:
+    recorder = PromptRecorder.from_context(_context(tmp_path, enabled=True, mode="hash_only"))
+    recorder.record(phase="plan", agent_id="planner.test", rendered="demo prompt")
+
+    data = (tmp_path / "prompts.jsonl").read_text(encoding="utf-8").splitlines()
+    assert data, "prompts.jsonl should contain a record"
+    payload = json.loads(data[0])
+    assert "rendered" not in payload
+    assert payload["mode"] == "hash_only"
+    assert payload["fingerprint"].startswith("sha256:")
