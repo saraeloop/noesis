@@ -11,3 +11,26 @@ Store HMAC keys outside the repo (e.g., env var or secrets manager) and expose t
 - Determinism Drill gains an objective metric: you can diff manifests across replays and fail on drift instead of eyeballing JSON.
 - Release gating becomes mechanical—CI can run `noesis artifacts verify` on sampled runs before tagging.
 - Compliance/audit teams can accept a run folder plus keyring and independently verify it without importing the full codebase.
+
+# Prompt Provenance Integrity (Experimental)
+- `prompts.jsonl` (ADR-005, opt-in) is listed in the manifest as an `attachment`. Any tampering—prompt edits after sealing—surfaces as a hash mismatch during `noesis artifacts verify`.
+- See `tests/runtime/test_artifacts.py::test_manifest_verifier_detects_prompt_tampering` for a minimal fixture that rewrites `prompts.jsonl` and asserts the verifier reports an error.
+- Deterministic runs can also assert byte-identical `prompts.jsonl` under `DeterminismConfig` (see `tests/runtime/test_determinism.py::test_prompts_jsonl_is_deterministic_under_config`).
+
+## CLI Example: catching prompt tampering
+
+```bash
+# After a run finishes and manifest.json is sealed:
+noesis artifacts verify runs/<episode_dir>
+
+# Expected output (abridged):
+#  - status: error
+#  - issues:
+#      - name: prompts.jsonl
+#        kind: hash_mismatch
+#        message: sha256 differs from manifest
+#
+# Exit code will be non-zero on error.
+```
+
+Tip: re-run `noesis artifacts verify` in CI for sampled episodes to ensure prompt provenance remains intact when the feature flag is enabled.
