@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Literal
 
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
@@ -24,6 +24,8 @@ ALLOWED_CONFIG_KEYS: frozenset[str] = frozenset(
         "learn_home",
         "learn_auto_apply_min_successes",
         "learn_auto_apply_min_confidence",
+        "prompt_provenance_enabled",
+        "prompt_provenance_mode",
     }
 )
 
@@ -44,6 +46,8 @@ class RuntimeConfig:
     learn_home: Path
     learn_auto_apply_min_successes: int
     learn_auto_apply_min_confidence: float
+    prompt_provenance_enabled: bool
+    prompt_provenance_mode: Literal["full", "hash_only"]
 
 
 def default_runtime_config() -> RuntimeConfig:
@@ -61,6 +65,8 @@ def default_runtime_config() -> RuntimeConfig:
         learn_home=Path.home() / ".noesis" / "state",
         learn_auto_apply_min_successes=3,
         learn_auto_apply_min_confidence=0.75,
+        prompt_provenance_enabled=False,
+        prompt_provenance_mode="hash_only",
     )
 
 
@@ -124,6 +130,10 @@ def apply_runtime_overrides(
                     "learn_auto_apply_min_confidence",
                 ),
             )
+        elif key == "prompt_provenance_enabled":
+            updated = replace(updated, prompt_provenance_enabled=_parse_bool(value, "prompt_provenance_enabled"))
+        elif key == "prompt_provenance_mode":
+            updated = replace(updated, prompt_provenance_mode=_parse_provenance_mode(value))
     return updated
 
 
@@ -159,3 +169,23 @@ def _bounded_float(value: object, label: str) -> float:
     if not (0.0 <= number <= 1.0):
         raise ValueError(f"{label} must be within [0.0, 1.0]")
     return number
+
+
+def _parse_bool(value: object, label: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise TypeError(f"{label} must be a bool-compatible value, got {value!r}")
+
+
+def _parse_provenance_mode(value: object) -> Literal["full", "hash_only"]:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("full", "hash_only"):
+            return "full" if normalized == "full" else "hash_only"
+    raise ValueError("prompt_provenance_mode must be 'full' or 'hash_only'")

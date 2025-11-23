@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Mapping, Protocol
+from typing import Any, Dict, Literal, Mapping, Protocol
 
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
@@ -34,6 +34,8 @@ class ConfigSnapshot:
     learn_home: Path
     learn_auto_apply_min_successes: int
     learn_auto_apply_min_confidence: float
+    prompt_provenance_enabled: bool
+    prompt_provenance_mode: Literal["full", "hash_only"]
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "ConfigSnapshot":
@@ -59,6 +61,24 @@ class ConfigSnapshot:
                 return PlannerMode(raw.lower().strip())
             raise TypeError(f"Unsupported planner_mode value: {raw!r}")
 
+        def _bool_value(raw: Any, label: str) -> bool:
+            if isinstance(raw, bool):
+                return raw
+            if isinstance(raw, str):
+                normalized = raw.strip().lower()
+                if normalized in {"1", "true", "yes", "on"}:
+                    return True
+                if normalized in {"0", "false", "no", "off"}:
+                    return False
+            raise TypeError(f"Unsupported {label} value: {raw!r}")
+
+        def _prompt_mode(raw: Any) -> Literal["full", "hash_only"]:
+            if isinstance(raw, str):
+                normalized = raw.strip().lower()
+                if normalized in {"full", "hash_only"}:
+                    return "full" if normalized == "full" else "hash_only"
+            raise TypeError(f"prompt_provenance_mode must be 'full' or 'hash_only', got: {raw!r}")
+
         raw_aliases = data.get("policy_aliases", {})
         if raw_aliases is None:
             raw_aliases = {}
@@ -82,6 +102,13 @@ class ConfigSnapshot:
             learn_auto_apply_min_confidence=float(
                 data["learn_auto_apply_min_confidence"]
             ),
+            prompt_provenance_enabled=_bool_value(
+                data.get("prompt_provenance_enabled", False),
+                "prompt_provenance_enabled",
+            ),
+            prompt_provenance_mode=_prompt_mode(
+                data.get("prompt_provenance_mode", "hash_only")
+            ),
         )
 
     def to_mapping(self) -> Dict[str, object]:
@@ -103,6 +130,8 @@ class ConfigSnapshot:
             "learn_auto_apply_min_confidence": float(
                 self.learn_auto_apply_min_confidence
             ),
+            "prompt_provenance_enabled": self.prompt_provenance_enabled,
+            "prompt_provenance_mode": self.prompt_provenance_mode,
         }
 
 
