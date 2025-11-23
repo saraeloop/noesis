@@ -54,6 +54,7 @@ from copy import deepcopy
 from .runtime.utils import now as _now
 from .runtime.clock import RuntimeClock
 from .runtime.events_emitter import CognitiveEventEmitter
+from .runtime.prompt_recorder import PromptRecorder
 from .runtime.events import (
     act_event as _act_event,
     ensure_act_event as _ensure_act_event,
@@ -476,7 +477,10 @@ def _run_impl(
         tags=tags or {},
         adapter_label=adapter_label,
         started_at=ctx.started_at,
+        prompt_provenance_enabled=cfg.prompt_provenance_enabled,
+        prompt_provenance_mode=cfg.prompt_provenance_mode,
     )
+    episode_ctx.prompt_recorder = PromptRecorder.from_context(episode_ctx)
     state_repo = RuntimeStateRepository(context=episode_ctx)
     state = state_repo.init()
     state_path = ctx.run_dir / "state.json"

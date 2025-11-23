@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol, TYPE_CHECKING
+
 from noesis.runtime.serialization import atomic_write_json
 from noesis.domain.state import NoesisState, create_state
+
+if TYPE_CHECKING:
+    from noesis.runtime.prompt_recorder import PromptRecorder
 
 
 class StateRepository(Protocol):
@@ -33,6 +37,9 @@ class EpisodeContext:
     tags: dict[str, object]
     adapter_label: str
     started_at: str
+    prompt_provenance_enabled: bool = False
+    prompt_provenance_mode: Literal["full", "hash_only"] = "hash_only"
+    prompt_recorder: "PromptRecorder | None" = None
 
 
 @dataclass(slots=True)
