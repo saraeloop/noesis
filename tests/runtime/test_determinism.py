@@ -35,7 +35,12 @@ def test_deterministic_rng_uuid_namespace() -> None:
     assert rng.uuid_namespace(ns, "rule") == UUID("83e12049-6bb1-5b51-a8cb-0fd0f1beade5")
 
 
-def _config_snapshot(tmp_path: Path) -> ConfigSnapshot:
+def _config_snapshot(
+    tmp_path: Path,
+    *,
+    prompt_enabled: bool = False,
+    prompt_mode: str = "hash_only",
+) -> ConfigSnapshot:
     learn_home = tmp_path / "learn"
     learn_home.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -51,8 +56,8 @@ def _config_snapshot(tmp_path: Path) -> ConfigSnapshot:
         "learn_home": str(learn_home),
         "learn_auto_apply_min_successes": 1,
         "learn_auto_apply_min_confidence": 0.5,
-        "prompt_provenance_enabled": False,
-        "prompt_provenance_mode": "hash_only",
+        "prompt_provenance_enabled": prompt_enabled,
+        "prompt_provenance_mode": prompt_mode,
     }
     return ConfigSnapshot.from_mapping(payload)
 
@@ -60,9 +65,13 @@ def _config_snapshot(tmp_path: Path) -> ConfigSnapshot:
 class _FakeConfigPort:
     __api_version__ = "config/1.0-rc1"
 
-    def __init__(self, base: Path) -> None:
-        self._base = base
-        self._snapshot = _config_snapshot(base)
+    def __init__(self, base: Path | ConfigSnapshot) -> None:
+        if isinstance(base, ConfigSnapshot):
+            self._snapshot = base
+            self._base = base.runs_dir
+        else:
+            self._base = base
+            self._snapshot = _config_snapshot(base)
 
     def get(self) -> ConfigSnapshot:
         return self._snapshot
@@ -80,13 +89,22 @@ class _FakeConfigPort:
         return False
 
 
-def _build_session(tmp_path: Path, *, timestamp_ms: int, seed: int) -> SessionBuilder:
+def _build_session(
+    tmp_path: Path,
+    *,
+    timestamp_ms: int,
+    seed: int,
+    prompt_enabled: bool = False,
+    prompt_mode: str = "hash_only",
+) -> SessionBuilder:
     clock = DeterministicClock(
         start_at=datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc),
         tick_ms=5.0,
     )
     rng = DeterministicRNG(seed=seed)
-    builder = SessionBuilder(config_port=_FakeConfigPort(tmp_path)).with_determinism(
+    builder = SessionBuilder(
+        config_port=_FakeConfigPort(_config_snapshot(tmp_path, prompt_enabled=prompt_enabled, prompt_mode=prompt_mode))
+    ).with_determinism(
         clock=clock,
         rng=rng,
         episode_timestamp_ms=timestamp_ms,
@@ -224,6 +242,46 @@ def test_deterministic_session_runs_are_byte_identical(tmp_path: Path) -> None:
     manifest_a = _normalized_manifest(run_a_root, episode_a)
     manifest_b = _normalized_manifest(run_b_root, episode_b)
     assert manifest_a == manifest_b, "manifest.json drifted structurally"
+
+
+def test_prompts_jsonl_is_deterministic_under_config(tmp_path: Path) -> None:
+    """
+    Ensure prompts.jsonl is byte-identical under DeterminismConfig when provenance is enabled.
+    """
+    timestamp_ms = 1_735_689_600_000
+    seed = 321
+
+    run_a_root = tmp_path / "run_prompts_a"
+    run_b_root = tmp_path / "run_prompts_b"
+    run_a_root.mkdir(parents=True, exist_ok=True)
+    run_b_root.mkdir(parents=True, exist_ok=True)
+
+    builder_a = _build_session(
+        run_a_root,
+        timestamp_ms=timestamp_ms,
+        seed=seed,
+        prompt_enabled=True,
+        prompt_mode="full",
+    )
+    builder_b = _build_session(
+        run_b_root,
+        timestamp_ms=timestamp_ms,
+        seed=seed,
+        prompt_enabled=True,
+        prompt_mode="full",
+    )
+
+    session_a = builder_a.build()
+    session_b = builder_b.build()
+
+    episode_a = session_a.run("Deterministic prompt provenance", intuition=False)
+    episode_b = session_b.run("Deterministic prompt provenance", intuition=False)
+
+    path_a = run_a_root / episode_a / "prompts.jsonl"
+    path_b = run_b_root / episode_b / "prompts.jsonl"
+    assert path_a.exists() and path_b.exists()
+
+    assert path_a.read_bytes() == path_b.read_bytes(), "prompts.jsonl drifted under determinism"
 
     # Structural equality for events.jsonl with timestamps/IDs/snapshots stripped
     events_a = _normalized_events(run_a_root, episode_a)
