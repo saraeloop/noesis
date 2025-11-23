@@ -25,6 +25,7 @@ from noesis.domain.faculties.governance import GovernanceDecision, GovernanceRes
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.runtime.clock import RuntimeClock
+from noesis.runtime.prompt_recorder import PromptRecorder
 from noesis.runtime.events_emitter import CognitiveEventEmitter
 from noesis.runtime.artifacts.ids import directive_uuid, governance_uuid
 from noesis.trace.events import read_events
@@ -106,6 +107,7 @@ class EpisodeRunner:
         hooks = instrumentation.hooks or (NullMetaPhaseHook(),)
         self._hooks = CompositeMetaPhaseHook(tuple(hooks))
         self._context = context
+        self._prompt_recorder: PromptRecorder | None = getattr(context, "prompt_recorder", None)
 
     def run(self, request: EpisodeRequest) -> EpisodeResult:
         context = request.context
@@ -210,6 +212,7 @@ class EpisodeRunner:
             metrics=metrics,
             caused_by=None,
         )
+        self._record_plan_prompt(request, plan)
         self._hooks.after_phase(verb, context, plan_event)
         plan_anchor = plan_event.event_id
         direction_event_id: Optional[UUID] = None
@@ -354,6 +357,31 @@ class EpisodeRunner:
             metrics=metrics,
             cause=caused_by,
         )
+
+    def _record_plan_prompt(self, request: EpisodeRequest, plan: Sequence[PlanStep]) -> None:
+        """
+        Emit a minimal prompt provenance entry for the planner path.
+
+        Uses a synthetic rendered prompt to validate end-to-end provenance plumbing
+        without depending on external LLM providers.
+        """
+        recorder = getattr(request.context, "prompt_recorder", None) or self._prompt_recorder
+        if recorder is None or not recorder.is_enabled():
+            return
+        goal = request.goal or "unspecified"
+        step_summaries = ", ".join(step.description for step in plan) if plan else "no-steps"
+        rendered = f"[planner.minimal] goal={goal} | steps={step_summaries}"
+        recorder.record(
+            phase="plan",
+            agent_id="planner.minimal",
+            rendered=rendered,
+            role="system",
+            kind="system",
+            template_id="planner.minimal.v1",
+            now=self._now,
+        )
+
+
 class DirectiveApplicationError(RuntimeError):
     """Signals that a PlannerDirective could not be applied to the plan."""
 

@@ -1,16 +1,15 @@
-"""
-Prompt provenance recorder skeleton (ADR-005).
-
-This utility will eventually stream prompt metadata into `prompts.jsonl`.
-For v0.1 it only reflects configuration so call sites can branch on
-`enabled` and `mode` without touching file I/O yet.
-"""
+"""Prompt provenance recorder (ADR-005, v0.1 experimental)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
-from typing import Literal, TYPE_CHECKING
+from typing import Callable, Literal, Mapping, TYPE_CHECKING
+import warnings
+
+from noesis.trace.events import canonical_dumps
 
 if TYPE_CHECKING:
     from noesis.infrastructure.state_repository import EpisodeContext
@@ -19,10 +18,104 @@ PromptProvenanceMode = Literal["full", "hash_only"]
 
 __all__ = ["PromptRecorder", "PromptProvenanceMode"]
 
+SCHEMA_NAME = "prompt"
+SCHEMA_VERSION = "1.0.0"
+PROMPTS_FILE_NAME = "prompts.jsonl"
+
+
+def _normalize_rendered(rendered: str) -> str:
+    """
+    Normalize prompt text for deterministic hashing.
+
+    - convert CRLF to LF
+    - strip trailing whitespace on each line
+    - trim surrounding whitespace
+    """
+    normalized_lines = [line.rstrip() for line in rendered.replace("\r\n", "\n").splitlines()]
+    return "\n".join(normalized_lines).strip()
+
+
+def _fingerprint(rendered: str) -> tuple[str, str]:
+    """Return (fingerprint, normalized_prompt)."""
+    normalized = _normalize_rendered(rendered)
+    digest = sha256(normalized.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}", normalized
+
+
+def _ensure_manifest_open(run_dir: Path) -> None:
+    """
+    Prevent writes after manifest finalization.
+
+    Aligns with events.jsonl behavior to avoid mutating a sealed run directory.
+    """
+    manifest_path = run_dir / "manifest.json"
+    if manifest_path.exists():
+        warnings.warn(
+            f"Manifest {manifest_path} already exists; refusing to append prompts.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        raise RuntimeError("cannot append prompts after manifest is finalized")
+
+
+def _append_prompt(run_dir: Path, record: Mapping[str, object]) -> None:
+    """Append a single prompt record to prompts.jsonl."""
+    _ensure_manifest_open(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    payload = canonical_dumps(record)
+    with (run_dir / PROMPTS_FILE_NAME).open("a", encoding="utf-8") as handle:
+        handle.write(payload + "\n")
+
+
+@dataclass(slots=True)
+class PromptRecord:
+    """Structured prompt provenance entry."""
+
+    episode_id: str
+    phase: str
+    agent_id: str
+    rendered: str | None
+    fingerprint: str
+    timestamp: str
+    mode: PromptProvenanceMode
+    role: str | None = None
+    kind: str | None = None
+    model: str | None = None
+    template_id: str | None = None
+    event_id: str | None = None
+    outcome_event_id: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "$schema_name": SCHEMA_NAME,
+            "$schema_version": SCHEMA_VERSION,
+            "episode_id": self.episode_id,
+            "phase": self.phase,
+            "agent_id": self.agent_id,
+            "fingerprint": self.fingerprint,
+            "timestamp": self.timestamp,
+            "mode": self.mode,
+        }
+        if self.rendered is not None:
+            payload["rendered"] = self.rendered
+        if self.role:
+            payload["role"] = self.role
+        if self.kind:
+            payload["kind"] = self.kind
+        if self.model:
+            payload["model"] = self.model
+        if self.template_id:
+            payload["template_id"] = self.template_id
+        if self.event_id:
+            payload["event_id"] = self.event_id
+        if self.outcome_event_id:
+            payload["outcome_event_id"] = self.outcome_event_id
+        return payload
+
 
 @dataclass(slots=True)
 class PromptRecorder:
-    """Minimal prompt recorder facade used by the runtime."""
+    """Append-only prompt recorder used at runtime."""
 
     run_dir: Path
     episode_id: str
@@ -48,12 +141,52 @@ class PromptRecorder:
         """Return True when prompt provenance capture should run."""
         return self.enabled
 
-    def record(self, **_: object) -> None:
+    def record(
+        self,
+        *,
+        phase: str,
+        agent_id: str,
+        rendered: str,
+        role: str | None = None,
+        kind: str | None = None,
+        model: str | None = None,
+        template_id: str | None = None,
+        event_id: str | None = None,
+        outcome_event_id: str | None = None,
+        timestamp: str | None = None,
+        now: Callable[[], datetime] | Callable[[], str] | None = None,
+    ) -> None:
         """
-        Placeholder recording hook.
+        Persist a prompt provenance entry.
 
-        Future versions will hash and persist prompt bodies. For now we no-op,
-        which keeps deterministic behavior unchanged while the feature flag is off.
+        `rendered` is normalized before hashing. When the recorder is disabled
+        the method returns immediately without touching the filesystem.
         """
-        return None
+        if not self.enabled:
+            return
 
+        observed_at = timestamp
+        if observed_at is None:
+            if now is not None:
+                current = now()
+                observed_at = current if isinstance(current, str) else current.isoformat()
+            else:
+                observed_at = datetime.now(timezone.utc).isoformat()
+
+        fingerprint, normalized = _fingerprint(rendered)
+        record = PromptRecord(
+            episode_id=self.episode_id,
+            phase=phase,
+            agent_id=agent_id,
+            rendered=normalized if self.mode == "full" else None,
+            fingerprint=fingerprint,
+            timestamp=observed_at,
+            mode=self.mode,
+            role=role,
+            kind=kind,
+            model=model,
+            template_id=template_id,
+            event_id=event_id,
+            outcome_event_id=outcome_event_id,
+        )
+        _append_prompt(self.run_dir, record.to_dict())
