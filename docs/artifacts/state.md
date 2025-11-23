@@ -21,5 +21,5 @@ Noēsis writes a `state.json` file for every episode inside `runs/<label>/<episo
 ## Where to look next
 
 - [examples/artifacts/state_v1_example.json](../../examples/artifacts/state_v1_example.json) – canonical demo state pulled into the README.
-- [runs/README.md](../../runs/README.md) – folder-level primer on how `state.json`, `summary.json`, and `events.jsonl` interlock.
+- [runs/README.md](../runs/README.md) – folder-level primer on how `state.json`, `summary.json`, and `events.jsonl` interlock.
 - `noesis view <run_dir>` – CLI visualizer that converts the same JSON into annotated timelines for stakeholder reviews.
