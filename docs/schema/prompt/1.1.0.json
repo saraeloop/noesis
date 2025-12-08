@@ -1,0 +1,175 @@
+{
+  "$id": "https://schemas.noesis.dev/prompt/1.1.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "prompt",
+  "$schema_version": "1.1.0",
+  "additionalProperties": false,
+  "description": "Structured prompt provenance entry emitted to prompts.jsonl (ADR-005, experimental).",
+  "properties": {
+    "$schema_name": {
+      "const": "prompt",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "$schema_version": {
+      "const": "1.1.0",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "agent_id": {
+      "description": "Logical identifier for the emitting faculty/policy/adapter.",
+      "type": "string",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "episode_id": {
+      "description": "Episode this prompt belongs to; matches other run artifacts.",
+      "type": "string",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "event_id": {
+      "description": "Cognitive event ID this prompt is associated with (if any).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "fingerprint": {
+      "description": "Deterministic hash of the normalized rendered prompt (sha256:<hex>).",
+      "type": "string",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "kind": {
+      "description": "Purpose of the prompt within the phase (system/reasoning/governance/etc.).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "mode": {
+      "description": "Storage mode controlling which fields are present/redacted.",
+      "enum": [
+        "full",
+        "hash_only",
+        "redacted"
+      ],
+      "type": "string",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "model": {
+      "description": "Model identifier, if available (e.g., gpt-4.1).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "outcome_event_id": {
+      "description": "Event ID corresponding to the model response/outcome (if any).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "phase": {
+      "description": "Cognitive phase aligned with events.jsonl.",
+      "enum": [
+        "observe",
+        "interpret",
+        "plan",
+        "governance",
+        "act",
+        "reflect",
+        "learn"
+      ],
+      "type": "string",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "rendered": {
+      "description": "Final rendered prompt sent to the model (post substitution).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "role": {
+      "description": "LLM role when applicable (system/user/assistant/tool).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "tags": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Deployment/environment tags mirroring episode.tags.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "template": {
+      "description": "Template text before variable substitution.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "template_id": {
+      "description": "Logical template identifier (e.g., planner_v2, reflect_v1).",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "timestamp": {
+      "description": "ISO-8601 timestamp when the prompt was rendered.",
+      "type": "string",
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    },
+    "variables": {
+      "additionalProperties": true,
+      "description": "Variables used to render the template, when serializable and safe.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "x-stability": "experimental",
+      "since": "1.1.0"
+    }
+  },
+  "required": [
+    "$schema_name",
+    "$schema_version",
+    "episode_id",
+    "phase",
+    "agent_id",
+    "fingerprint",
+    "timestamp",
+    "mode"
+  ],
+  "type": "object"
+}

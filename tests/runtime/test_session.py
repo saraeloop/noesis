@@ -129,9 +129,30 @@ def test_prompt_provenance_manifest_listing(tmp_path: Path) -> None:
     assert prompt_path.exists(), "prompts.jsonl should be created when provenance is enabled"
     lines = prompt_path.read_text(encoding="utf-8").splitlines()
     assert lines, "prompts.jsonl should contain at least one entry"
-    record = json.loads(lines[0])
-    assert record["phase"] == "plan"
-    assert record["agent_id"] == "planner.minimal"
+    records = [json.loads(line) for line in lines]
+    phases = {rec["phase"] for rec in records}
+    agent_ids = {rec["agent_id"] for rec in records}
+    assert episode_id == records[0]["episode_id"]
+    assert "plan" in phases
+    assert "interpret" in phases or "reflect" in phases
+    assert "direction.planner" in agent_ids
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     names = {entry["name"] for entry in manifest.get("files", [])}
     assert "prompts.jsonl" in names
+
+
+def test_prompt_provenance_join_sanity(tmp_path: Path) -> None:
+    snapshot = _snapshot_for(tmp_path, prompt_enabled=True, prompt_mode="hash_only")
+    session = SessionBuilder(config_port=_FakeConfigPort(snapshot)).build()
+
+    episode_id = session.run("Join sanity", intuition=False)
+    run_dir = tmp_path / episode_id
+    prompt_path = run_dir / "prompts.jsonl"
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+    lines = prompt_path.read_text(encoding="utf-8").splitlines()
+    records = [json.loads(line) for line in lines if line.strip()]
+    assert all(rec["episode_id"] == episode_id for rec in records)
+    assert summary["episode_id"] == episode_id
+    phases = {rec["phase"] for rec in records}
+    assert len(phases) >= 2, "should capture multiple phases for join sanity"

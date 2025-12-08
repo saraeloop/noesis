@@ -14,7 +14,7 @@ from noesis.trace.events import canonical_dumps
 if TYPE_CHECKING:
     from noesis.infrastructure.state_repository import EpisodeContext
 
-PromptProvenanceMode = Literal["full", "hash_only"]
+PromptProvenanceMode = Literal["full", "hash_only", "redacted"]
 
 __all__ = ["PromptRecorder", "PromptProvenanceMode"]
 
@@ -74,10 +74,13 @@ class PromptRecord:
     episode_id: str
     phase: str
     agent_id: str
-    rendered: str | None
     fingerprint: str
     timestamp: str
     mode: PromptProvenanceMode
+    rendered: str | None
+    template: str | None = None
+    variables: Mapping[str, object] | None = None
+    tags: Mapping[str, str] | None = None
     role: str | None = None
     kind: str | None = None
     model: str | None = None
@@ -96,8 +99,14 @@ class PromptRecord:
             "timestamp": self.timestamp,
             "mode": self.mode,
         }
+        if self.tags:
+            payload["tags"] = dict(self.tags)
+        if self.template is not None:
+            payload["template"] = self.template
         if self.rendered is not None:
             payload["rendered"] = self.rendered
+        if self.variables is not None:
+            payload["variables"] = dict(self.variables)
         if self.role:
             payload["role"] = self.role
         if self.kind:
@@ -151,6 +160,9 @@ class PromptRecorder:
         kind: str | None = None,
         model: str | None = None,
         template_id: str | None = None,
+        template: str | None = None,
+        variables: Mapping[str, object] | None = None,
+        tags: Mapping[str, str] | None = None,
         event_id: str | None = None,
         outcome_event_id: str | None = None,
         timestamp: str | None = None,
@@ -174,11 +186,33 @@ class PromptRecorder:
                 observed_at = datetime.now(timezone.utc).isoformat()
 
         fingerprint, normalized = _fingerprint(rendered)
+
+        def _redacted(value: str | None) -> str | None:
+            if value is None:
+                return None
+            return "__redacted__"
+
+        stored_rendered: str | None = normalized
+        stored_template = template
+        stored_variables = variables
+
+        if self.mode == "hash_only":
+            stored_rendered = None
+            stored_template = None
+            stored_variables = None
+        elif self.mode == "redacted":
+            stored_rendered = _redacted(normalized)
+            stored_template = _redacted(template)
+            stored_variables = None
+
         record = PromptRecord(
             episode_id=self.episode_id,
             phase=phase,
             agent_id=agent_id,
-            rendered=normalized if self.mode == "full" else None,
+            rendered=stored_rendered,
+            template=stored_template,
+            variables=stored_variables,
+            tags=tags,
             fingerprint=fingerprint,
             timestamp=observed_at,
             mode=self.mode,

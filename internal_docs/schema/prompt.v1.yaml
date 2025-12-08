@@ -1,0 +1,120 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$schema_name: prompt
+$schema_version: 1.1.0
+title: Prompt provenance record
+description: Structured prompt provenance entry emitted to prompts.jsonl (ADR-005, experimental).
+type: object
+additionalProperties: false
+required:
+  - $schema_name
+  - $schema_version
+  - episode_id
+  - phase
+  - agent_id
+  - fingerprint
+  - timestamp
+  - mode
+properties:
+  $schema_name:
+    const: prompt
+    x-stability: experimental
+    since: 1.1.0
+  $schema_version:
+    const: 1.1.0
+    x-stability: experimental
+    since: 1.1.0
+  episode_id:
+    type: string
+    description: Episode this prompt belongs to; matches other run artifacts.
+    x-stability: experimental
+    since: 1.1.0
+  event_id:
+    type: [string, "null"]
+    description: Cognitive event ID this prompt is associated with (if any).
+    x-stability: experimental
+    since: 1.1.0
+  outcome_event_id:
+    type: [string, "null"]
+    description: Event ID corresponding to the model response/outcome (if any).
+    x-stability: experimental
+    since: 1.1.0
+  phase:
+    type: string
+    enum:
+      - observe
+      - interpret
+      - plan
+      - governance
+      - act
+      - reflect
+      - learn
+    description: Cognitive phase aligned with events.jsonl.
+    x-stability: experimental
+    since: 1.1.0
+  agent_id:
+    type: string
+    description: Logical identifier for the emitting faculty/policy/adapter.
+    x-stability: experimental
+    since: 1.1.0
+  role:
+    type: [string, "null"]
+    description: LLM role when applicable (system/user/assistant/tool).
+    x-stability: experimental
+    since: 1.1.0
+  kind:
+    type: [string, "null"]
+    description: Purpose of the prompt within the phase (system/reasoning/governance/etc.).
+    x-stability: experimental
+    since: 1.1.0
+  template_id:
+    type: [string, "null"]
+    description: Logical template identifier (e.g., planner_v2, reflect_v1).
+    x-stability: experimental
+    since: 1.1.0
+  template:
+    type: [string, "null"]
+    description: Template text before variable substitution.
+    x-stability: experimental
+    since: 1.1.0
+  rendered:
+    type: [string, "null"]
+    description: Final rendered prompt sent to the model (post substitution).
+    x-stability: experimental
+    since: 1.1.0
+  variables:
+    type: ["object", "null"]
+    additionalProperties: true
+    description: Variables used to render the template, when serializable and safe.
+    x-stability: experimental
+    since: 1.1.0
+  fingerprint:
+    type: string
+    description: Deterministic hash of the normalized rendered prompt (sha256:<hex>).
+    x-stability: experimental
+    since: 1.1.0
+  timestamp:
+    type: string
+    description: ISO-8601 timestamp when the prompt was rendered.
+    x-stability: experimental
+    since: 1.1.0
+  model:
+    type: [string, "null"]
+    description: Model identifier, if available (e.g., gpt-4.1).
+    x-stability: experimental
+    since: 1.1.0
+  mode:
+    type: string
+    enum:
+      - full
+      - hash_only
+      - redacted
+    description: Storage mode controlling which fields are present/redacted.
+    x-stability: experimental
+    since: 1.1.0
+  tags:
+    type: ["object", "null"]
+    additionalProperties:
+      type: string
+    description: Deployment/environment tags mirroring episode.tags.
+    x-stability: experimental
+    since: 1.1.0

@@ -47,7 +47,7 @@ class RuntimeConfig:
     learn_auto_apply_min_successes: int
     learn_auto_apply_min_confidence: float
     prompt_provenance_enabled: bool
-    prompt_provenance_mode: Literal["full", "hash_only"]
+    prompt_provenance_mode: Literal["full", "hash_only", "redacted"]
 
 
 def default_runtime_config() -> RuntimeConfig:
@@ -183,9 +183,13 @@ def _parse_bool(value: object, label: str) -> bool:
     raise TypeError(f"{label} must be a bool-compatible value, got {value!r}")
 
 
-def _parse_provenance_mode(value: object) -> Literal["full", "hash_only"]:
+def _parse_provenance_mode(value: object) -> Literal["full", "hash_only", "redacted"]:
     if isinstance(value, str):
         normalized = value.strip().lower()
-        if normalized in ("full", "hash_only"):
-            return "full" if normalized == "full" else "hash_only"
-    raise ValueError("prompt_provenance_mode must be 'full' or 'hash_only'")
+        if normalized in ("full", "hash_only", "redacted"):
+            if normalized == "full":
+                return "full"
+            if normalized == "redacted":
+                return "redacted"
+            return "hash_only"
+    raise ValueError("prompt_provenance_mode must be 'full', 'hash_only', or 'redacted'")
