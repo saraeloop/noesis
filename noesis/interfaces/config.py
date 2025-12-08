@@ -35,7 +35,7 @@ class ConfigSnapshot:
     learn_auto_apply_min_successes: int
     learn_auto_apply_min_confidence: float
     prompt_provenance_enabled: bool
-    prompt_provenance_mode: Literal["full", "hash_only"]
+    prompt_provenance_mode: Literal["full", "hash_only", "redacted"]
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "ConfigSnapshot":
@@ -72,12 +72,18 @@ class ConfigSnapshot:
                     return False
             raise TypeError(f"Unsupported {label} value: {raw!r}")
 
-        def _prompt_mode(raw: Any) -> Literal["full", "hash_only"]:
+        def _prompt_mode(raw: Any) -> Literal["full", "hash_only", "redacted"]:
             if isinstance(raw, str):
                 normalized = raw.strip().lower()
-                if normalized in {"full", "hash_only"}:
-                    return "full" if normalized == "full" else "hash_only"
-            raise TypeError(f"prompt_provenance_mode must be 'full' or 'hash_only', got: {raw!r}")
+                if normalized in {"full", "hash_only", "redacted"}:
+                    if normalized == "full":
+                        return "full"
+                    if normalized == "redacted":
+                        return "redacted"
+                    return "hash_only"
+            raise TypeError(
+                f"prompt_provenance_mode must be 'full', 'hash_only', or 'redacted', got: {raw!r}"
+            )
 
         raw_aliases = data.get("policy_aliases", {})
         if raw_aliases is None:

@@ -38,7 +38,7 @@ class EpisodeContext:
     adapter_label: str
     started_at: str
     prompt_provenance_enabled: bool = False
-    prompt_provenance_mode: Literal["full", "hash_only"] = "hash_only"
+    prompt_provenance_mode: Literal["full", "hash_only", "redacted"] = "hash_only"
     prompt_recorder: "PromptRecorder | None" = None
 
 

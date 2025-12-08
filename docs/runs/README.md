@@ -5,7 +5,10 @@ Every episode writes immutable artifacts under `runs/<label>/<episode_id>/`. The
 - `events.jsonl` — chronological cognitive events (observe/interpret/plan/act/reflect/learn) with lineage.
 - `state.json` — structured episode state (goal, plan, actions, outcomes, links).
 - `summary.json` — condensed episode summary and KPIs.
-- `prompts.jsonl` — **experimental** prompt provenance (ADR-005, optional, behind `prompt_provenance_enabled`). Each line is a schema-tagged prompt record with `episode_id`, `phase`, `agent_id`, `fingerprint`, and (in `full` mode) the rendered prompt body.
+- `prompts.jsonl` — **experimental** prompt provenance (ADR-005/006, optional, behind `prompt_provenance_enabled`). Each line is a schema-tagged prompt record (`$schema_name: "prompt"`, `$schema_version: "1.1.0"`) with `episode_id`, `phase`, `agent_id`, `fingerprint`, `mode`, optional `event_id`, and:
+  - `full` mode: includes `template`, `rendered`, `variables`, and `tags`.
+  - `hash_only` mode: hashes only; omits bodies and variables.
+  - `redacted` mode: stores placeholders for bodies/variables while keeping fingerprints and template identifiers.
 
 When a run finishes, `manifest.json` captures integrity metadata for every artifact. Example (truncated SHA values):
 

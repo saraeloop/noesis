@@ -1,6 +1,6 @@
 # ADR-005 — Prompt Provenance as Cognitive Runtime Artifact
 
-- **Status:** Proposed (Experimental, behind feature flag)  
+- **Status:** Accepted (Partially)  
 - **Date:** 2025-11-21  
 - **Owner:** Sara Loera (@saraeloop)  
 - **Reviewers:** Core Engineering, Runtime/Infra, Research  
@@ -74,7 +74,7 @@ This is done via:
 - The artifact is governed by ADR-003:
   - Each record includes schema metadata:
     - `"$schema_name": "prompt"`
-    - `"$schema_version": "1.0.0"` (initial).
+    - `"$schema_version": "1.1.0"` (schema-governed v1.1; 1.0.x was unguided/v0.1).
   - Schema source lives in `internal_docs/schema/prompt.yaml` and is generated into `docs/schema/prompt.schema.json`.
   - All fields begin as `stability: experimental`.
 
@@ -90,7 +90,7 @@ Each prompt record is a single JSON object written on one line in `prompts.jsonl
 **Identity & schema**
 
 - `"$schema_name": "prompt"`  
-- `"$schema_version": "1.0.0"`  
+  - `"$schema_version": "1.1.0"`  
 - `episode_id: str`  
   - Episode this prompt belongs to; matches `state.json` / `summary.json`.
 - `event_id: str | null`  

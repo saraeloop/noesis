@@ -177,7 +177,24 @@ class EpisodeRunner:
         signals = list(request.beliefs)
         metrics = self._clock.stop(token)
         payload: Dict[str, object] = {"signals": signals}
-        return self._emit_event(verb=verb, context=context, payload=payload, metrics=metrics)
+        event = self._emit_event(verb=verb, context=context, payload=payload, metrics=metrics)
+
+        recorder = self._resolve_prompt_recorder(context)
+        if recorder:
+            rendered = f"[intuition] interpret goal={request.goal or 'unspecified'} | beliefs={len(signals)}"
+            self._record_prompt(
+                recorder=recorder,
+                phase="interpret",
+                agent_id="intuition",
+                rendered=rendered,
+                role="system",
+                kind="reasoning",
+                template_id="intuition.v1",
+                tags=context.tags,
+                event_id=event.event_id,
+            )
+
+        return event
 
     def _run_plan(
         self,
@@ -246,6 +263,22 @@ class EpisodeRunner:
                 result=governance_result,
                 caused_by=latest_direction_id or plan_anchor,
             )
+            recorder = self._resolve_prompt_recorder(request.context)
+            if recorder:
+                rendered_governance = (
+                    f"[governance] policy={governance_result.policy_id} decision={governance_result.decision.name}"
+                )
+                self._record_prompt(
+                    recorder=recorder,
+                    phase="governance",
+                    agent_id="governance.pre_act",
+                    rendered=rendered_governance,
+                    role="system",
+                    kind="governance",
+                    template_id="governance.v1",
+                    tags=request.context.tags,
+                    event_id=governance_event_id,
+                )
             if governance_result.decision is GovernanceDecision.VETO:
                 veto_directive = PlannerDirective(
                     steps=("governance:veto", governance_result.rule_id),
@@ -335,6 +368,22 @@ class EpisodeRunner:
             metrics=metrics,
             caused_by=event.event_id,
         )
+        recorder = self._resolve_prompt_recorder(context)
+        if recorder:
+            rendered_reflect = (
+                f"[reflect] success={actuation.success} | reasons={';'.join(actuation.reasons) or 'none'}"
+            )
+            self._record_prompt(
+                recorder=recorder,
+                phase="reflect",
+                agent_id="reflect",
+                rendered=rendered_reflect,
+                role="system",
+                kind="reflection",
+                template_id="reflect.v1",
+                tags=context.tags,
+                event_id=event.event_id,
+            )
         return event
 
     def _run_learn(self, actuation: ActuationResult, caused_by: UUID | None) -> CognitiveEvent:
@@ -365,21 +414,62 @@ class EpisodeRunner:
         Uses a synthetic rendered prompt to validate end-to-end provenance plumbing
         without depending on external LLM providers.
         """
-        recorder = getattr(request.context, "prompt_recorder", None) or self._prompt_recorder
-        if recorder is None or not recorder.is_enabled():
+        recorder = self._resolve_prompt_recorder(request.context)
+        if recorder is None:
             return
         goal = request.goal or "unspecified"
         step_summaries = ", ".join(step.description for step in plan) if plan else "no-steps"
         rendered = f"[planner.minimal] goal={goal} | steps={step_summaries}"
-        recorder.record(
+        self._record_prompt(
+            recorder=recorder,
             phase="plan",
-            agent_id="planner.minimal",
+            agent_id="direction.planner",
             rendered=rendered,
             role="system",
             kind="system",
             template_id="planner.minimal.v1",
+            tags=request.context.tags,
+        )
+
+    def _record_prompt(
+        self,
+        *,
+        recorder: PromptRecorder,
+        phase: str,
+        agent_id: str,
+        rendered: str,
+        role: str | None,
+        kind: str,
+        template_id: str,
+        tags: dict[str, object],
+        event_id: UUID | None = None,
+    ) -> None:
+        """Append a prompt record if provenance is enabled."""
+        if not recorder.is_enabled():
+            return
+
+        tag_strings = {
+            str(k): str(v)
+            for k, v in tags.items()
+            if isinstance(v, (str, int, float, bool))
+        }
+        recorder.record(
+            phase=phase,
+            agent_id=agent_id,
+            rendered=rendered,
+            role=role,
+            kind=kind,
+            template_id=template_id,
+            tags=tag_strings or None,
+            event_id=str(event_id) if event_id is not None else None,
             now=self._now,
         )
+
+    def _resolve_prompt_recorder(self, context: EpisodeContext) -> PromptRecorder | None:
+        recorder = getattr(context, "prompt_recorder", None) or self._prompt_recorder
+        if recorder is None or not recorder.is_enabled():
+            return None
+        return recorder
 
 
 class DirectiveApplicationError(RuntimeError):
