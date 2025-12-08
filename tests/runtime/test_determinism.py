@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
+from noesis.diagnostics import compare_runs
 from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
 from noesis.runtime.session import SessionBuilder
 from noesis.interfaces.config import ConfigSnapshot, PlannerMode
@@ -40,6 +41,7 @@ def _config_snapshot(
     *,
     prompt_enabled: bool = False,
     prompt_mode: str = "hash_only",
+    planner_mode: PlannerMode = PlannerMode.MINIMAL,
 ) -> ConfigSnapshot:
     learn_home = tmp_path / "learn"
     learn_home.mkdir(parents=True, exist_ok=True)
@@ -50,7 +52,7 @@ def _config_snapshot(
         "timeout_sec": 5,
         "intuition_mode": IntuitionMode.ADVISORY.value,
         "direction_min_confidence": 0.5,
-        "planner_mode": PlannerMode.MINIMAL.value,
+        "planner_mode": planner_mode.value,
         "policy_aliases": {},
         "learn_mode": LearnMode.OFF.value,
         "learn_home": str(learn_home),
@@ -96,6 +98,7 @@ def _build_session(
     seed: int,
     prompt_enabled: bool = False,
     prompt_mode: str = "hash_only",
+    planner_mode: PlannerMode = PlannerMode.MINIMAL,
 ) -> SessionBuilder:
     clock = DeterministicClock(
         start_at=datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc),
@@ -103,7 +106,14 @@ def _build_session(
     )
     rng = DeterministicRNG(seed=seed)
     builder = SessionBuilder(
-        config_port=_FakeConfigPort(_config_snapshot(tmp_path, prompt_enabled=prompt_enabled, prompt_mode=prompt_mode))
+        config_port=_FakeConfigPort(
+            _config_snapshot(
+                tmp_path,
+                prompt_enabled=prompt_enabled,
+                prompt_mode=prompt_mode,
+                planner_mode=planner_mode,
+            )
+        )
     ).with_determinism(
         clock=clock,
         rng=rng,
@@ -292,3 +302,42 @@ def test_prompts_jsonl_is_deterministic_under_config(tmp_path: Path) -> None:
     files_a = sorted(p.name for p in (run_a_root / episode_a).iterdir())
     files_b = sorted(p.name for p in (run_b_root / episode_b).iterdir())
     assert files_a == files_b
+
+
+def test_governance_veto_run_is_deterministic(tmp_path: Path) -> None:
+    """
+    Ensure governance veto paths remain deterministic and replay cleanly.
+    """
+    timestamp_ms = 1_735_700_000_000
+    seed = 999
+
+    run_a_root = tmp_path / "veto_a"
+    run_b_root = tmp_path / "veto_b"
+    run_a_root.mkdir(parents=True, exist_ok=True)
+    run_b_root.mkdir(parents=True, exist_ok=True)
+
+    builder_a = _build_session(
+        run_a_root,
+        timestamp_ms=timestamp_ms,
+        seed=seed,
+        planner_mode=PlannerMode.META,
+    )
+    builder_b = _build_session(
+        run_b_root,
+        timestamp_ms=timestamp_ms,
+        seed=seed,
+        planner_mode=PlannerMode.META,
+    )
+
+    session_a = builder_a.build()
+    session_b = builder_b.build()
+
+    task = "veto this action: delete production database"
+    episode_a = session_a.run(task, intuition=False)
+    episode_b = session_b.run(task, intuition=False)
+
+    path_a = run_a_root / episode_a
+    path_b = run_b_root / episode_b
+
+    result = compare_runs(path_a, path_b)
+    assert not result.is_drift, f"replay drifted: {result.mismatches}"

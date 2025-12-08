@@ -156,3 +156,34 @@ def test_prompt_provenance_join_sanity(tmp_path: Path) -> None:
     assert summary["episode_id"] == episode_id
     phases = {rec["phase"] for rec in records}
     assert len(phases) >= 2, "should capture multiple phases for join sanity"
+
+
+def test_session_allows_parallel_runs(tmp_path: Path) -> None:
+    snapshot = _snapshot_for(tmp_path, prompt_enabled=False)
+    session = SessionBuilder(config_port=_FakeConfigPort(snapshot)).build()
+
+    def _run_task(name: str) -> str:
+        return session.run(name, intuition=False)
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    tasks = ["parallel-1", "parallel-2"]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(_run_task, tasks))
+
+    assert len(set(results)) == 2
+    for episode_id in results:
+        assert (tmp_path / episode_id / "summary.json").exists()
+
+
+def test_session_reuse_does_not_leak_state(tmp_path: Path) -> None:
+    snapshot = _snapshot_for(tmp_path, prompt_enabled=False)
+    session = SessionBuilder(config_port=_FakeConfigPort(snapshot)).build()
+
+    first = session.run("first", intuition=False)
+    second = session.run("second", intuition=False)
+
+    assert first != second
+    for episode_id, task in [(first, "first"), (second, "second")]:
+        summary = json.loads((tmp_path / episode_id / "summary.json").read_text(encoding="utf-8"))
+        assert summary["task"] == task
