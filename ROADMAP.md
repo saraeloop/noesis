@@ -52,6 +52,13 @@ Every update strengthens three dimensions:
 - ✅ CLI + diagnostics enforcement for `manifest.json` (`noesis artifacts verify`, `diagnostics`), plus `noesis.artifacts.verify_manifest` public API surface and `noesis.io` manifest rehash guards.
 - ✅ Tests: tamper/missing/extra/mutex coverage, ULID ordering stress, CLI exit codes, and HMAC canonicalization fixtures (`tests/runtime/test_artifacts.py`, `tests/runtime/test_ids.py`, `tests/cli/test_artifacts_cli.py`).
 
+### Prompt Provenance (ADR-005) — Experimental, Opt-in (Completed)
+
+- ✅ Schema-governed prompt records (`$schema_name: prompt`, `$schema_version: 1.1.0`) with fixtures and schema guard (`internal_docs/schema/prompt.v1.yaml`, `docs/schema/prompt/1.1.0.json`, `tests/runtime/test_prompt_schema.py`).
+- ✅ PromptRecorder with `full` / `hash_only` / `redacted` modes, deterministic hashing, manifest integration, and leakage guards (`noesis/runtime/prompt_recorder.py`, `tests/runtime/test_prompt_recorder.py`).
+- ✅ Recorded prompts across interpret, plan, governance, and reflect phases with tag threading and event linkage where available (`noesis/usecases/episode_runner.py`).
+- ✅ Docs updated to mark prompts.jsonl experimental with mode semantics and schema reference (`docs/runs/README.md`).
+
 ### Accepted Baseline Metrics
 
 | Capability              | Target                                                     | Status    |
@@ -72,7 +79,7 @@ Every update strengthens three dimensions:
 - Version-safe schemas with developer-friendly diagnostics.
 - Transparent documentation and schema references for contributors.
 - Signed releases with enforced replay gates and migration reporting.
-- Lay groundwork for **Prompt Provenance** (ADR-005) as an opt-in, experimental runtime artifact — without blocking v1.0.0.
+- Prompt provenance shipped as an experimental, opt-in artifact (ADR-005 v1.1); adapters/UI remain out of scope.
 
 ### Phase Sequence
 
@@ -150,47 +157,23 @@ Every update strengthens three dimensions:
 
 ---
 
-### Phase 2.5 — Prompt Provenance v0.1  
+### Phase 2.5 — Prompt Provenance v1.1 (Completed)  
 (ADR-005 — Experimental, **Non-Blocking**)
 
-**Focus:** Record a minimal prompt trace as a runtime artifact without blocking v1.0.0.
+**Focus:** Ship schema-governed prompt provenance with multi-phase coverage and privacy modes.
 
-**Scope (v0.1 only)**
+**Delivered**
 
-- Add optional `prompts.jsonl` artifact gated by `prompt_provenance_enabled`.
-- Support at least two modes:
-  - `full`  
-  - `hash_only` (no raw prompt text, only metadata + fingerprint).
-- Implement a small `PromptRecorder` in the runtime/trace layer that:
-  - lazily opens `prompts.jsonl` under `runs/<label>/<episode_id>/`,
-  - normalizes `rendered` and computes a deterministic `fingerprint`,
-  - injects `episode_id`, `phase`, `agent_id`, `timestamp`, `model`, `mode`,
-  - respects `DeterminismConfig` for timestamps when present,
-  - is a no-op when disabled.
+- Optional `prompts.jsonl` artifact gated by `prompt_provenance_enabled` with `full`, `hash_only`, and `redacted` modes.
+- Schema-governed prompt records (`$schema_name: "prompt"`, `$schema_version: "1.1.0"`) covering identity, context, content, provenance, and tags.
+- PromptRecorder with deterministic fingerprinting, redaction, and tag support; manifest integration and determinism guard.
+- Recorded prompts across core phases: interpret (intuition), plan (direction.planner), governance (governance.pre_act), reflect (reflect).
+- Fixtures + schema guard + runtime tests to prevent leakage in non-full modes.
 
-- Wire v0.1 only into a small set of Noēsis-owned LLM call sites:
-  - Planner / Direction (PLAN),
-  - Act (ACT),
-  - optionally Governance (GOVERNANCE) where trivial.
+**Notes**
 
-- Keep the v0.1 schema narrow:
-  - `episode_id`, `phase`, `agent_id`, `rendered`, `fingerprint`, `timestamp`, `model`, `mode`.
-
-**Non-goals (deferred to v1.1+)**
-
-- Full prompt schema in the schema registry (`internal_docs/schema/prompt.yaml`).
-- `variables`, `template`, `template_id`, and rich `kind`/`tags` usage.
-- `mode="redacted"` and pluggable redaction policies.
-- Adapter instrumentation (LangGraph/CrewAI/MCP).
-- Prompt-centric UI or analytics.
-
-**Exit Criteria (for v0.1)**
-
-- When `prompt_provenance_enabled=true`, `prompts.jsonl` is created for at least one example scenario. ✅
-- Lines contain the minimal field set and join correctly on `episode_id`. ✅
-- A small deterministic test case asserts identical `prompts.jsonl` between two runs under the same `DeterminismConfig` (or the feature is explicitly disabled in deterministic mode for v1.0.0).
-
-> **Note:** Phase 2.5 is explicitly **non-blocking** for the v1.0.0 release gate. It can be skipped if capacity is tight; ADR-005 remains Proposed/Experimental and is fully realized in v1.1+.
+- Still experimental/opt-in; adapters (LangGraph/CrewAI/MCP) remain out of scope.
+- Future UI/analytics remain out of scope; this phase completes ADR-005’s runtime/governance surface.
 
 ---
 
@@ -216,7 +199,7 @@ Every update strengthens three dimensions:
 - Determinism drill goldens pass locally and in CI (including replay gate).
 - Session API is GA and documented (ADR-001 Accepted).
 - LLM example artifacts replay without drift.
-- Prompt Provenance (ADR-005) may exist in v0.1 form but is **not required** for the v1.0.0 release; if present, it must be clearly documented as experimental and behind a feature flag.
+- Prompt Provenance (ADR-005) exists as an experimental, opt-in artifact (`prompt@1.1.0`) but is **not required** for the v1.0.0 release; it must remain clearly documented as experimental and behind a feature flag (not part of the replay gate).
 
 ---
 
@@ -248,24 +231,12 @@ Every update strengthens three dimensions:
 
 ## Future (Post v1.0.0)
 
-### Prompt Provenance & Cognitive Provenance (ADR-005) — v1.1+
+### Prompt Provenance & Cognitive Provenance (ADR-005) — v1.2+
 
-- Promote `prompts.jsonl` to a full, schema-governed artifact:
-  - `internal_docs/schema/prompt.yaml` + generated JSON Schema,
-  - field-level `stability` and semver rules,
-  - schema_guard integration and fixtures.
-- Expand coverage to all cognitive phases:
-  - observe / interpret / plan / governance / act / reflect / learn.
-- Add richer fields:
-  - `template`, `template_id`, `variables`, `kind`, `tags`.
-- Implement robust privacy modes:
-  - `hash_only` and `redacted` as first-class deployment knobs,
-  - optional redaction policies for PII/secret suppression.
-- Wire prompt fingerprints into `events.jsonl` for join-friendly provenance graphs.
-- Provide examples + DeepWiki docs showing:
-  - prompt-level drift analysis,
-  - ablations over prompt variants,
-  - cognitive provenance diagrams grounded in Noēsis artifacts.
+- Expand coverage to all cognitive phases (add observe/act/learn paths).
+- Wire prompt fingerprints into `events.jsonl` for direct joinability.
+- Provide higher-level examples/notebooks for drift and incident analysis.
+- Optional: per-field redaction/PII policies and adapter opt-ins (LangGraph/CrewAI/MCP).
 
 ### Schema Registry & Diagnostics Polish (v1.1+)
 

@@ -1,6 +1,6 @@
 # ADR-005 — Prompt Provenance as Cognitive Runtime Artifact
 
-- **Status:** Accepted (Partially)  
+- **Status:** Accepted (Implemented, Experimental)  
 - **Date:** 2025-11-21  
 - **Owner:** Sara Loera (@saraeloop)  
 - **Reviewers:** Core Engineering, Runtime/Infra, Research  
