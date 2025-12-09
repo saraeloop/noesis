@@ -15,6 +15,11 @@ Key invariants
 
 Schema
     SCHEMA_VERSION declares the summary schema version baked into artifacts.
+
+Architecture notes
+    - _run_impl sets up determinism/context and then delegates to _run_minimal_episode or _run_adapter_episode.
+    - Mode helpers own their orchestration and snapshot construction to keep responsibilities small.
+    - _finalize_episode centralizes artifact writes (summary, manifest, index) shared by both paths.
 """
 from __future__ import annotations
 
@@ -418,57 +423,151 @@ class _EpCtx:
         return self.ids.episode_id
 
 
-def _run_impl(
+@dataclass(slots=True)
+class _EpisodeRuntime:
+    cfg: Any
+    port_versions: Any
+    runs_dir: str
+    dir_min: float
+    ctx: _EpCtx
+    episode_ctx: EpisodeContext
+    state_repo: RuntimeStateRepository
+    state: Any
+    state_path: Path
+    adapter_label: str
+    raw_using_label: str
+    determinism: "_DeterminismConfig | None"
+    now_fn: Callable[[], str]
+    run_clock: RuntimeClock | None
+    event_id_factory: Callable[[], Any] | None
+    intuition_impl: Intuition
+    intuition_enabled: bool
+    runtime_context: RuntimeContext
+
+
+def _mint_episode_ids(seed: int, determinism: "_DeterminismConfig | None") -> EpisodeIds:
+    if determinism:
+        # Ensure deterministic ULID generation is not affected by prior runs.
+        from .runtime.artifacts.ids import reset_ulid_state
+
+        reset_ulid_state()
+        return EpisodeIds.mint(
+            seed=seed,
+            timestamp_ms=determinism.episode_timestamp_ms,
+            entropy=determinism.rng.bytes(10),
+        )
+    return EpisodeIds.mint(seed=seed)
+
+
+def _init_clock(determinism: "_DeterminismConfig | None") -> tuple[RuntimeClock | None, Callable[[], str]]:
+    if determinism:
+        from noesis.runtime.determinism import DeterministicClock
+
+        run_clock = DeterministicClock(
+            start_at=determinism.clock.start_at,
+            tick_ms=determinism.clock.tick_ms,
+        )
+        return run_clock, lambda: run_clock.now().isoformat()
+    return None, _now
+
+
+def _build_snapshot(
     *,
     task: str,
     seed: int,
-    intuition: bool | Intuition,
     tags: Optional[Dict[str, Any]],
-    using: Optional[GraphSource],
+    state: Any,
+    state_path: Path,
+    run_dir: Path,
+    raw_using_label: str,
+) -> Dict[str, Any]:
+    return {
+        "task": task,
+        "seed": seed,
+        "history": [],
+        "tools_seen": [],
+        "tags": tags or {},
+        "state_path": str(state_path.relative_to(run_dir)),
+        "state": state.to_dict(),
+        "using": raw_using_label,
+    }
+
+
+def _finalize_episode(
+    *,
+    setup: _EpisodeRuntime,
+    state: Any,
+    task: str,
+    seed: int,
+    tags: Optional[Dict[str, Any]],
+    status: str,
+) -> None:
+    _finalize_summary(
+        run_dir=setup.ctx.run_dir,
+        episode_id=setup.ctx.episode_id,
+        task=task,
+        seed=seed,
+        started_at=setup.ctx.started_at,
+        intuition_enabled=setup.intuition_enabled,
+        intuition_mode=getattr(setup.intuition_impl, "mode", IntuitionMode.ADVISORY),
+        using_label=setup.raw_using_label,
+        tags=tags,
+        intuition=setup.intuition_impl,
+        schema_version=SCHEMA_VERSION,
+        config=setup.cfg,
+        ports=setup.port_versions,
+    )
+
+    persist_episode_memory(run_dir=setup.ctx.run_dir, context=setup.runtime_context)
+
+    manifest_path, manifest_sha = _finalize_manifest(setup.ctx)
+
+    try:
+        store_root = Path(setup.runs_dir) / "_episodes"
+        summary_path = setup.ctx.run_dir / "summary.json"
+        EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
+            episode_id=setup.ctx.episode_id,
+            summary_path=summary_path,
+            state_path=setup.state_path,
+            status=status,
+            task=task,
+            using=setup.adapter_label,
+            provenance={
+                "schema_version": state.version,
+                "state_schema_version": state.state_schema_version,
+                "manifest_path": str(manifest_path),
+                "manifest_sha256": manifest_sha,
+                "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
+            },
+        )
+    except Exception:
+        # Indexing is best-effort and should not fail the run.
+        pass
+
+
+def _bootstrap_episode(
+    *,
+    task: str,
+    seed: int,
+    tags: Optional[Dict[str, Any]],
+    raw_using_label: str,
+    adapter_label: str,
     context: RuntimeContext,
+    intuition: bool | Intuition,
     determinism: "_DeterminismConfig | None",
-) -> str:
+) -> _EpisodeRuntime:
     config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
     cfg = config_port.get()
     port_versions = context.list_ports()
     runs_dir = str(cfg.runs_dir)
     dir_min = cfg.direction_min_confidence
 
-    if determinism:
-        # Ensure deterministic ULID generation is not affected by prior runs.
-        from .runtime.artifacts.ids import reset_ulid_state
-
-        reset_ulid_state()
-        ids = EpisodeIds.mint(
-            seed=seed,
-            timestamp_ms=determinism.episode_timestamp_ms,
-            entropy=determinism.rng.bytes(10),
-        )
-    else:
-        ids = EpisodeIds.mint(seed=seed)
+    ids = _mint_episode_ids(seed, determinism)
     run_dir = begin_episode(runs_dir, ids.episode_id)
-    # Create a fresh clock instance for each run to ensure determinism
-    if determinism:
-        from noesis.runtime.determinism import DeterministicClock
-        run_clock = DeterministicClock(
-            start_at=determinism.clock.start_at,
-            tick_ms=determinism.clock.tick_ms,
-        )
-        now_str: Callable[[], str] = lambda: run_clock.now().isoformat()
-    else:
-        run_clock = None
-        now_str = _now
-    ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_str())
-
+    run_clock, now_fn = _init_clock(determinism)
+    ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_fn())
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
 
-    minimal_mode = using is None
-    raw_using_label: Optional[str]
-    if minimal_mode:
-        raw_using_label = "core.minimal"
-    else:
-        raw_using_label = _safe_using_label(using) if using is not None else "core.null"
-    adapter_label = f"adapter:{raw_using_label}"
     episode_ctx = EpisodeContext(
         run_dir=ctx.run_dir,
         episode_id=ctx.episode_id,
@@ -485,178 +584,180 @@ def _run_impl(
     state = state_repo.init()
     state_path = ctx.run_dir / "state.json"
 
+    event_id_factory = determinism.rng.event_id_factory(ids.directive_namespace) if determinism else None
     start_payload = {"task": task, "seed": seed, "using": raw_using_label}
-    pre_event_id_factory = determinism.rng.event_id_factory(ids.directive_namespace) if determinism else None
-    _start_event(ctx.run_dir, ctx.episode_id, start_payload, now_fn=now_str if determinism else None, id_factory=pre_event_id_factory)
-
-    if minimal_mode:
-        snapshot = {
-            "task": task,
-            "seed": seed,
-            "history": [],
-            "tools_seen": [],
-            "tags": tags or {},
-            "state_path": str(state_path.relative_to(ctx.run_dir)),
-            "state": state.to_dict(),
-            "using": raw_using_label,
-        }
-        _observe_event(
-            ctx.run_dir,
-            ctx.episode_id,
-            task=task,
-            tags=tags,
-            snapshot=snapshot,
-            now_fn=now_str if determinism else None,
-            id_factory=pre_event_id_factory,
-        )
-        _maybe_intuition(
-            ctx.run_dir,
-            ctx.episode_id,
-            intuition_enabled,
-            intuition_impl,
-            snapshot,
-            now_fn=now_str if determinism else None,
-            id_factory=pre_event_id_factory,
-        )
-
-        lineage = LineageTracker()
-        # Use the run clock created earlier
-        if determinism:
-            clock = run_clock
-        else:
-            clock = RuntimeClock()
-        emitter = CognitiveEventEmitter(run_dir=ctx.run_dir)
-        event_bus = RuntimeEventBus(
-            context=episode_ctx,
-            emitter=emitter,
-            lineage=lineage,
-            clock=clock,
-            now=clock.now if determinism else (lambda: datetime.now(timezone.utc)),
-            event_id_factory=pre_event_id_factory or uuid4,
-        )
-        direction_planner = MetaPlanner() if cfg.planner_mode is PlannerMode.META else None
-        governance_policy = PreActGovernor() if cfg.planner_mode is PlannerMode.META else None
-        deps = EpisodeDependencies(
-            planner=MinimalPlanner(),
-            actuator=MinimalActuator(tool_label=adapter_label),
-            event_bus=event_bus,
-            state_repository=state_repo,
-            direction_planner=direction_planner,
-            governance_policy=governance_policy,
-        )
-        instrumentation = EpisodeInstrumentation(
-            clock=clock,
-            emitter=emitter,
-            lineage=lineage,
-            now=clock.now if determinism else (lambda: datetime.now(timezone.utc)),
-            event_id_factory=pre_event_id_factory or uuid4,
-            hooks=(),
-        )
-        runner = EpisodeRunner(deps, instrumentation=instrumentation)
-        episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=episode_ctx)
-        result = runner.run(episode_request)
-
-        status_payload: Dict[str, Any] = {"status": result.outcome.status}
-        if result.outcome.summary:
-            status_payload["message"] = result.outcome.summary
-
-        _terminate_event(
-            ctx.run_dir,
-            ctx.episode_id,
-            status_payload,
-            now_fn=now_str if determinism else None,
-            id_factory=pre_event_id_factory,
-        )
-
-        state = result.state
-        state.set_links(
-            events="events.jsonl",
-            summary="summary.json",
-            learn="learn.jsonl",
-            manifest="manifest.json",
-        )
-        state_repo.persist(state)
-
-        _finalize_summary(
-            run_dir=ctx.run_dir,
-            episode_id=ctx.episode_id,
-            task=task,
-            seed=seed,
-            started_at=ctx.started_at,
-            intuition_enabled=intuition_enabled,
-            intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
-            using_label=raw_using_label,
-            tags=tags,
-            intuition=intuition_impl,
-            schema_version=SCHEMA_VERSION,
-            config=cfg,
-            ports=port_versions,
-        )
-
-        persist_episode_memory(run_dir=ctx.run_dir, context=context)
-
-        manifest_path, manifest_sha = _finalize_manifest(ctx)
-
-        try:
-            store_root = Path(runs_dir) / "_episodes"
-            summary_path = ctx.run_dir / "summary.json"
-            EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
-                episode_id=ctx.episode_id,
-                summary_path=summary_path,
-                state_path=state_path,
-                status=status_payload["status"],
-                task=task,
-                using=adapter_label,
-                provenance={
-                    "schema_version": state.version,
-                    "state_schema_version": state.state_schema_version,
-                    "manifest_path": str(manifest_path),
-                    "manifest_sha256": manifest_sha,
-                    "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
-                },
-            )
-        except Exception:
-            pass
-
-        return ctx.episode_id
-
-    # External adapter path continues below.
-    snapshot = {
-        "task": task,
-        "seed": seed,
-        "history": [],
-        "tools_seen": [],
-        "tags": tags or {},
-        "state_path": str(state_path.relative_to(ctx.run_dir)),
-        "state": state.to_dict(),
-        "using": raw_using_label,
-    }
-
-    _observe_event(ctx.run_dir, ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
-    _maybe_intuition(ctx.run_dir, ctx.episode_id, intuition_enabled, intuition_impl, snapshot)
-
-    _interpret_event(
+    _start_event(
         ctx.run_dir,
         ctx.episode_id,
+        start_payload,
+        now_fn=now_fn if determinism else None,
+        id_factory=event_id_factory,
+    )
+
+    return _EpisodeRuntime(
+        cfg=cfg,
+        port_versions=port_versions,
+        runs_dir=runs_dir,
+        dir_min=dir_min,
+        ctx=ctx,
+        episode_ctx=episode_ctx,
+        state_repo=state_repo,
+        state=state,
+        state_path=state_path,
+        adapter_label=adapter_label,
+        raw_using_label=raw_using_label,
+        determinism=determinism,
+        now_fn=now_fn,
+        run_clock=run_clock,
+        event_id_factory=event_id_factory,
+        intuition_impl=intuition_impl,
+        intuition_enabled=intuition_enabled,
+        runtime_context=context,
+    )
+
+
+def _run_minimal_episode(
+    *,
+    setup: _EpisodeRuntime,
+    task: str,
+    seed: int,
+    tags: Optional[Dict[str, Any]],
+) -> str:
+    snapshot = _build_snapshot(
+        task=task,
+        seed=seed,
+        tags=tags,
+        state=setup.state,
+        state_path=setup.state_path,
+        run_dir=setup.ctx.run_dir,
+        raw_using_label=setup.raw_using_label,
+    )
+    _observe_event(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        task=task,
+        tags=tags,
+        snapshot=snapshot,
+        now_fn=setup.now_fn if setup.determinism else None,
+        id_factory=setup.event_id_factory,
+    )
+    _maybe_intuition(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        setup.intuition_enabled,
+        setup.intuition_impl,
+        snapshot,
+        now_fn=setup.now_fn if setup.determinism else None,
+        id_factory=setup.event_id_factory,
+    )
+
+    lineage = LineageTracker()
+    clock = setup.run_clock or RuntimeClock()
+    emitter = CognitiveEventEmitter(run_dir=setup.ctx.run_dir)
+    event_bus = RuntimeEventBus(
+        context=setup.episode_ctx,
+        emitter=emitter,
+        lineage=lineage,
+        clock=clock,
+        now=clock.now if setup.determinism else (lambda: datetime.now(timezone.utc)),
+        event_id_factory=setup.event_id_factory or uuid4,
+    )
+    direction_planner = MetaPlanner() if setup.cfg.planner_mode is PlannerMode.META else None
+    governance_policy = PreActGovernor() if setup.cfg.planner_mode is PlannerMode.META else None
+    deps = EpisodeDependencies(
+        planner=MinimalPlanner(),
+        actuator=MinimalActuator(tool_label=setup.adapter_label),
+        event_bus=event_bus,
+        state_repository=setup.state_repo,
+        direction_planner=direction_planner,
+        governance_policy=governance_policy,
+    )
+    instrumentation = EpisodeInstrumentation(
+        clock=clock,
+        emitter=emitter,
+        lineage=lineage,
+        now=clock.now if setup.determinism else (lambda: datetime.now(timezone.utc)),
+        event_id_factory=setup.event_id_factory or uuid4,
+        hooks=(),
+    )
+    runner = EpisodeRunner(deps, instrumentation=instrumentation)
+    episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=setup.episode_ctx)
+    result = runner.run(episode_request)
+
+    status_payload: Dict[str, Any] = {"status": result.outcome.status}
+    if result.outcome.summary:
+        status_payload["message"] = result.outcome.summary
+
+    _terminate_event(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        status_payload,
+        now_fn=setup.now_fn if setup.determinism else None,
+        id_factory=setup.event_id_factory,
+    )
+
+    state = result.state
+    setup.state = state
+    state.set_links(
+        events="events.jsonl",
+        summary="summary.json",
+        learn="learn.jsonl",
+        manifest="manifest.json",
+    )
+    setup.state_repo.persist(state)
+
+    _finalize_episode(
+        setup=setup,
+        state=state,
+        task=task,
+        seed=seed,
+        tags=tags,
+        status=status_payload["status"],
+    )
+
+    return setup.ctx.episode_id
+
+
+def _run_adapter_episode(
+    *,
+    setup: _EpisodeRuntime,
+    task: str,
+    seed: int,
+    tags: Optional[Dict[str, Any]],
+    using: Optional[GraphSource],
+) -> str:
+    snapshot = _build_snapshot(
+        task=task,
+        seed=seed,
+        tags=tags,
+        state=setup.state,
+        state_path=setup.state_path,
+        run_dir=setup.ctx.run_dir,
+        raw_using_label=setup.raw_using_label,
+    )
+    _observe_event(setup.ctx.run_dir, setup.ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
+    _maybe_intuition(setup.ctx.run_dir, setup.ctx.episode_id, setup.intuition_enabled, setup.intuition_impl, snapshot)
+
+    _interpret_event(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
         signals=[],
         reasons=None,
         source="system",
     )
 
-    plan_steps = [adapter_label]
+    plan_steps = [setup.adapter_label]
     plan_rationale = "Execute adapter"
     plan_step_objs = _plan_steps_from_labels(plan_steps)
-    state.set_plan(steps=plan_step_objs, rationale=plan_rationale, source="system")
-    state_repo.persist(state)
-    snapshot["state"] = state.to_dict()
-    _plan_event(ctx.run_dir, ctx.episode_id, steps=plan_steps, rationale=plan_rationale, source="system")
+    setup.state.set_plan(steps=plan_step_objs, rationale=plan_rationale, source="system")
+    setup.state_repo.persist(setup.state)
+    snapshot["state"] = setup.state.to_dict()
+    _plan_event(setup.ctx.run_dir, setup.ctx.episode_id, steps=plan_steps, rationale=plan_rationale, source="system")
 
     status_payload: Dict[str, Any] = {"status": "ok"}
     reflect_reasons: List[str] = []
     result_excerpt = ""
     success = True
-    veto_error: Optional[NoesisVeto] = None
-
     input_excerpt = task[:EXCERPT_IN_LEN]
 
     if using is None:
@@ -664,13 +765,13 @@ def _run_impl(
         reflect_reasons.append("no_adapter")
     else:
         graph = _load_graph(using)
-        adapter = _select_adapter(graph, dir_min)
+        adapter = _select_adapter(graph, setup.dir_min)
         try:
             result = adapter.execute(
                 task=task,
-                episode_id=ctx.episode_id,
-                run_dir=ctx.run_dir,
-                intuition=intuition_impl if intuition_enabled else None,
+                episode_id=setup.ctx.episode_id,
+                run_dir=setup.ctx.run_dir,
+                intuition=setup.intuition_impl if setup.intuition_enabled else None,
                 seed=seed,
                 tags=tags,
             )
@@ -679,7 +780,6 @@ def _run_impl(
         except NoesisVeto as err:
             success = False
             status_payload = {"status": "blocked", "message": str(err)}
-            veto_error = err
             reflect_reasons.append("veto")
         except Exception as err:  # noqa: BLE001
             success = False
@@ -689,80 +789,81 @@ def _run_impl(
     action_outcome = result_excerpt or status_payload["status"]
 
     _ensure_act_event(
-        ctx.run_dir,
-        ctx.episode_id,
-        adapter_label=adapter_label,
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        adapter_label=setup.adapter_label,
         input_excerpt=input_excerpt,
         outcome=action_outcome,
     )
 
     action_status = _normalize_outcome_status(status_payload["status"], success=success)
-    state.record_action(
+    setup.state.record_action(
         kind="adapter",
-        tool=adapter_label,
+        tool=setup.adapter_label,
         input_excerpt=input_excerpt,
         result_status=action_status,
         step_id=plan_step_objs[-1].id if plan_step_objs else None,
     )
 
     _reflect_event(
-        ctx.run_dir,
-        ctx.episode_id,
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
         success=success,
         deltas=None,
         reasons=reflect_reasons,
     )
 
-    # Summarize and persist outcome
-    state.set_outcome(
+    setup.state.set_outcome(
         status=action_status,
         summary=status_payload.get("message"),
         metrics={"success": 1.0 if success else 0.0},
     )
-    state_repo.persist(state)
+    setup.state_repo.persist(setup.state)
 
-    _finalize_summary(
-        run_dir=ctx.run_dir,
-        episode_id=ctx.episode_id,
+    _finalize_episode(
+        setup=setup,
+        state=setup.state,
         task=task,
         seed=seed,
-        started_at=ctx.started_at,
-        intuition_enabled=intuition_enabled,
-        intuition_mode=getattr(intuition_impl, "mode", IntuitionMode.ADVISORY),
-        using_label=raw_using_label,
         tags=tags,
-        intuition=intuition_impl,
-        schema_version=SCHEMA_VERSION,
-        config=cfg,
-        ports=port_versions,
+        status=setup.state.outcome_status,
     )
 
-    persist_episode_memory(run_dir=ctx.run_dir, context=context)
+    return setup.ctx.episode_id
 
-    manifest_path, manifest_sha = _finalize_manifest(ctx)
 
-    try:
-        store_root = Path(runs_dir) / "_episodes"
-        summary_path = ctx.run_dir / "summary.json"
-        EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
-            episode_id=ctx.episode_id,
-            summary_path=summary_path,
-            state_path=state_path,
-            status=state.outcome_status,
-            task=task,
-            using=adapter_label,
-            provenance={
-                "schema_version": state.version,
-                "state_schema_version": state.state_schema_version,
-                "manifest_path": str(manifest_path),
-                "manifest_sha256": manifest_sha,
-                "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
-            },
-        )
-    except Exception:
-        pass
+def _run_impl(
+    *,
+    task: str,
+    seed: int,
+    intuition: bool | Intuition,
+    tags: Optional[Dict[str, Any]],
+    using: Optional[GraphSource],
+    context: RuntimeContext,
+    determinism: "_DeterminismConfig | None",
+) -> str:
+    minimal_mode = using is None
+    raw_using_label: Optional[str]
+    if minimal_mode:
+        raw_using_label = "core.minimal"
+    else:
+        raw_using_label = _safe_using_label(using) if using is not None else "core.null"
+    adapter_label = f"adapter:{raw_using_label}"
 
-    return ctx.episode_id
+    setup = _bootstrap_episode(
+        task=task,
+        seed=seed,
+        tags=tags,
+        raw_using_label=raw_using_label,
+        adapter_label=adapter_label,
+        context=context,
+        intuition=intuition,
+        determinism=determinism,
+    )
+
+    if minimal_mode:
+        return _run_minimal_episode(setup=setup, task=task, seed=seed, tags=tags)
+    return _run_adapter_episode(setup=setup, task=task, seed=seed, tags=tags, using=using)
 
 
 def run(
