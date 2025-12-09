@@ -9,6 +9,7 @@ PUBLIC_IMPORTS = [
     "noesis.io",
     "noesis.episode",
     "noesis.context",
+    "noesis.ports",
     "noesis.trace",
     "noesis.events",
     "noesis.summary",
