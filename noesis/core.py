@@ -493,6 +493,23 @@ def _build_snapshot(
     }
 
 
+def _build_instrumentation(setup: _EpisodeRuntime, lineage: LineageTracker) -> EpisodeInstrumentation:
+    """Construct instrumentation ports with deterministic-friendly defaults."""
+    clock = setup.run_clock or RuntimeClock()
+    now_fn = clock.now if setup.determinism else (lambda: datetime.now(timezone.utc))
+    event_id_factory = setup.event_id_factory or uuid4
+    emitter = CognitiveEventEmitter(run_dir=setup.ctx.run_dir)
+    return EpisodeInstrumentation(
+        clock=clock,
+        emitter=emitter,
+        lineage=lineage,
+        prompt_recorder=setup.episode_ctx.prompt_recorder,
+        now=now_fn,
+        event_id_factory=event_id_factory,
+        hooks=(),
+    )
+
+
 def _finalize_episode(
     *,
     setup: _EpisodeRuntime,
@@ -672,14 +689,7 @@ def _run_minimal_episode(
         direction_planner=direction_planner,
         governance_policy=governance_policy,
     )
-    instrumentation = EpisodeInstrumentation(
-        clock=clock,
-        emitter=emitter,
-        lineage=lineage,
-        now=clock.now if setup.determinism else (lambda: datetime.now(timezone.utc)),
-        event_id_factory=setup.event_id_factory or uuid4,
-        hooks=(),
-    )
+    instrumentation = _build_instrumentation(setup, lineage)
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
     episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=setup.episode_ctx)
     result = runner.run(episode_request)

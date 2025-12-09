@@ -162,32 +162,29 @@ In an application/use-case module (e.g., `noesis/usecases/ports.py`):
 from typing import Protocol, Any, Mapping, Iterable
 
 class StateRepositoryPort(Protocol):
-    def load(self, episode_id: str) -> Mapping[str, Any]: ...
-    def save(self, episode_id: str, state: Mapping[str, Any]) -> None: ...
-    def exists(self, episode_id: str) -> bool: ...
+    context: Any
+    def init(self, request: Any | None = None) -> NoesisState: ...
+    def persist(self, state: NoesisState) -> None: ...
 
 class EventSinkPort(Protocol):
-    def append(self, episode_id: str, event: Mapping[str, Any]) -> None: ...
-    def flush(self, episode_id: str) -> None: ...
+    def emit(self, event: CognitiveEvent, agent_id: str = "system") -> None: ...
 
 class PromptRecorderPort(Protocol):
+    def is_enabled(self) -> bool: ...
     def record(
-        self,
-        *,
-        phase: str,
-        agent_id: str,
-        template_id: str | None,
-        rendered: str | None,
-        variables: Mapping[str, Any] | None,
-        tags: Mapping[str, str] | None,
+        ...,
+        rendered: str,
+        tags: Mapping[str, str] | None = None,
+        ...
     ) -> None: ...
 
 class ClockPort(Protocol):
+    def start(self, label: Any) -> Any: ...
+    def stop(self, token: Any) -> Any: ...
     def now(self) -> datetime: ...
 
-class IdFactoryPort(Protocol):
-    def new_event_id(self) -> UUID: ...
-    def new_directive_id(self, episode_id: str) -> UUID: ...
+class EventIdFactoryPort(Protocol):
+    def __call__(self) -> UUID: ...
 ```
 
 These ports are **domain-shaped**:
@@ -232,21 +229,21 @@ Concrete bindings (outer layer):
 
 ### 4.5 Migration plan
 
-1) Introduce ports module (`noesis/usecases/ports.py`) and no-op prompt recorder.  
-2) Add outer-layer factories to build concrete ports from `SessionConfig` + determinism.  
-3) Refactor `EpisodeRunner` to consume ports (no direct `RuntimeStateRepository`, `PromptRecorder`, `read_events`).  
-4) Split `core` into `_run_minimal_episode` / `_run_adapter_episode` using ports.  
-5) Gate `get_context()` to legacy shims; new paths require explicit session/context.  
-6) Strengthen import-linter/CI and backfill tests for new ports wiring.  
-7) Delete dead code paths once dual support is stable.
+1) ✅ Introduce ports module (`noesis/usecases/ports.py`) and no-op prompt recorder.  
+2) ⏳ Add outer-layer factories to build concrete ports from `SessionConfig` + determinism.  
+3) ✅ Refactor `EpisodeRunner` to consume ports (no direct `RuntimeStateRepository`, `PromptRecorder`, `read_events`).  
+4) ✅ Split `core` into `_run_minimal_episode` / `_run_adapter_episode` using shared helpers.  
+5) ⏳ Gate `get_context()` to legacy shims; new paths require explicit session/context.  
+6) ✅ Strengthen import-linter/CI and backfill tests for new ports wiring (contracts now block `usecases` → {adapters, cli}).  
+7) ⏳ Delete dead code paths once dual support is stable.
 
-### 4.6 Implementation checkpoints
+### 4.6 Current implementation status (2025-12-09)
 
-- ✅ Split runtime orchestration into `_run_minimal_episode` and `_run_adapter_episode` with shared finalization helpers; public API preserved.
-- ⏳ Introduce `usecases/ports.py` and migrate `EpisodeRunner` to depend on ports (no direct infra imports).
-- ⏳ Add outer-layer factories to bind ports (`StateRepositoryPort`, `EventBusPort`, `PromptRecorderPort`, `Clock/IdFactory`) from session/determinism.
-- ⏳ Enforce import-linter rules for new boundaries and add fake-based unit tests for orchestrator portability.
-- ⏳ Remove legacy infra coupling once port-based path is the default.
+- Ports package exported (`noesis/usecases/__init__.py`) and enforced by import-linter.
+- `EpisodeRunner` now depends on ports for state/events/prompt/clock/history via structural adapters; behavior unchanged.
+- `core.py` is decomposed into `_run_minimal_episode` / `_run_adapter_episode` with shared finalization; public APIs intact.
+- Import-linter: 6/6 contracts kept under Python 3.12 (new usecase boundaries included).
+- Pending: runtime factories to bind ports from session/determinism, reducing `get_context()` usage, cleaning legacy wiring, and expanding fake-based tests.
 
 ### 4.6 Consequences / risks / timeline
 
