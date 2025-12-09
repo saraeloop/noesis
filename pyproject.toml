@@ -134,3 +134,23 @@ forbidden_modules = [
   "noesis.runtime",
   "noesis.cli",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Usecases do not import adapters"
+type = "forbidden"
+source_modules = [
+  "noesis.usecases",
+]
+forbidden_modules = [
+  "noesis.adapters",
+]
+
+[[tool.importlinter.contracts]]
+name = "Usecases do not import CLI"
+type = "forbidden"
+source_modules = [
+  "noesis.usecases",
+]
+forbidden_modules = [
+  "noesis.cli",
+]
