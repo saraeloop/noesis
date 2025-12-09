@@ -735,6 +735,9 @@ def _run_adapter_episode(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
 ) -> str:
+    _event_bus, instrumentation, _lineage = _build_runner_ports(setup)
+    now_fn = setup.now_fn if setup.determinism else None
+    id_factory = setup.event_id_factory or instrumentation.event_id_factory
     snapshot = _build_snapshot(
         task=task,
         seed=seed,
@@ -744,8 +747,24 @@ def _run_adapter_episode(
         run_dir=setup.ctx.run_dir,
         raw_using_label=setup.raw_using_label,
     )
-    _observe_event(setup.ctx.run_dir, setup.ctx.episode_id, task=task, tags=tags, snapshot=snapshot)
-    _maybe_intuition(setup.ctx.run_dir, setup.ctx.episode_id, setup.intuition_enabled, setup.intuition_impl, snapshot)
+    _observe_event(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        task=task,
+        tags=tags,
+        snapshot=snapshot,
+        now_fn=now_fn,
+        id_factory=id_factory,
+    )
+    _maybe_intuition(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        setup.intuition_enabled,
+        setup.intuition_impl,
+        snapshot,
+        now_fn=now_fn,
+        id_factory=id_factory,
+    )
 
     _interpret_event(
         setup.ctx.run_dir,
@@ -753,6 +772,8 @@ def _run_adapter_episode(
         signals=[],
         reasons=None,
         source="system",
+        now_fn=now_fn,
+        id_factory=id_factory,
     )
 
     plan_steps = [setup.adapter_label]
@@ -761,7 +782,15 @@ def _run_adapter_episode(
     setup.state.set_plan(steps=plan_step_objs, rationale=plan_rationale, source="system")
     setup.state_repo.persist(setup.state)
     snapshot["state"] = setup.state.to_dict()
-    _plan_event(setup.ctx.run_dir, setup.ctx.episode_id, steps=plan_steps, rationale=plan_rationale, source="system")
+    _plan_event(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        steps=plan_steps,
+        rationale=plan_rationale,
+        source="system",
+        now_fn=now_fn,
+        id_factory=id_factory,
+    )
 
     status_payload: Dict[str, Any] = {"status": "ok"}
     reflect_reasons: List[str] = []
@@ -820,6 +849,8 @@ def _run_adapter_episode(
         success=success,
         deltas=None,
         reasons=reflect_reasons,
+        now_fn=now_fn,
+        id_factory=id_factory,
     )
 
     setup.state.set_outcome(
