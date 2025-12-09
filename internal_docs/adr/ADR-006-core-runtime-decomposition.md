@@ -156,7 +156,8 @@ Constraining the singleton to legacy/shim paths moves Noēsis closer to the inte
 
 ### 4.1 Ports for episode orchestration
 
-In an application/use-case module (e.g., `noesis/usecases/ports.py`):
+In an application/use-case module (public surface `noesis/ports.py`, implemented in
+`noesis/usecases/ports.py`):
 
 ```python
 from typing import Protocol, Any, Mapping, Iterable
@@ -229,19 +230,19 @@ Concrete bindings (outer layer):
 
 ### 4.5 Migration plan
 
-1) ✅ Introduce ports module (`noesis/usecases/ports.py`) and no-op prompt recorder.  
+1) ✅ Introduce ports module (`noesis/ports.py` → `noesis/usecases/ports.py`) and no-op prompt recorder.  
 2) ⏳ Add outer-layer factories to build concrete ports from `SessionConfig` + determinism.  
 3) ✅ Refactor `EpisodeRunner` to consume ports (no direct `RuntimeStateRepository`, `PromptRecorder`, `read_events`).  
-4) ✅ Split `core` into `_run_minimal_episode` / `_run_adapter_episode` using shared helpers.  
+4) ✅ Split `core` into `_run_minimal_episode` / `_run_adapter_episode` using shared helpers and deterministic-friendly runner ports.  
 5) ⏳ Gate `get_context()` to legacy shims; new paths require explicit session/context.  
 6) ✅ Strengthen import-linter/CI and backfill tests for new ports wiring (contracts now block `usecases` → {adapters, cli}).  
 7) ⏳ Delete dead code paths once dual support is stable.
 
 ### 4.6 Current implementation status (2025-12-09)
 
-- Ports package exported (`noesis/usecases/__init__.py`) and enforced by import-linter.
+- Ports package exported (`noesis/ports.py` aliasing `noesis/usecases/ports.py`) and enforced by import-linter.
 - `EpisodeRunner` now depends on ports for state/events/prompt/clock/history via structural adapters; behavior unchanged.
-- `core.py` is decomposed into `_run_minimal_episode` / `_run_adapter_episode` with shared finalization; public APIs intact.
+- `core.py` is decomposed into `_run_minimal_episode` / `_run_adapter_episode` with shared finalization and a common runner-port builder (clock/emitter/lineage) for both paths; public APIs intact.
 - Import-linter: 6/6 contracts kept under Python 3.12 (new usecase boundaries included).
 - Pending: runtime factories to bind ports from session/determinism, reducing `get_context()` usage, cleaning legacy wiring, and expanding fake-based tests.
 
