@@ -81,6 +81,32 @@ Every update strengthens three dimensions:
 - Signed releases with enforced replay gates and migration reporting.
 - Prompt provenance shipped as an experimental, opt-in artifact (ADR-005 v1.1); adapters/UI remain out of scope.
 
+### Current Status (at a glance)
+
+- ✅ Prompt provenance v1.1 (experimental, opt-in) shipped with schema/modes/tests.
+- ✅ Minimal-mode deterministic goldens + replay comparator (`diagnostics replay`); veto scenario determinism covered in tests.
+- ✅ ADR-001 Accepted; session API documented.
+- ⚠️ Determinism drill: CI replay gate still needed (golden/regression wired into CI).
+- ⚠️ Session GA proof: threading/ownership/reentrancy tests added; keep them enforced in CI.
+- ⚠️ Real LLM example missing: no checked-in live-model run that passes replay.
+
+### v1.0.0 — Definition of Done (Remaining Work)
+
+Noēsis v1.0.0 is considered **complete** when all of the following are true:
+
+1. **Determinism Drill is a CI Gate**
+   - A vetoed episode golden is checked in (non-minimal mode).
+   - `noesis diagnostics replay` is wired into CI to replay goldens and fail on drift across `summary.json`, `state.json`, `events.jsonl`, and `manifest.json`.
+
+2. **NoesisSession GA is Verified, Not Just Documented**
+   - Threading / ownership / reentrancy tests for `NoesisSession` are present and run in CI (parallel sessions, reuse semantics, no global state leaks).
+   - ADR-001 remains Accepted and matches the behaviour enforced by these tests.
+
+3. **Real LLM Example Has a Passing Golden**
+   - At least one checked-in example uses a real LLM-backed agent/graph, emits the full artifact suite, and its recorded run passes the determinism replay gate in CI.
+
+Once these three conditions are met, the Noēsis runtime and artifact model are considered **v1.0.0-complete**. Further work (curriculum runner, dashboards, expanded prompt provenance, etc.) is tracked under v1.1+ and is not blocking GA.
+
 ### Phase Sequence
 
 ---
@@ -109,7 +135,7 @@ Every update strengthens three dimensions:
    Scope: per-file `$schema_version`, field-level stability flags, schema semver rules, mandatory migration notes, pinned KPI formulas (plan_adherence, tool_coverage, veto_count, success), and CI schema guard requirements.
 
 4. **Determinism Drill (tooling) PR** _(Owner: Sara)_  
-   Deliverables: replay CLI (`diagnostics --replay` or equivalent) that re-runs an episode under `DeterminismConfig`, diffs artifacts/lineage with tolerances, emits clear DRIFT/NO DRIFT, and a named vetoed golden used by both CLI and CI.
+   Deliverables: replay CLI (`diagnostics replay`) that re-runs an episode under `DeterminismConfig`, diffs artifacts/lineage with tolerances, emits clear DRIFT/NO DRIFT, and a named vetoed golden used by both CLI and CI. **Status:** CLI + comparer + minimal-mode goldens shipped; vetoed golden + CI gate outstanding.
 
 **Exit Criteria**
 
@@ -120,40 +146,44 @@ Every update strengthens three dimensions:
 
 ---
 
-### Phase 1 — Determinism Drill (Blocking for v1.0.0)
+### Phase 1 — Determinism Drill (Partially Complete; still blocking v1.0.0)
 
 **Focus:** Ship the replay/drift UX on top of the deterministic runtime.
 
-**Key Deliverables**
+**Delivered**
 
-- `diagnostics --replay` (or equivalent) to re-run episodes under `DeterminismConfig` and report DRIFT/NO DRIFT across summary/state/manifest/events with tolerances for metrics.
-- Paired meta/minimal runs with goldens; minimal-mode artifacts are byte-identical across seeds; meta-mode shows tamper-evident manifests.
-- Simulated veto scenario golden exercising ULID→UUIDv5 lineage and manifest verification.
-- CI gate that fails on replay drift using the canonical golden.
+- `diagnostics replay` CLI with structural/byte diffing (`noesis/cli/commands/diagnostics.py`, `noesis/diagnostics/replay.py`).
+- Minimal-mode deterministic goldens + unit tests (`tests/golden/deterministic_run/run_{a,b}`, `tests/diagnostics/test_replay.py`).
+
+**Remaining (Blocking)**
+
+- Add a CI-enforced replay gate (drift check) and persist a veto scenario regression (golden or generated fixture).
 
 **Exit Criteria**
 
-- Minimal-mode artifacts are bit-for-bit identical across runs.
-- Replay tool reports zero drift for goldens.
-- Governance lineage is deterministic and validated by goldens.
+- Minimal-mode artifacts are bit-for-bit identical across runs (covered by current goldens).
+- Replay tool reports zero drift for goldens in CI.
+- Governance lineage determinism validated by a vetoed golden.
 
 ---
 
-### Phase 2 — NoesisSession GA (ADR-001 → Accepted)
+### Phase 2 — NoesisSession GA (ADR-001 → Accepted; finalize GA proof)
 
 **Focus:** Make the session the public, deterministic entrypoint.
 
-**Key Deliverables**
+**Delivered**
 
-- Promote ADR-001 from Proposed to Accepted with reentrancy/threading guarantees.
-- Document `NoesisSession` / `ns.run/solve` surface as GA; add migration notes.
-- Concurrency and ownership tests proving determinism.
-- README/docs updated to show session-first usage.
+- ADR-001 marked Accepted; session API documented (`NoesisSession`, `SessionBuilder`, `ns.run/solve`).
+
+**Remaining**
+
+- Keep threading/ownership/reentrancy tests enforced in CI.
+- Ensure docs/readme call the session API GA with migration notes.
 
 **Exit Criteria**
 
 - Senior engineers can adopt Noēsis without guessing about runtime scope or threading.
-- Public API surface and shims are documented; ADR-001 marked Accepted.
+- Public API surface and shims are documented; ADR-001 stays Accepted with GA tests in CI.
 
 ---
 
@@ -181,11 +211,11 @@ Every update strengthens three dimensions:
 
 **Focus:** Prove real-world integration with a live LLM-backed flow.
 
-**Key Deliverables**
+**Remaining**
 
-- One LangGraph or CrewAI-esque example hitting a real LLM.
-- Emits full artifacts + manifest; replay passes with the determinism drill.
-- Docs showing how to wrap external tools/graphs with Noēsis.
+- Add one LangGraph/CrewAI-esque example hitting a real model.
+- Ensure it emits full artifacts + manifest and passes replay/determinism checks.
+- Document how to wrap external tools/graphs with Noēsis using this example.
 
 **Exit Criteria**
 

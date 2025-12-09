@@ -197,7 +197,19 @@ class PreActGovernor:
                 details={"goal": goal},
             )
 
-        sensitive_pattern = re.compile(r"\b(write|delete)\b", re.IGNORECASE)
+        sensitive_pattern = re.compile(r"\b(write|delete|drop)\b", re.IGNORECASE)
+        veto_pattern = re.compile(r"\b(veto|destroy|shutdown|wipe)\b", re.IGNORECASE)
+        if veto_pattern.search(goal) or any(veto_pattern.search(step.description) for step in plan):
+            return GovernanceResult(
+                decision=GovernanceDecision.VETO,
+                rule_id="rules.veto.protected",
+                score=0.95,
+                message="Task blocked by governance policy",
+                policy_id=self.policy_id,
+                policy_version=self.policy_version,
+                policy_kind=self.policy_kind,
+                details={"goal": goal},
+            )
         if sensitive_pattern.search(goal) or any(sensitive_pattern.search(step.description) for step in plan):
             return GovernanceResult(
                 decision=GovernanceDecision.AUDIT,

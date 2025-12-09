@@ -3,15 +3,27 @@
 ## Unreleased
 - No public changes yet.
 
+## v1.1.0 – 2025-12-08
+### Added
+- Prompt provenance v1.1 (ADR-005): schema-governed `prompts.jsonl` (`$schema_name: prompt`, `$schema_version: 1.1.0`), fixtures, and schema guard.
+- PromptRecorder modes: `full`, `hash_only`, `redacted` with deterministic hashing, redaction, tags, templates, and variables; manifest integration and leakage guards.
+- Multi-phase prompt coverage: interpret (intuition), plan (direction.planner), governance (governance.pre_act), reflect (reflect), with tag threading and optional event linkage.
+- Replay diagnostics: `noesis diagnostics replay` CLI and `noesis.diagnostics.compare_runs` with deterministic goldens and unit tests.
+
+### Notes
+- Prompt provenance remains experimental and opt-in; adapters/UI and per-field PII policies are out of scope.
+- Vetoed golden + CI replay gate, real LLM example, and threading/ownership tests remain on the roadmap.
+
 ## v1.0.0 – 2025-11-21
 ### Highlights
 - Runtime ownership (ADR-001) is GA: `NoesisSession`/`SessionBuilder` + `DefaultSessionProvider` back all `ns.*`/CLI entrypoints, with determinism plumbed through sessions.
-- Determinism substrate and drill (ADR-004): canonical JSON writers, deterministic clock/RNG/ULID/UUID lineage, and replay comparator CLI (`noesis diagnostics replay`) backed by a deterministic golden fixture.
+- Determinism substrate and drill (ADR-004): canonical JSON writers, deterministic clock/RNG/ULID/UUID lineage, and replay comparator CLI (`noesis diagnostics replay`) backed by deterministic goldens.
 - Artifact immutability (ADR-002) + schema governance (ADR-003) remain enforced; manifests, summary/state/events stay canonical with atomic writes.
 - CLI gains replay diagnostics and retains artifacts verification; tests guard structural determinism and replay drift.
+- Prompt provenance (ADR-005) shipped as experimental/opt-in: prompt schema 1.1.0, `PromptRecorder` with `full`/`hash_only`/`redacted`, multi-phase coverage, and schema-guarded fixtures/tests.
 
 ### Notes
-- Prompt Provenance (ADR-005) remains experimental/non-blocking for 1.0.0.
+- Prompt Provenance (ADR-005) is experimental/opt-in (`prompt@1.1.0`) and not part of the replay gate.
 - Existing `ns.run/solve/set` shims delegate to sessions; migrate code incrementally by constructing explicit sessions where needed.
 
 ## v0.9.5 – 2025-11-04
