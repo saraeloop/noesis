@@ -23,13 +23,27 @@ from noesis.domain.planner.meta import MetaPlanner
 from noesis.domain.faculties.direction import PlannerDirective, DirectiveStatus
 from noesis.domain.faculties.governance import GovernanceDecision, GovernanceResult, PreActGovernor
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
-from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
+from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
-from noesis.runtime.prompt_recorder import PromptRecorder
 from noesis.runtime.events_emitter import CognitiveEventEmitter
 from noesis.runtime.artifacts.ids import directive_uuid, governance_uuid
 from noesis.trace.events import read_events
 from .hooks.meta_phase import CompositeMetaPhaseHook, MetaPhaseHook, NullMetaPhaseHook
+from .ports import (
+    ClockPort,
+    EventHistoryPort,
+    EventIdFactoryPort,
+    EventSinkPort,
+    PromptRecorderPort,
+    StateRepositoryPort,
+)
+
+
+class _EventHistoryAdapter:
+    """Structural adapter to expose read_events as a port."""
+
+    def read(self, run_dir) -> Sequence[Dict[str, object]]:
+        return read_events(run_dir)
 
 
 @dataclass(slots=True)
@@ -60,18 +74,20 @@ class EpisodeDependencies:
     planner: Planner
     actuator: Actuator
     event_bus: EventBus
-    state_repository: RuntimeStateRepository
+    state_repository: StateRepositoryPort
     direction_planner: MetaPlanner | None = None
     governance_policy: PreActGovernor | None = None
 
 
 @dataclass(slots=True)
 class EpisodeInstrumentation:
-    clock: RuntimeClock
-    emitter: CognitiveEventEmitter
+    clock: ClockPort
+    emitter: EventSinkPort
     lineage: LineageTracker
+    event_history: EventHistoryPort = field(default_factory=_EventHistoryAdapter)
+    prompt_recorder: PromptRecorderPort | None = None
     now: Callable[[], datetime] = field(default_factory=lambda: datetime.now(timezone.utc))
-    event_id_factory: Callable[[], UUID] = uuid4
+    event_id_factory: EventIdFactoryPort | Callable[[], UUID] = uuid4
     rng: object | None = None
     hooks: Sequence[MetaPhaseHook] = field(default_factory=lambda: (NullMetaPhaseHook(),))
 
@@ -94,6 +110,8 @@ class EpisodeRunner:
                 clock=RuntimeClock(),
                 emitter=CognitiveEventEmitter(run_dir=context.run_dir),
                 lineage=LineageTracker(),
+                event_history=_EventHistoryAdapter(),
+                prompt_recorder=getattr(context, "prompt_recorder", None),
                 now=datetime.now,
                 event_id_factory=uuid4,
                 hooks=(NullMetaPhaseHook(),),
@@ -101,13 +119,14 @@ class EpisodeRunner:
         self._clock = instrumentation.clock
         self._emitter = instrumentation.emitter
         self._lineage = instrumentation.lineage
+        self._event_history = instrumentation.event_history
         self._now = instrumentation.now
         factory = instrumentation.event_id_factory
         self._event_id_factory = factory if callable(factory) else (lambda: factory)
         hooks = instrumentation.hooks or (NullMetaPhaseHook(),)
         self._hooks = CompositeMetaPhaseHook(tuple(hooks))
         self._context = context
-        self._prompt_recorder: PromptRecorder | None = getattr(context, "prompt_recorder", None)
+        self._prompt_recorder: PromptRecorderPort | None = instrumentation.prompt_recorder or getattr(context, "prompt_recorder", None)
 
     def run(self, request: EpisodeRequest) -> EpisodeResult:
         context = request.context
@@ -134,7 +153,7 @@ class EpisodeRunner:
         return EpisodeResult(state=state, outcome=outcome, plan=plan)
 
     def _seed_lineage(self, context: EpisodeContext) -> None:
-        events = read_events(context.run_dir)
+        events = self._event_history.read(context.run_dir)
         last_id: UUID | None = None
         for event in reversed(events):
             raw_id = event.get("id")
@@ -465,9 +484,11 @@ class EpisodeRunner:
             now=self._now,
         )
 
-    def _resolve_prompt_recorder(self, context: EpisodeContext) -> PromptRecorder | None:
+    def _resolve_prompt_recorder(self, context: EpisodeContext) -> PromptRecorderPort | None:
         recorder = getattr(context, "prompt_recorder", None) or self._prompt_recorder
-        if recorder is None or not recorder.is_enabled():
+        if recorder is None:
+            return None
+        if not hasattr(recorder, "is_enabled") or not recorder.is_enabled():  # type: ignore[attr-defined]
             return None
         return recorder
 
