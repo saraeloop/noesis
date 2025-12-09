@@ -1,6 +1,6 @@
 # ADR-006 — Core Runtime Decomposition & Ports for Episode Orchestration
 
-**Status:** In progress  
+**Status:** Accepted
 **Date:** 2025-12-09  
 **Owner:** Noēsis maintainer (@saraeloop)  
 **Since:** v1.0.0 (post-GA refactor)
@@ -71,6 +71,7 @@ We will:
      - `PromptRecorderPort` (record prompt provenance where enabled),
      - `ClockPort` / `IdFactoryPort` (if needed explicitly).
    - Make `EpisodeRunner` and `EpisodeDependencies` depend on these ports, not on `RuntimeStateRepository`, `PromptRecorder`, or filesystem helpers.
+   - Expose the public import path as `noesis.ports` (aliasing `noesis.usecases.ports`) and forbid public examples/docs from importing `noesis.usecases.*`.
 
 2. **Decompose `noesis.core` into smaller, mode-specific orchestrators**  
    without changing the public API:
@@ -225,28 +226,30 @@ Concrete bindings (outer layer):
 - Behavior: artifacts (`events.jsonl`, `state.json`, `summary.json`, `manifest.json`, optional `prompts.jsonl`) and schema versions are unchanged.
 - Determinism: existing replay tests stay green (byte-stable summaries/manifests; structural event equality).
 - Import-linter: new contracts added to forbid use-case layer importing runtime/infra; CI enforced.
+- Public surface: ports are exposed via `noesis.ports`; docs/examples/tests use the facade and do not import `noesis.usecases.*`.
 - Tests: unit and integration suites pass; determinism + veto scenarios pass; schema guard unaffected.
 - Public API: signatures and CLI flags unchanged.
 
 ### 4.5 Migration plan
 
 1) ✅ Introduce ports module (`noesis/ports.py` → `noesis/usecases/ports.py`) and no-op prompt recorder.  
-2) ⏳ Add outer-layer factories to build concrete ports from `SessionConfig` + determinism.  
+2) ✅ Add outer-layer factories to build concrete ports from `SessionConfig` + determinism (`_bootstrap_episode` + `_build_runner_ports`).  
 3) ✅ Refactor `EpisodeRunner` to consume ports (no direct `RuntimeStateRepository`, `PromptRecorder`, `read_events`).  
 4) ✅ Split `core` into `_run_minimal_episode` / `_run_adapter_episode` using shared helpers and deterministic-friendly runner ports.  
-5) ⏳ Gate `get_context()` to legacy shims; new paths require explicit session/context.  
+5) ✅ Gate `get_context()` to legacy shims/public convenience; internal orchestration is session/context-first.  
 6) ✅ Strengthen import-linter/CI and backfill tests for new ports wiring (contracts now block `usecases` → {adapters, cli}).  
-7) ⏳ Delete dead code paths once dual support is stable.
+7) ✅ Consolidate runtime wiring under the ports-based path; no dual code paths remain for episode orchestration.
 
 ### 4.6 Current implementation status (2025-12-09)
 
 - Ports package exported (`noesis/ports.py` aliasing `noesis/usecases/ports.py`) and enforced by import-linter.
+- Public surface validated: docs/API reference list `noesis.ports`; public import smoke test covers the facade; docs/examples forbid `noesis.usecases.*`.
 - `EpisodeRunner` now depends on ports for state/events/prompt/clock/history via structural adapters; behavior unchanged.
 - `core.py` is decomposed into `_run_minimal_episode` / `_run_adapter_episode` with shared finalization and a common runner-port builder (clock/emitter/lineage) for both paths; public APIs intact.
 - Import-linter: 6/6 contracts kept under Python 3.12 (new usecase boundaries included).
-- Pending: runtime factories to bind ports from session/determinism, reducing `get_context()` usage, cleaning legacy wiring, and expanding fake-based tests.
+- `get_context()` is only used by public convenience entrypoints and the default session provider; internal orchestration uses explicit contexts/sessions.
 
-### 4.6 Consequences / risks / timeline
+### 4.7 Consequences / risks / timeline
 
 - Pros: cleaner layering, easier testing with in-memory fakes, safer integrations (LangGraph/CrewAI/OTel) without touching core.
 - Risks: temporary churn while both wiring styles coexist; must watch determinism regressions and schema drift.
