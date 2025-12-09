@@ -493,13 +493,22 @@ def _build_snapshot(
     }
 
 
-def _build_instrumentation(setup: _EpisodeRuntime, lineage: LineageTracker) -> EpisodeInstrumentation:
-    """Construct instrumentation ports with deterministic-friendly defaults."""
+def _build_runner_ports(setup: _EpisodeRuntime) -> tuple[RuntimeEventBus, EpisodeInstrumentation, LineageTracker]:
+    """Construct event bus + instrumentation using deterministic-friendly defaults."""
+    lineage = LineageTracker()
     clock = setup.run_clock or RuntimeClock()
     now_fn = clock.now if setup.determinism else (lambda: datetime.now(timezone.utc))
     event_id_factory = setup.event_id_factory or uuid4
     emitter = CognitiveEventEmitter(run_dir=setup.ctx.run_dir)
-    return EpisodeInstrumentation(
+    event_bus = RuntimeEventBus(
+        context=setup.episode_ctx,
+        emitter=emitter,
+        lineage=lineage,
+        clock=clock,
+        now=now_fn,
+        event_id_factory=event_id_factory,
+    )
+    instrumentation = EpisodeInstrumentation(
         clock=clock,
         emitter=emitter,
         lineage=lineage,
@@ -508,6 +517,7 @@ def _build_instrumentation(setup: _EpisodeRuntime, lineage: LineageTracker) -> E
         event_id_factory=event_id_factory,
         hooks=(),
     )
+    return event_bus, instrumentation, lineage
 
 
 def _finalize_episode(
@@ -668,17 +678,7 @@ def _run_minimal_episode(
         id_factory=setup.event_id_factory,
     )
 
-    lineage = LineageTracker()
-    clock = setup.run_clock or RuntimeClock()
-    emitter = CognitiveEventEmitter(run_dir=setup.ctx.run_dir)
-    event_bus = RuntimeEventBus(
-        context=setup.episode_ctx,
-        emitter=emitter,
-        lineage=lineage,
-        clock=clock,
-        now=clock.now if setup.determinism else (lambda: datetime.now(timezone.utc)),
-        event_id_factory=setup.event_id_factory or uuid4,
-    )
+    event_bus, instrumentation, lineage = _build_runner_ports(setup)
     direction_planner = MetaPlanner() if setup.cfg.planner_mode is PlannerMode.META else None
     governance_policy = PreActGovernor() if setup.cfg.planner_mode is PlannerMode.META else None
     deps = EpisodeDependencies(
@@ -689,7 +689,6 @@ def _run_minimal_episode(
         direction_planner=direction_planner,
         governance_policy=governance_policy,
     )
-    instrumentation = _build_instrumentation(setup, lineage)
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
     episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=setup.episode_ctx)
     result = runner.run(episode_request)
