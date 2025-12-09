@@ -253,4 +253,12 @@ Concrete bindings (outer layer):
 
 - Pros: cleaner layering, easier testing with in-memory fakes, safer integrations (LangGraph/CrewAI/OTel) without touching core.
 - Risks: temporary churn while both wiring styles coexist; must watch determinism regressions and schema drift.
+- Global context (`get_context()`) is retained as a convenience entrypoint (and used by the default session provider); future tightening may require explicit sessions in all internal call sites.
+- `EpisodeRunner` still constructs runtime defaults when instrumentation is omitted; future polish could inject ports-built instrumentation from core to keep usecases free of runtime concretes.
 - Timeline: target post-GA (v1.0.x) in 2–3 PRs following the migration steps; keep release notes noting “internal refactor, no surface change.”
+
+### 4.8 Follow-ups (post-ADR polish)
+
+- Consider requiring explicit instrumentation injection for `EpisodeRunner` (or always building it in core) to remove remaining runtime defaults from the use-case layer.
+- Consider hardening the public surface by warning or blocking direct `noesis.usecases.*` imports; keep `noesis.ports` as the documented extension point.
+- Evaluate tightening the default session provider to avoid implicit `get_context()` creation in multi-tenant hosts.
