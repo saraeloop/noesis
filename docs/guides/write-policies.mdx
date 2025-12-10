@@ -1,0 +1,326 @@
+---
+title: "Write intuition policies"
+description: "How to create, test, and deploy policies that guide and guard your agent episodes."
+---
+
+This guide covers patterns and best practices for writing intuition policies that make your agents safer and more predictable.
+
+## When to use policies
+
+Use policies when you need to:
+
+- **Block dangerous operations** before they execute
+- **Modify inputs** to add safety bounds or fix common issues
+- **Provide guidance** without blocking execution
+- **Audit decisions** for compliance and debugging
+
+## Policy structure
+
+Every policy extends `DirectedIntuition` and implements the `advise` method:
+
+```python
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class MyPolicy(ns.DirectedIntuition):
+    __version__ = "1.0"
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        # Your logic here
+        # Return None to allow, or use self.hint/intervene/veto
+        return None
+```
+
+## Three types of actions
+
+### Hints (advisory)
+
+Use hints to provide guidance without blocking:
+
+```python
+def advise(self, state: dict) -> IntuitionEvent | None:
+    if "production" in state.get("task", "").lower():
+        return self.hint(
+            advice="Consider testing in staging first.",
+            target="plan",
+            rationale="Production changes benefit from staging validation.",
+        )
+    return None
+```
+
+Hints appear in the event timeline but don't modify execution.
+
+### Interventions (modify)
+
+Use interventions to fix inputs or add safety bounds:
+
+```python
+def advise(self, state: dict) -> IntuitionEvent | None:
+    task = state.get("task", "")
+    
+    # Add LIMIT to unbounded queries
+    if "select" in task.lower() and "limit" not in task.lower():
+        return self.intervene(
+            advice="Added LIMIT 1000 to prevent resource exhaustion.",
+            patch={"task": f"{task} LIMIT 1000"},
+            target="input",
+            rationale="Unbounded queries can overwhelm the database.",
+        )
+    return None
+```
+
+Interventions modify the state and continue execution.
+
+### Vetoes (block)
+
+Use vetoes to completely block dangerous operations:
+
+```python
+def advise(self, state: dict) -> IntuitionEvent | None:
+    task = state.get("task", "").lower()
+    
+    if "drop table" in task or "truncate" in task:
+        return self.veto(
+            advice="Blocked: destructive database operation.",
+            target="plan",
+            rationale="DROP/TRUNCATE requires manual execution with audit trail.",
+        )
+    return None
+```
+
+Vetoes stop execution and record the reason in the timeline.
+
+## Common patterns
+
+### Pattern: Regex-based detection
+
+```python
+import re
+
+
+class SqlSafetyPolicy(ns.DirectedIntuition):
+    __version__ = "1.0"
+    
+    _DANGEROUS = re.compile(
+        r"\b(drop\s+table|truncate|delete\s+from\s+\w+\s*;)\b",
+        re.IGNORECASE,
+    )
+    _PII = re.compile(
+        r"\b(ssn|password|credit.card)\b",
+        re.IGNORECASE,
+    )
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = state.get("task", "")
+        
+        if self._DANGEROUS.search(task):
+            return self.veto(
+                advice="Blocked: destructive SQL detected.",
+                target="plan",
+                rationale="Requires privileged approval.",
+            )
+        
+        if self._PII.search(task):
+            return self.veto(
+                advice="Blocked: PII field access detected.",
+                target="plan",
+                rationale="Requires privacy review.",
+            )
+        
+        return None
+```
+
+### Pattern: Risk scoring
+
+```python
+class RiskScoringPolicy(ns.DirectedIntuition):
+    __version__ = "1.0"
+    
+    RISK_WEIGHTS = {
+        "production": 0.3,
+        "delete": 0.4,
+        "all": 0.2,
+        "customer": 0.1,
+    }
+    THRESHOLD = 0.5
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = state.get("task", "").lower()
+        
+        risk_score = sum(
+            weight for keyword, weight in self.RISK_WEIGHTS.items()
+            if keyword in task
+        )
+        
+        if risk_score >= self.THRESHOLD:
+            return self.intervene(
+                advice=f"High risk score ({risk_score:.2f}). Requiring approval.",
+                patch={"requires_approval": True, "risk_score": risk_score},
+                target="plan",
+                rationale="Operations exceeding risk threshold need human review.",
+            )
+        
+        return None
+```
+
+### Pattern: Context-aware policies
+
+```python
+from datetime import datetime
+
+
+class ChangeWindowPolicy(ns.DirectedIntuition):
+    __version__ = "1.0"
+    
+    CHANGE_WINDOW_START = 10  # 10 AM
+    CHANGE_WINDOW_END = 16    # 4 PM
+    HIGH_RISK_ACTIONS = {"deploy", "rollback", "scale", "migrate"}
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        action = state.get("action", "").lower()
+        hour = datetime.now().hour
+        
+        if action in self.HIGH_RISK_ACTIONS:
+            if hour < self.CHANGE_WINDOW_START or hour >= self.CHANGE_WINDOW_END:
+                return self.intervene(
+                    advice="Outside change window. Scheduling for next window.",
+                    patch={"scheduled": True, "execute_at": "10:00"},
+                    target="plan",
+                    rationale="High-risk changes restricted to 10AM-4PM.",
+                )
+        
+        return None
+```
+
+## Testing policies
+
+Test policies in isolation without running full episodes:
+
+```python
+import pytest
+from my_policy import SqlSafetyPolicy
+
+
+class TestSqlSafetyPolicy:
+    def setup_method(self):
+        self.policy = SqlSafetyPolicy()
+    
+    def test_allows_safe_query(self):
+        result = self.policy.advise({"task": "SELECT name FROM users LIMIT 10"})
+        assert result is None
+    
+    def test_blocks_drop_table(self):
+        result = self.policy.advise({"task": "DROP TABLE users"})
+        assert result is not None
+        assert result.action == "veto"
+    
+    def test_blocks_pii_access(self):
+        result = self.policy.advise({"task": "SELECT password FROM users"})
+        assert result is not None
+        assert result.action == "veto"
+        assert "PII" in result.advice
+```
+
+Run tests with:
+
+```bash
+pytest test_policy.py -v
+```
+
+## Wiring policies
+
+### CLI
+
+```bash
+noesis run "my task" --intuition my_module:MyPolicy
+```
+
+### Python
+
+```python
+import noesis as ns
+from my_policy import MyPolicy
+
+episode_id = ns.run("my task", intuition=MyPolicy())
+```
+
+### Multiple policies
+
+Chain multiple policies by creating a composite:
+
+```python
+class CompositePolicy(ns.DirectedIntuition):
+    __version__ = "1.0"
+    
+    def __init__(self):
+        self.policies = [
+            SqlSafetyPolicy(),
+            RiskScoringPolicy(),
+            ChangeWindowPolicy(),
+        ]
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        for policy in self.policies:
+            result = policy.advise(state)
+            if result is not None:
+                return result
+        return None
+```
+
+## Versioning policies
+
+Always include a `__version__` attribute:
+
+```python
+class MyPolicy(ns.DirectedIntuition):
+    __version__ = "1.2"  # Increment when logic changes
+```
+
+This version appears in event payloads as `policy_id: "MyPolicy@1.2"`, enabling:
+
+- Audit trails showing which policy version made decisions
+- A/B testing different policy versions
+- Rollback to previous policy versions
+
+## Best practices
+
+<Tip>
+**Keep policies focused.** One policy should address one concern. Compose multiple policies for complex scenarios.
+</Tip>
+
+<Warning>
+**Never mutate state directly.** Return patches through `intervene()` and let the core runner apply them.
+</Warning>
+
+<Info>
+**Test edge cases thoroughly.** Policies are security-critical—test empty inputs, unicode, and boundary conditions.
+</Info>
+
+## Troubleshooting
+
+### Policy not being called
+
+- Verify `intuition=True` or `intuition=MyPolicy()` is passed to `ns.run()`
+- Check planner mode is `meta` (default), not `minimal`
+
+### Veto not blocking
+
+- Ensure you're returning the result: `return self.veto(...)` not just `self.veto(...)`
+- Check that the condition actually matches your input
+
+### Intervention not applied
+
+- Verify your `patch` dictionary has the correct keys
+- Check the event timeline to see if the intervention was recorded
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="First policy tutorial" icon="graduation-cap" href="/tutorials/first-policy">
+    Step-by-step tutorial for beginners.
+  </Card>
+  <Card title="Governance guide" icon="shield" href="/guides/configure-planner-modes">
+    Configure planner modes for different governance levels.
+  </Card>
+</CardGroup>

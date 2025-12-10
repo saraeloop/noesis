@@ -1,0 +1,482 @@
+---
+title: "State schema"
+description: "Complete reference for the Noēsis state.json artifact."
+---
+
+The `state.json` artifact captures the cognitive state at the end of each episode. It provides a complete view of what was planned and what happened.
+
+## Schema overview
+
+```json
+{
+  "version": "1.0",
+  "state_schema_version": "1.0.0",
+  "episode": { ... },
+  "goal": { ... },
+  "beliefs": [ ... ],
+  "plan": { ... },
+  "memory": { ... },
+  "outcomes": { ... }
+}
+```
+
+## Root fields
+
+<ResponseField name="version" type="string" required>
+Backwards-compatible identifier. Currently `"1.0"`.
+</ResponseField>
+
+<ResponseField name="state_schema_version" type="string" required>
+Semantic version for the schema contract. Currently `"1.0.0"`.
+</ResponseField>
+
+## Episode
+
+Episode metadata and timestamps.
+
+```json
+{
+  "episode": {
+    "id": "ep_2024_abc123_s0",
+    "seed": 0,
+    "tags": {
+      "environment": "staging",
+      "team": "platform"
+    },
+    "adapter": "baseline",
+    "started_at": "2024-01-15T10:30:00Z",
+    "completed_at": "2024-01-15T10:30:05Z"
+  }
+}
+```
+
+<ResponseField name="episode.id" type="string" required>
+Unique episode identifier.
+</ResponseField>
+
+<ResponseField name="episode.seed" type="number">
+Seed used for reproducibility.
+</ResponseField>
+
+<ResponseField name="episode.tags" type="object">
+User-provided metadata tags.
+</ResponseField>
+
+<ResponseField name="episode.adapter" type="string">
+Adapter used for execution.
+</ResponseField>
+
+<ResponseField name="episode.started_at" type="string" required>
+ISO 8601 start timestamp.
+</ResponseField>
+
+<ResponseField name="episode.completed_at" type="string">
+ISO 8601 completion timestamp.
+</ResponseField>
+
+## Goal
+
+The task the agent is pursuing.
+
+```json
+{
+  "goal": {
+    "task": "Draft release notes for v1.2.0",
+    "context": {
+      "changelog_path": "CHANGELOG.md",
+      "format": "markdown"
+    }
+  }
+}
+```
+
+<ResponseField name="goal.task" type="string" required>
+The original task or goal.
+</ResponseField>
+
+<ResponseField name="goal.context" type="object">
+Additional context provided with the task.
+</ResponseField>
+
+## Beliefs
+
+Normalized statements the system inferred during execution.
+
+```json
+{
+  "beliefs": [
+    {
+      "statement": "Version 1.2.0 includes 3 new features",
+      "confidence": 0.9,
+      "provenance": "changelog_analysis",
+      "timestamp": "2024-01-15T10:30:02Z"
+    },
+    {
+      "statement": "Breaking changes require migration guide",
+      "confidence": 0.85,
+      "provenance": "policy_hint"
+    }
+  ]
+}
+```
+
+<ResponseField name="beliefs[].statement" type="string" required>
+The belief statement.
+</ResponseField>
+
+<ResponseField name="beliefs[].confidence" type="number" required>
+Confidence in the belief (0-1).
+</ResponseField>
+
+<ResponseField name="beliefs[].provenance" type="string" required>
+Source of the belief.
+</ResponseField>
+
+<ResponseField name="beliefs[].timestamp" type="string">
+When the belief was recorded.
+</ResponseField>
+
+## Plan
+
+Ordered steps describing the execution plan.
+
+```json
+{
+  "plan": {
+    "steps": [
+      {
+        "id": "step_1",
+        "kind": "detect",
+        "description": "Read changelog entries",
+        "status": "done",
+        "rationale": "Need to gather raw changelog data",
+        "inputs": {
+          "file": "CHANGELOG.md"
+        },
+        "outputs": {
+          "entries": 15
+        }
+      },
+      {
+        "id": "step_2",
+        "kind": "analyze",
+        "description": "Categorize changes",
+        "status": "done"
+      },
+      {
+        "id": "step_3",
+        "kind": "act",
+        "description": "Generate release notes",
+        "status": "done"
+      },
+      {
+        "id": "step_4",
+        "kind": "verify",
+        "description": "Validate format",
+        "status": "done"
+      }
+    ]
+  }
+}
+```
+
+<ResponseField name="plan.steps" type="array" required>
+Ordered list of plan steps.
+</ResponseField>
+
+### Step fields
+
+<ResponseField name="plan.steps[].id" type="string" required>
+Unique step identifier.
+</ResponseField>
+
+<ResponseField name="plan.steps[].kind" type="string" required>
+Step kind (controlled vocabulary):
+
+| Kind | Purpose |
+| --- | --- |
+| `detect` | Gather information |
+| `analyze` | Process or categorize |
+| `plan` | Sub-planning |
+| `act` | Execute action |
+| `verify` | Check results |
+| `review` | Human review point |
+</ResponseField>
+
+<ResponseField name="plan.steps[].description" type="string" required>
+Human-readable step description.
+</ResponseField>
+
+<ResponseField name="plan.steps[].status" type="string" required>
+Step status (controlled vocabulary):
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Not yet started |
+| `running` | Currently executing |
+| `done` | Completed successfully |
+| `skipped` | Intentionally skipped |
+| `failed` | Failed with error |
+| `vetoed` | Blocked by policy |
+</ResponseField>
+
+<ResponseField name="plan.steps[].rationale" type="string">
+Explanation for the step.
+</ResponseField>
+
+<ResponseField name="plan.steps[].inputs" type="object">
+Inputs provided to the step.
+</ResponseField>
+
+<ResponseField name="plan.steps[].outputs" type="object">
+Outputs produced by the step.
+</ResponseField>
+
+## Memory
+
+Persistent facts and scratchpad captured during the run.
+
+```json
+{
+  "memory": {
+    "facts": [
+      {
+        "key": "changelog_format",
+        "value": "keep-a-changelog",
+        "timestamp": "2024-01-15T10:30:02Z",
+        "provenance": "detection"
+      },
+      {
+        "key": "breaking_changes_count",
+        "value": 3,
+        "timestamp": "2024-01-15T10:30:03Z",
+        "provenance": "analysis"
+      }
+    ],
+    "scratchpad": "Found 3 breaking changes to highlight in the migration section"
+  }
+}
+```
+
+<ResponseField name="memory.facts" type="array">
+Normalized facts with timestamps and provenance.
+</ResponseField>
+
+<ResponseField name="memory.facts[].key" type="string" required>
+Fact identifier.
+</ResponseField>
+
+<ResponseField name="memory.facts[].value" type="any" required>
+Fact value (any JSON type).
+</ResponseField>
+
+<ResponseField name="memory.facts[].timestamp" type="string">
+When the fact was recorded.
+</ResponseField>
+
+<ResponseField name="memory.facts[].provenance" type="string">
+Source of the fact.
+</ResponseField>
+
+<ResponseField name="memory.scratchpad" type="string">
+Free-form notes captured during execution.
+</ResponseField>
+
+## Outcomes
+
+Final status, action log, metrics, and artifacts.
+
+```json
+{
+  "outcomes": {
+    "status": "ok",
+    "actions": [
+      {
+        "id": "action_1",
+        "tool": "changelog_reader",
+        "input": "CHANGELOG.md",
+        "output": {"entries": 15},
+        "timestamp": "2024-01-15T10:30:01Z",
+        "duration_ms": 150
+      },
+      {
+        "id": "action_2",
+        "tool": "release_notes_generator",
+        "input": {"entries": 15, "format": "markdown"},
+        "output": {"file": "release_notes.md"},
+        "timestamp": "2024-01-15T10:30:03Z",
+        "duration_ms": 2500
+      }
+    ],
+    "metrics": {
+      "task_score": 0.95,
+      "steps_completed": 4,
+      "steps_total": 4
+    },
+    "artifacts": [
+      "release_notes.md"
+    ],
+    "error": null
+  }
+}
+```
+
+<ResponseField name="outcomes.status" type="string" required>
+Final outcome status (controlled vocabulary):
+
+| Status | Meaning |
+| --- | --- |
+| `ok` | Completed successfully |
+| `error` | Failed with error |
+| `vetoed` | Blocked by policy |
+| `aborted` | Manually stopped |
+| `partial` | Partially completed |
+| `pending` | Still running |
+</ResponseField>
+
+<ResponseField name="outcomes.actions" type="array">
+Log of actions executed.
+</ResponseField>
+
+### Action fields
+
+<ResponseField name="outcomes.actions[].id" type="string" required>
+Unique action identifier.
+</ResponseField>
+
+<ResponseField name="outcomes.actions[].tool" type="string">
+Tool that was invoked.
+</ResponseField>
+
+<ResponseField name="outcomes.actions[].input" type="any">
+Input to the action.
+</ResponseField>
+
+<ResponseField name="outcomes.actions[].output" type="any">
+Output from the action.
+</ResponseField>
+
+<ResponseField name="outcomes.actions[].timestamp" type="string" required>
+When the action was executed.
+</ResponseField>
+
+<ResponseField name="outcomes.actions[].duration_ms" type="number">
+Action duration in milliseconds.
+</ResponseField>
+
+<ResponseField name="outcomes.metrics" type="object">
+Evaluation metrics (e.g., `task_score`).
+</ResponseField>
+
+<ResponseField name="outcomes.artifacts" type="array">
+List of produced artifact paths.
+</ResponseField>
+
+<ResponseField name="outcomes.error" type="string">
+Error message if status is `error`.
+</ResponseField>
+
+## Complete example
+
+```json
+{
+  "version": "1.0",
+  "state_schema_version": "1.0.0",
+  "episode": {
+    "id": "ep_2024_abc123_s0",
+    "seed": 0,
+    "tags": {"team": "platform"},
+    "adapter": "baseline",
+    "started_at": "2024-01-15T10:30:00Z",
+    "completed_at": "2024-01-15T10:30:05Z"
+  },
+  "goal": {
+    "task": "Draft release notes for v1.2.0",
+    "context": {"changelog_path": "CHANGELOG.md"}
+  },
+  "beliefs": [
+    {
+      "statement": "Version 1.2.0 includes 3 new features",
+      "confidence": 0.9,
+      "provenance": "changelog_analysis"
+    }
+  ],
+  "plan": {
+    "steps": [
+      {"id": "step_1", "kind": "detect", "description": "Read changelog", "status": "done"},
+      {"id": "step_2", "kind": "act", "description": "Generate notes", "status": "done"}
+    ]
+  },
+  "memory": {
+    "facts": [
+      {"key": "format", "value": "keep-a-changelog", "provenance": "detection"}
+    ],
+    "scratchpad": "3 breaking changes found"
+  },
+  "outcomes": {
+    "status": "ok",
+    "actions": [
+      {"id": "action_1", "tool": "reader", "timestamp": "2024-01-15T10:30:01Z"}
+    ],
+    "metrics": {"task_score": 0.95},
+    "artifacts": ["release_notes.md"]
+  }
+}
+```
+
+## Reading state
+
+### Python
+
+```python
+import noesis as ns
+
+state = ns.state.read("ep_abc123")
+
+print(f"Task: {state['goal']['task']}")
+print(f"Status: {state['outcomes']['status']}")
+print(f"Steps: {len(state['plan']['steps'])}")
+```
+
+### File access
+
+```bash
+cat runs/demo/ep_abc123/state.json | jq '.outcomes.status'
+```
+
+## Policy usage
+
+Policies receive the state snapshot in their `advise` method:
+
+```python
+class MyPolicy(ns.DirectedIntuition):
+    def advise(self, state: dict):
+        # Access goal
+        task = state["goal"]["task"]
+        
+        # Access plan
+        steps = state["plan"]["steps"]
+        
+        # Access memory
+        facts = state["memory"]["facts"]
+        
+        # Access outcomes
+        actions = state["outcomes"]["actions"]
+        
+        return None
+```
+
+<Warning>
+Policies should treat state as read-only. To modify execution, return hints, interventions, or vetoes through the policy API.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Summary schema" icon="file" href="/reference/summary">
+    Summary artifact reference.
+  </Card>
+  <Card title="Events schema" icon="list" href="/reference/events">
+    Event timeline reference.
+  </Card>
+</CardGroup>

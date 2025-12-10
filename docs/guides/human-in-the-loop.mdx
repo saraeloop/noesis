@@ -1,0 +1,455 @@
+---
+title: "Human-in-the-loop"
+description: "How to add human approval workflows to your Noēsis episodes."
+---
+
+Many agent scenarios require human oversight before executing high-risk operations. This guide shows how to implement human-in-the-loop patterns with Noēsis.
+
+## When to use human approval
+
+Add human approval when:
+
+- Actions are **irreversible** (deletes, deployments, financial transactions)
+- Risk scores **exceed thresholds**
+- Policies flag operations as **requiring review**
+- Regulations demand **audit trails** with human sign-off
+
+## Basic approval pattern
+
+The simplest pattern pauses execution and waits for approval:
+
+```python
+import noesis as ns
+
+
+def require_approval(episode_id: str, action: str) -> bool:
+    """
+    In production, replace with:
+    - Slack interactive message
+    - ServiceNow approval workflow
+    - Custom approval UI
+    """
+    print(f"\n⚠️  Approval required for episode {episode_id}")
+    print(f"   Action: {action}")
+    response = input("   Approve? (y/n): ")
+    return response.lower() == "y"
+
+
+def run_with_approval(task: str, high_risk: bool = False):
+    """Run an episode with optional approval gate."""
+    
+    # First run to check if approval needed
+    episode_id = ns.run(
+        task,
+        intuition=True,
+        tags={"high_risk": high_risk},
+    )
+    
+    # Check events for approval requirement
+    events = list(ns.events.read(episode_id))
+    needs_approval = any(
+        e.get("payload", {}).get("requires_approval")
+        for e in events
+    )
+    
+    if needs_approval:
+        summary = ns.summary.read(episode_id)
+        proposed_action = summary.get("flags", {}).get("proposed_action", task)
+        
+        if require_approval(episode_id, proposed_action):
+            # Re-run with approval flag
+            episode_id = ns.run(
+                f"{task} [APPROVED]",
+                intuition=True,
+                tags={"approved": True, "original_episode": episode_id},
+            )
+        else:
+            print("❌ Action rejected by human reviewer")
+            return None
+    
+    return episode_id
+```
+
+## Policy-driven approval
+
+Create a policy that flags operations for approval:
+
+```python
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class ApprovalPolicy(ns.DirectedIntuition):
+    """Policy that requires approval for high-risk operations."""
+    
+    __version__ = "1.0"
+    
+    HIGH_RISK_KEYWORDS = {"delete", "drop", "truncate", "deploy", "rollback"}
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = state.get("task", "").lower()
+        
+        # Check for high-risk keywords
+        if any(kw in task for kw in self.HIGH_RISK_KEYWORDS):
+            return self.intervene(
+                advice="High-risk operation detected. Requiring human approval.",
+                patch={
+                    "requires_approval": True,
+                    "risk_reason": "high_risk_keyword",
+                },
+                target="plan",
+                rationale="Operations matching high-risk patterns need review.",
+            )
+        
+        # Check for production environment
+        if "production" in task or state.get("environment") == "production":
+            return self.intervene(
+                advice="Production operation detected. Requiring human approval.",
+                patch={
+                    "requires_approval": True,
+                    "risk_reason": "production_environment",
+                },
+                target="plan",
+                rationale="All production changes require human sign-off.",
+            )
+        
+        return None
+```
+
+## Slack integration
+
+Send approval requests to Slack:
+
+```python
+import os
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+import noesis as ns
+
+
+class SlackApproval:
+    """Handle approvals via Slack interactive messages."""
+    
+    def __init__(self, channel: str):
+        self.client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
+        self.channel = channel
+        self.pending = {}  # episode_id -> message_ts
+    
+    def request_approval(self, episode_id: str, action: str, context: dict) -> str:
+        """Send approval request to Slack."""
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "🔒 Approval Required"},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Episode:* `{episode_id}`\n*Action:* {action}",
+                },
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"*Reason:* {context.get('reason', 'Policy requirement')}"},
+                ],
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✅ Approve"},
+                        "style": "primary",
+                        "action_id": f"approve_{episode_id}",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "❌ Reject"},
+                        "style": "danger",
+                        "action_id": f"reject_{episode_id}",
+                    },
+                ],
+            },
+        ]
+        
+        try:
+            response = self.client.chat_postMessage(
+                channel=self.channel,
+                blocks=blocks,
+                text=f"Approval required for {episode_id}",
+            )
+            self.pending[episode_id] = response["ts"]
+            return response["ts"]
+        except SlackApiError as e:
+            raise RuntimeError(f"Slack API error: {e.response['error']}")
+    
+    def handle_response(self, episode_id: str, approved: bool, user: str):
+        """Handle approval response from Slack."""
+        if episode_id in self.pending:
+            # Update the message
+            status = "✅ Approved" if approved else "❌ Rejected"
+            self.client.chat_update(
+                channel=self.channel,
+                ts=self.pending[episode_id],
+                text=f"{status} by {user}",
+            )
+            del self.pending[episode_id]
+        
+        return approved
+
+
+# Usage
+slack = SlackApproval(channel="#approvals")
+
+def run_with_slack_approval(task: str):
+    episode_id = ns.run(task, intuition=ApprovalPolicy())
+    
+    # Check if approval needed
+    events = list(ns.events.read(episode_id))
+    approval_event = next(
+        (e for e in events if e.get("payload", {}).get("requires_approval")),
+        None,
+    )
+    
+    if approval_event:
+        slack.request_approval(
+            episode_id,
+            task,
+            {"reason": approval_event["payload"].get("risk_reason")},
+        )
+        return {"status": "pending_approval", "episode_id": episode_id}
+    
+    return {"status": "completed", "episode_id": episode_id}
+```
+
+## Async approval workflow
+
+For production systems, use an async workflow:
+
+```python
+import asyncio
+from dataclasses import dataclass
+from enum import Enum
+import noesis as ns
+
+
+class ApprovalStatus(Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+@dataclass
+class ApprovalRequest:
+    episode_id: str
+    action: str
+    context: dict
+    status: ApprovalStatus = ApprovalStatus.PENDING
+    approver: str | None = None
+
+
+class ApprovalQueue:
+    """Async approval queue with timeout support."""
+    
+    def __init__(self, timeout_seconds: int = 3600):
+        self.requests: dict[str, ApprovalRequest] = {}
+        self.timeout = timeout_seconds
+        self._events: dict[str, asyncio.Event] = {}
+    
+    async def request_approval(self, episode_id: str, action: str, context: dict) -> ApprovalRequest:
+        """Submit an approval request and wait for response."""
+        request = ApprovalRequest(episode_id, action, context)
+        self.requests[episode_id] = request
+        self._events[episode_id] = asyncio.Event()
+        
+        # Send to your approval channel (Slack, email, etc.)
+        await self._notify_approvers(request)
+        
+        # Wait for response with timeout
+        try:
+            await asyncio.wait_for(
+                self._events[episode_id].wait(),
+                timeout=self.timeout,
+            )
+        except asyncio.TimeoutError:
+            request.status = ApprovalStatus.EXPIRED
+        
+        return request
+    
+    async def approve(self, episode_id: str, approver: str):
+        """Mark request as approved."""
+        if episode_id in self.requests:
+            self.requests[episode_id].status = ApprovalStatus.APPROVED
+            self.requests[episode_id].approver = approver
+            self._events[episode_id].set()
+    
+    async def reject(self, episode_id: str, approver: str):
+        """Mark request as rejected."""
+        if episode_id in self.requests:
+            self.requests[episode_id].status = ApprovalStatus.REJECTED
+            self.requests[episode_id].approver = approver
+            self._events[episode_id].set()
+    
+    async def _notify_approvers(self, request: ApprovalRequest):
+        """Send notification to approvers."""
+        # Implement your notification logic here
+        print(f"Approval requested: {request.episode_id}")
+
+
+# Usage
+queue = ApprovalQueue(timeout_seconds=300)
+
+
+async def run_async_approval(task: str):
+    episode_id = ns.run(task, intuition=ApprovalPolicy())
+    
+    events = list(ns.events.read(episode_id))
+    if any(e.get("payload", {}).get("requires_approval") for e in events):
+        request = await queue.request_approval(episode_id, task, {})
+        
+        if request.status == ApprovalStatus.APPROVED:
+            # Continue with approved action
+            return ns.run(f"{task} [APPROVED by {request.approver}]", intuition=True)
+        elif request.status == ApprovalStatus.EXPIRED:
+            print("Approval timed out")
+            return None
+        else:
+            print(f"Rejected by {request.approver}")
+            return None
+    
+    return episode_id
+```
+
+## Recording approval in events
+
+The approval decision should be captured in the event timeline:
+
+```python
+import noesis as ns
+
+
+def record_approval(episode_id: str, approved: bool, approver: str):
+    """Record approval decision in a new episode that references the original."""
+    
+    summary = ns.summary.read(episode_id)
+    original_task = summary.get("task", "")
+    
+    # Create a linked episode with the decision
+    approval_episode = ns.run(
+        f"Human review of: {original_task}",
+        intuition=False,
+        tags={
+            "type": "approval",
+            "original_episode": episode_id,
+            "approved": approved,
+            "approver": approver,
+        },
+    )
+    
+    return approval_episode
+```
+
+## UI for approvals
+
+Build a simple approval UI with Gradio:
+
+```python
+import gradio as gr
+import noesis as ns
+
+
+def get_pending_approvals():
+    """Get episodes awaiting approval."""
+    episodes = ns.list_runs(limit=50)
+    pending = []
+    
+    for ep in episodes:
+        events = list(ns.events.read(ep["episode_id"]))
+        if any(e.get("payload", {}).get("requires_approval") for e in events):
+            summary = ns.summary.read(ep["episode_id"])
+            if not summary.get("tags", {}).get("approved"):
+                pending.append({
+                    "episode_id": ep["episode_id"],
+                    "task": summary.get("task", ""),
+                    "timestamp": ep["timestamp"],
+                })
+    
+    return pending
+
+
+def approve_episode(episode_id: str, approver: str):
+    """Approve an episode."""
+    ns.run(
+        f"[APPROVED] {ns.summary.read(episode_id).get('task', '')}",
+        tags={"approved": True, "approver": approver, "original": episode_id},
+    )
+    return f"✅ Approved by {approver}"
+
+
+def reject_episode(episode_id: str, approver: str, reason: str):
+    """Reject an episode."""
+    ns.run(
+        f"[REJECTED] {ns.summary.read(episode_id).get('task', '')}",
+        tags={"rejected": True, "approver": approver, "reason": reason, "original": episode_id},
+    )
+    return f"❌ Rejected by {approver}: {reason}"
+
+
+# Build Gradio interface
+with gr.Blocks(title="Approval Queue") as app:
+    gr.Markdown("# 🔐 Approval Queue")
+    
+    with gr.Row():
+        refresh_btn = gr.Button("Refresh")
+        pending_list = gr.Dataframe(headers=["Episode ID", "Task", "Timestamp"])
+    
+    with gr.Row():
+        episode_input = gr.Textbox(label="Episode ID")
+        approver_input = gr.Textbox(label="Your name")
+        reason_input = gr.Textbox(label="Rejection reason (if rejecting)")
+    
+    with gr.Row():
+        approve_btn = gr.Button("✅ Approve", variant="primary")
+        reject_btn = gr.Button("❌ Reject", variant="stop")
+    
+    result = gr.Textbox(label="Result")
+    
+    refresh_btn.click(
+        lambda: [[p["episode_id"], p["task"], p["timestamp"]] for p in get_pending_approvals()],
+        outputs=pending_list,
+    )
+    approve_btn.click(approve_episode, inputs=[episode_input, approver_input], outputs=result)
+    reject_btn.click(reject_episode, inputs=[episode_input, approver_input, reason_input], outputs=result)
+
+
+if __name__ == "__main__":
+    app.launch()
+```
+
+## Best practices
+
+<Tip>
+**Set reasonable timeouts.** Pending approvals shouldn't block indefinitely—expire them after a reasonable period.
+</Tip>
+
+<Warning>
+**Authenticate approvers.** In production, verify the identity of approvers through SSO or similar.
+</Warning>
+
+<Info>
+**Create audit trails.** Record all approval decisions with timestamps, approvers, and reasons in the event timeline.
+</Info>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Incident triage tutorial" icon="triangle-exclamation" href="/tutorials/incident-triage">
+    Full example with approval workflows.
+  </Card>
+  <Card title="Governance guide" icon="shield" href="/guides/configure-planner-modes">
+    Configure governance for approval requirements.
+  </Card>
+</CardGroup>

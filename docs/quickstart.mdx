@@ -1,0 +1,130 @@
+---
+title: "Quickstart"
+description: "Get your first Noēsis episode running in under 5 minutes."
+---
+
+This guide walks you through installing Noēsis and running your first observable episode.
+
+## Prerequisites
+
+- Python 3.12 or later
+- `uv` package manager (recommended) or `pip`
+
+<Warning>
+Set any adapter-specific environment variables (model keys, endpoints) before running commands. Noēsis reads them at runtime.
+</Warning>
+
+## Installation
+
+<Tabs>
+  <Tab title="From source (preferred)">
+    ```bash
+    git clone https://github.com/saraeloop/noesis.git
+    cd noesis
+    uv tool install .
+    # or: pipx install .
+    ```
+    <Tip>Source-first is recommended while the PyPI release is pending.</Tip>
+  </Tab>
+  <Tab title="uv (when PyPI is live)">
+    ```bash
+    uv add noesis
+    ```
+  </Tab>
+  <Tab title="pip (when PyPI is live)">
+    ```bash
+    pip install noesis
+    ```
+  </Tab>
+</Tabs>
+
+## Run your first episode
+
+<Steps>
+  <Step title="Run a baseline episode">
+    Execute a simple episode using the CLI:
+
+    ```bash
+    noesis run "hello world"
+    ```
+
+    This returns an episode ID (e.g., `ep_abc123`) and creates artifacts in the `./runs` directory.
+  </Step>
+
+  <Step title="List recent episodes">
+    View your episodes in a table:
+
+    ```bash
+    noesis list --limit 5
+    ```
+
+    Add `-j` for JSON output when scripting.
+  </Step>
+
+  <Step title="Inspect the results">
+    View the episode summary and insight metrics:
+
+    ```bash
+    noesis show ep_abc123
+    noesis insight ep_abc123
+    ```
+
+    Replace `ep_abc123` with your actual episode ID.
+  </Step>
+</Steps>
+
+## Using Python
+
+You can also run episodes programmatically:
+
+```python
+import noesis as ns
+
+# Run an episode
+episode_id = ns.run("Draft a weekly engineering update", intuition=True)
+
+# Read the summary
+summary = ns.summary.read(episode_id)
+print(f"Success: {summary['metrics']['success']}")
+
+# Read the event timeline
+events = list(ns.events.read(episode_id))
+for event in events:
+    print(f"{event['phase']}: {event.get('payload', {})}")
+```
+
+## Inspect artifacts
+
+Every episode creates a structured artifact directory:
+
+```
+runs/
+  demo/                    # label (configurable)
+    ep_abc123/             # episode id
+      summary.json         # metrics, outcome, cross-links
+      state.json           # current plan and episode state
+      events.jsonl         # timeline with causal IDs
+      manifest.json        # SHA-256 + size ledger
+      learn.jsonl          # optional learning payloads
+```
+
+<Tip>
+Use `jq` for pretty-printing JSON artifacts: `cat runs/demo/ep_abc123/summary.json | jq .`
+</Tip>
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="First episode tutorial" icon="play" href="/tutorials/first-episode">
+    A deeper walkthrough of running and inspecting episodes.
+  </Card>
+  <Card title="Add a policy" icon="shield" href="/tutorials/first-policy">
+    Learn how to add guardrails with intuition policies.
+  </Card>
+  <Card title="Core concepts" icon="lightbulb" href="/explanation/core-concepts">
+    Understand episodes, faculties, and the cognitive loop.
+  </Card>
+  <Card title="Python API" icon="code" href="/reference/python-api">
+    Explore the full API reference.
+  </Card>
+</CardGroup>

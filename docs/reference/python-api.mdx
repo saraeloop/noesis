@@ -1,0 +1,613 @@
+---
+title: "Python API"
+description: "Complete reference for the Noēsis Python package."
+---
+
+Install Noēsis with `uv add noesis` or `pip install noesis`. Import as `import noesis as ns`.
+
+## Core functions
+
+### ns.run()
+
+Execute a baseline episode without a custom adapter.
+
+```python
+episode_id = ns.run(
+    goal: str,
+    *,
+    intuition: bool | DirectedIntuition = False,
+    tags: dict[str, str] | None = None,
+    **kwargs
+) -> str
+```
+
+<ParamField body="goal" type="string" required>
+The task or goal for the episode.
+</ParamField>
+
+<ParamField body="intuition" type="bool | DirectedIntuition" default="False">
+Enable intuition with `True` or pass a policy instance.
+</ParamField>
+
+<ParamField body="tags" type="dict[str, str]">
+Metadata tags attached to the episode.
+</ParamField>
+
+**Returns**: Episode ID (e.g., `"ep_2024_abc123_s0"`)
+
+**Example**:
+
+```python
+import noesis as ns
+
+# Simple run
+episode_id = ns.run("Draft release notes")
+
+# With intuition enabled
+episode_id = ns.run("Draft release notes", intuition=True)
+
+# With a custom policy
+episode_id = ns.run("Draft release notes", intuition=MyPolicy())
+
+# With tags
+episode_id = ns.run("Draft release notes", tags={"env": "staging"})
+```
+
+### ns.solve()
+
+Execute an episode through a custom adapter.
+
+```python
+episode_id = ns.solve(
+    task: str,
+    *,
+    using: Callable | str,
+    intuition: bool | DirectedIntuition = False,
+    tags: dict[str, str] | None = None,
+    **kwargs
+) -> str
+```
+
+<ParamField body="task" type="string" required>
+The task or goal for the episode.
+</ParamField>
+
+<ParamField body="using" type="Callable | str" required>
+The adapter function or registered adapter name.
+</ParamField>
+
+<ParamField body="intuition" type="bool | DirectedIntuition" default="False">
+Enable intuition with `True` or pass a policy instance.
+</ParamField>
+
+<ParamField body="tags" type="dict[str, str]">
+Metadata tags attached to the episode.
+</ParamField>
+
+**Returns**: Episode ID
+
+**Example**:
+
+```python
+import noesis as ns
+
+# With a function adapter
+def my_adapter(task: str) -> dict:
+    return {"result": task.upper()}
+
+episode_id = ns.solve("process this", using=my_adapter)
+
+# With a registered adapter
+ns.adapters.register("my-adapter", my_adapter)
+episode_id = ns.solve("process this", using="my-adapter")
+```
+
+### ns.summary.read()
+
+Load the summary for an episode.
+
+```python
+summary = ns.summary.read(episode_id: str) -> dict
+```
+
+<ParamField body="episode_id" type="string" required>
+The episode ID to read.
+</ParamField>
+
+**Returns**: Summary dictionary with task, metrics, flags, etc.
+
+**Example**:
+
+```python
+import noesis as ns
+
+summary = ns.summary.read("ep_2024_abc123_s0")
+print(summary["task"])
+print(summary["metrics"]["success"])
+```
+
+### ns.events.read()
+
+Load the event timeline for an episode.
+
+```python
+events = ns.events.read(
+    episode_id: str,
+    phase: str | None = None
+) -> Iterator[dict]
+```
+
+<ParamField body="episode_id" type="string" required>
+The episode ID to read.
+</ParamField>
+
+<ParamField body="phase" type="string">
+Filter events by phase (e.g., `"plan"`, `"act"`).
+</ParamField>
+
+**Returns**: Iterator of event dictionaries.
+
+**Example**:
+
+```python
+import noesis as ns
+
+# All events
+events = list(ns.events.read("ep_2024_abc123_s0"))
+
+# Filtered by phase
+plan_events = list(ns.events.read("ep_2024_abc123_s0", phase="plan"))
+```
+
+### ns.state.read()
+
+Load the cognitive state for an episode.
+
+```python
+state = ns.state.read(episode_id: str) -> dict
+```
+
+<ParamField body="episode_id" type="string" required>
+The episode ID to read.
+</ParamField>
+
+**Returns**: State dictionary with goal, plan, outcomes, etc.
+
+**Example**:
+
+```python
+import noesis as ns
+
+state = ns.state.read("ep_2024_abc123_s0")
+print(state["goal"]["task"])
+print(state["outcomes"]["status"])
+```
+
+### ns.list_runs()
+
+List recent episodes.
+
+```python
+episodes = ns.list_runs(limit: int = 20) -> list[dict]
+```
+
+<ParamField body="limit" type="int" default="20">
+Maximum number of episodes to return.
+</ParamField>
+
+**Returns**: List of episode metadata dictionaries.
+
+**Example**:
+
+```python
+import noesis as ns
+
+episodes = ns.list_runs(limit=10)
+for ep in episodes:
+    print(f"{ep['episode_id']}: {ep['timestamp']}")
+```
+
+### ns.last()
+
+Get the most recent episode ID.
+
+```python
+episode_id = ns.last() -> str | None
+```
+
+**Returns**: Episode ID or `None` if no episodes exist.
+
+**Example**:
+
+```python
+import noesis as ns
+
+episode_id = ns.last()
+if episode_id:
+    summary = ns.summary.read(episode_id)
+```
+
+### ns.set()
+
+Override global configuration.
+
+```python
+ns.set(**config) -> None
+```
+
+<ParamField body="runs_dir" type="string">
+Directory for storing artifacts.
+</ParamField>
+
+<ParamField body="planner_mode" type="string">
+`"meta"` (default) or `"minimal"`.
+</ParamField>
+
+<ParamField body="seed" type="int">
+Seed for reproducible episodes.
+</ParamField>
+
+<ParamField body="label" type="string">
+Subdirectory label for organizing runs.
+</ParamField>
+
+**Example**:
+
+```python
+import noesis as ns
+
+ns.set(runs_dir="./my-runs")
+ns.set(planner_mode="meta")
+ns.set(seed=42)
+ns.set(label="production")
+```
+
+### ns.config()
+
+Get current configuration.
+
+```python
+config = ns.config() -> Config
+```
+
+**Returns**: Configuration object with current settings.
+
+**Example**:
+
+```python
+import noesis as ns
+
+config = ns.config()
+print(config.planner_mode)
+print(config.runs_dir)
+```
+
+## Intuition classes
+
+### ns.DirectedIntuition
+
+Base class for policies that can hint, intervene, or veto.
+
+```python
+class DirectedIntuition:
+    __version__: str = "1.0"
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        """Override to implement policy logic."""
+        ...
+    
+    def hint(
+        self,
+        advice: str,
+        target: str,
+        rationale: str
+    ) -> IntuitionEvent:
+        """Return advisory guidance."""
+        ...
+    
+    def intervene(
+        self,
+        advice: str,
+        patch: dict,
+        target: str,
+        rationale: str
+    ) -> IntuitionEvent:
+        """Return an intervention that modifies state."""
+        ...
+    
+    def veto(
+        self,
+        advice: str,
+        target: str,
+        rationale: str
+    ) -> IntuitionEvent:
+        """Return a veto that blocks execution."""
+        ...
+```
+
+**Example**:
+
+```python
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class SafetyPolicy(ns.DirectedIntuition):
+    __version__ = "1.0"
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = state.get("task", "").lower()
+        
+        if "delete" in task:
+            return self.veto(
+                advice="Blocked: delete operation",
+                target="plan",
+                rationale="Delete requires manual approval"
+            )
+        
+        return None
+```
+
+### ns.NoesisVeto
+
+Exception raised when a policy vetoes an episode.
+
+```python
+class NoesisVeto(Exception):
+    episode_id: str
+    reason: str
+    policy_id: str
+```
+
+**Example**:
+
+```python
+import noesis as ns
+from noesis import NoesisVeto
+
+try:
+    ns.run("DELETE * FROM users", intuition=True)
+except NoesisVeto as e:
+    print(f"Vetoed: {e.reason}")
+    print(f"Policy: {e.policy_id}")
+```
+
+## Adapter registration
+
+### ns.adapters.register()
+
+Register an adapter for use by name.
+
+```python
+ns.adapters.register(name: str, adapter: Callable) -> None
+```
+
+**Example**:
+
+```python
+import noesis as ns
+
+def my_adapter(task: str) -> dict:
+    return {"result": task}
+
+ns.adapters.register("my-adapter", my_adapter)
+
+# Now usable by name
+ns.solve("task", using="my-adapter")
+```
+
+### ns.adapters.list()
+
+List registered adapters.
+
+```python
+adapters = ns.adapters.list() -> list[str]
+```
+
+**Example**:
+
+```python
+import noesis as ns
+
+for name in ns.adapters.list():
+    print(name)
+```
+
+## Session management
+
+For production systems, create explicit sessions to control configuration scope and lifecycle.
+
+### NoesisSession
+
+```python
+from noesis import NoesisSession
+
+# Create a session with custom configuration
+session = NoesisSession(
+    runs_dir="./production-runs",
+    planner_mode="meta",
+    label="production",
+)
+
+# Use the session
+with session:
+    episode_id = session.run("Process customer request")
+    summary = session.summary.read(episode_id)
+
+# Or manage lifecycle explicitly
+session.start()
+episode_id = session.run("task")
+session.close()
+```
+
+**When to use sessions**:
+- Production deployments with specific configuration
+- Isolated test environments
+- Multi-tenant applications
+- When you need explicit lifecycle control
+
+## Module facades
+
+Noēsis provides module facades for accessing artifacts and context:
+
+### noesis.summary
+
+Read and finalize episode summaries.
+
+```python
+import noesis as ns
+
+# Read a summary
+summary = ns.summary.read(episode_id)
+
+# Finalize with custom metrics
+ns.summary.finalize(
+    run_dir="./runs",
+    episode_id=episode_id,
+    metrics={"custom_score": 0.95},
+)
+```
+
+### noesis.events
+
+Read and write events.
+
+```python
+import noesis as ns
+
+# Read events
+events = list(ns.events.read(episode_id))
+
+# Filter by phase
+act_events = list(ns.events.read(episode_id, phase="act"))
+```
+
+### noesis.learn
+
+Emit learning signals.
+
+```python
+import noesis as ns
+
+# Emit learning signals
+ns.learn.emit(
+    run_dir="./runs",
+    episode_id=episode_id,
+    events=events,
+    metrics=metrics,
+    config=config,
+)
+```
+
+### noesis.context
+
+Manage runtime context and ports.
+
+```python
+import noesis as ns
+
+# Create a runtime context
+ctx = ns.context.create_runtime_context(config)
+
+# Get current context
+current = ns.context.get_context()
+
+# Set context
+ns.context.set_context(ctx)
+```
+
+## Episode index
+
+### EpisodeIndex
+
+Manage the episode manifest and search.
+
+```python
+from noesis.episode import EpisodeIndex
+
+store = EpisodeIndex(
+    path: str,
+    ttl_days: int | None = None
+)
+```
+
+**Methods**:
+
+```python
+# Iterate episodes
+for record in store.iter():
+    print(record.episode_id)
+
+# Similarity search (requires embeddings)
+matches = store.search(embedding=[0.1, 0.2, ...], k=5)
+
+# Clean up old episodes
+store.vacuum()
+```
+
+**Example**:
+
+```python
+from noesis.episode import EpisodeIndex
+
+store = EpisodeIndex("./runs/_episodes", ttl_days=14)
+
+# Get recent episodes
+recent = [rec for idx, rec in zip(range(5), store.iter())]
+
+# Filter by adapter
+incidents = [rec for rec in store.iter() if rec.using == "incident"]
+
+# Vacuum old episodes
+store.vacuum()
+```
+
+## Type definitions
+
+### IntuitionEvent
+
+Returned by policy methods.
+
+```python
+@dataclass
+class IntuitionEvent:
+    action: str  # "hint", "intervene", "veto"
+    advice: str
+    target: str
+    rationale: str
+    patch: dict | None = None
+```
+
+### Config
+
+Configuration object.
+
+```python
+@dataclass
+class Config:
+    runs_dir: str
+    planner_mode: str  # "meta" | "minimal"
+    seed: int | None
+    label: str
+    log_prompts: bool
+```
+
+## Environment variables
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `NOESIS_RUNS_DIR` | Artifact storage directory | `./runs` |
+| `NOESIS_PLANNER` | Planner mode (`meta`/`minimal`) | `meta` |
+| `NOESIS_SEED` | Default seed for reproducibility | None |
+| `NOESIS_LABEL` | Default label for runs | `demo` |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    Command-line interface documentation.
+  </Card>
+  <Card title="Write policies" icon="pen" href="/guides/write-policies">
+    Create intuition policies.
+  </Card>
+</CardGroup>

@@ -1,0 +1,497 @@
+---
+title: "Artifacts"
+description: "Understanding the files Noēsis produces: summary.json, state.json, events.jsonl, and more."
+---
+
+Every Noēsis episode produces a set of structured artifacts that capture the complete cognitive trace. These files enable replay, debugging, auditing, and analysis.
+
+## Artifact structure
+
+```
+runs/
+  <label>/                     # e.g., "demo", "production"
+    <episode_id>/              # e.g., "ep_20251108_120000_abc123_def4_s0"
+      events.jsonl             # cognitive event timeline with lineage
+      summary.json             # metrics and KPIs (insight.metrics)
+      state.json               # plan, beliefs, memory, outcomes
+      manifest.json            # SHA-256 catalog + optional HMAC
+      learn.jsonl              # learning signals (optional)
+      prompts.jsonl            # prompt provenance (opt-in, ADR-005)
+```
+
+<Info>
+**Episode IDs** use ULID format (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
+</Info>
+
+## summary.json
+
+The summary captures episode outcomes, metrics, and cross-references.
+
+### Schema
+
+```json
+{
+  "schema_version": "1.2.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "task": "Draft release notes for v1.2.0",
+  "started_at": "2024-01-15T10:30:00Z",
+  "completed_at": "2024-01-15T10:30:05Z",
+  "flags": {
+    "intuition": true,
+    "mode": "meta",
+    "direction": {
+      "applied": 1,
+      "vetoed": 0,
+      "policy": "SafetyPolicy@1.0",
+      "threshold": 0.75
+    }
+  },
+  "metrics": {
+    "success": 1,
+    "plan_count": 2,
+    "act_count": 3,
+    "reflect_count": 1,
+    "veto_count": 0,
+    "latencies": {
+      "first_action_ms": 150,
+      "total_ms": 5000
+    }
+  },
+  "insight": {
+    "plan_adherence": 0.95,
+    "tool_coverage": 1.0,
+    "branching_factor": 2
+  },
+  "tags": {
+    "environment": "staging",
+    "team": "platform"
+  }
+}
+```
+
+### Key fields
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Version of the summary schema |
+| `episode_id` | Unique identifier |
+| `task` | The original task/goal |
+| `flags` | Configuration flags for the run |
+| `metrics` | Computed metrics |
+| `insight` | Advanced insight metrics |
+| `tags` | User-provided metadata |
+
+### Reading summaries
+
+```python
+import noesis as ns
+
+episode_id = ns.last()
+summary = ns.summary.read(episode_id)
+
+print(f"Task: {summary['task']}")
+print(f"Success: {summary['metrics']['success']}")
+print(f"Actions: {summary['metrics']['act_count']}")
+```
+
+## state.json
+
+The state captures the cognitive context at the end of the episode.
+
+### Schema
+
+```json
+{
+  "version": "1.0",
+  "state_schema_version": "1.0.0",
+  "episode": {
+    "id": "ep_2024_abc123_s0",
+    "seed": 0,
+    "adapter": "baseline",
+    "started_at": "2024-01-15T10:30:00Z",
+    "completed_at": "2024-01-15T10:30:05Z"
+  },
+  "goal": {
+    "task": "Draft release notes for v1.2.0",
+    "context": {
+      "changelog_path": "CHANGELOG.md"
+    }
+  },
+  "beliefs": [
+    {
+      "statement": "Version 1.2.0 includes 3 new features",
+      "confidence": 0.9,
+      "provenance": "changelog_analysis"
+    }
+  ],
+  "plan": {
+    "steps": [
+      {
+        "id": "step_1",
+        "kind": "detect",
+        "description": "Read changelog entries",
+        "status": "done",
+        "inputs": {"file": "CHANGELOG.md"},
+        "outputs": {"entries": 15}
+      },
+      {
+        "id": "step_2",
+        "kind": "act",
+        "description": "Generate summary",
+        "status": "done"
+      }
+    ]
+  },
+  "memory": {
+    "facts": [
+      {
+        "key": "changelog_format",
+        "value": "keep-a-changelog",
+        "timestamp": "2024-01-15T10:30:02Z"
+      }
+    ],
+    "scratchpad": "Found 3 breaking changes to highlight"
+  },
+  "outcomes": {
+    "status": "ok",
+    "actions": [
+      {
+        "tool": "changelog_reader",
+        "input": "CHANGELOG.md",
+        "output": {"entries": 15},
+        "timestamp": "2024-01-15T10:30:01Z"
+      }
+    ],
+    "metrics": {
+      "task_score": 0.95
+    },
+    "artifacts": ["release_notes.md"]
+  }
+}
+```
+
+### Step kinds
+
+| Kind | Purpose |
+| --- | --- |
+| `detect` | Gather information |
+| `analyze` | Process or categorize |
+| `plan` | Sub-planning |
+| `act` | Execute action |
+| `verify` | Check results |
+| `review` | Human review point |
+
+### Step statuses
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Not yet started |
+| `running` | Currently executing |
+| `done` | Completed successfully |
+| `skipped` | Intentionally skipped |
+| `failed` | Failed with error |
+| `vetoed` | Blocked by policy |
+
+### Outcome statuses
+
+| Status | Meaning |
+| --- | --- |
+| `ok` | Completed successfully |
+| `error` | Failed with error |
+| `vetoed` | Blocked by policy |
+| `aborted` | Manually stopped |
+| `partial` | Partially completed |
+| `pending` | Still running |
+
+### Reading state
+
+```python
+import noesis as ns
+
+episode_id = ns.last()
+state = ns.state.read(episode_id)
+
+print(f"Goal: {state['goal']['task']}")
+print(f"Steps: {len(state['plan']['steps'])}")
+print(f"Status: {state['outcomes']['status']}")
+```
+
+## events.jsonl
+
+The event timeline records every phase transition with timing and lineage.
+
+### Format
+
+Events are stored as newline-delimited JSON (JSONL):
+
+```json
+{"id": "evt_1", "phase": "observe", "payload": {...}, "metrics": {...}}
+{"id": "evt_2", "phase": "interpret", "payload": {...}, "caused_by": "evt_1", "metrics": {...}}
+{"id": "evt_3", "phase": "plan", "payload": {...}, "caused_by": "evt_2", "metrics": {...}}
+```
+
+### Event structure
+
+```json
+{
+  "id": "evt_abc123",
+  "phase": "plan",
+  "agent_id": "meta_planner",
+  "payload": {
+    "steps": [
+      {"kind": "detect", "description": "Gather data"}
+    ]
+  },
+  "metrics": {
+    "started_at": "2024-01-15T10:30:00.500Z",
+    "completed_at": "2024-01-15T10:30:00.512Z",
+    "duration_ms": 12.7
+  },
+  "caused_by": "evt_xyz789"
+}
+```
+
+### Event phases
+
+| Phase | Purpose |
+| --- | --- |
+| `observe` | Capture raw input |
+| `interpret` | Extract signals |
+| `plan` | Decide actions |
+| `direction` | Policy directives |
+| `governance` | Audit decisions |
+| `act` | Execute actions |
+| `reflect` | Evaluate outcomes |
+| `learn` | Propose updates |
+| `terminate` | Episode end |
+
+### Reading events
+
+```python
+import noesis as ns
+
+episode_id = ns.last()
+events = list(ns.events.read(episode_id))
+
+# Filter by phase
+plan_events = [e for e in events if e["phase"] == "plan"]
+act_events = [e for e in events if e["phase"] == "act"]
+
+# Reconstruct causal chain
+for event in events:
+    print(f"{event['phase']}: caused_by={event.get('caused_by', 'none')}")
+```
+
+### CLI access
+
+```bash
+# All events
+noesis events ep_abc123
+
+# Filter by phase
+noesis events ep_abc123 --phase act
+
+# As JSON
+noesis events ep_abc123 -j | jq '.[] | select(.phase == "plan")'
+```
+
+## manifest.json
+
+The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional HMAC signatures for tamper detection.
+
+### Schema
+
+```json
+{
+  "schema_version": "1.0.0",
+  "episode_id": "ep_20251108_120000_abc123_def4_s0",
+  "created_at": "2024-01-15T10:30:05Z",
+  "files": {
+    "summary.json": {
+      "sha256": "abc123def456...",
+      "size": 1234
+    },
+    "state.json": {
+      "sha256": "789ghi012jkl...",
+      "size": 5678
+    },
+    "events.jsonl": {
+      "sha256": "mno345pqr678...",
+      "size": 9012
+    }
+  },
+  "hmac": "optional_hmac_signature_for_tamper_detection"
+}
+```
+
+### Artifact immutability guarantees
+
+All artifacts are written atomically using this pattern:
+1. Write to temporary file
+2. Call `fsync()` to ensure durability
+3. Atomic rename to final path
+
+This ensures no partial writes survive system crashes.
+
+### Verifying integrity
+
+```python
+import hashlib
+import json
+from pathlib import Path
+
+
+def verify_manifest(episode_dir: Path) -> bool:
+    """Verify artifact integrity using manifest."""
+    manifest_path = episode_dir / "manifest.json"
+    
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    
+    for filename, info in manifest["files"].items():
+        file_path = episode_dir / filename
+        
+        # Check size
+        if file_path.stat().st_size != info["size"]:
+            return False
+        
+        # Check hash
+        with open(file_path, "rb") as f:
+            actual_hash = hashlib.sha256(f.read()).hexdigest()
+        
+        if actual_hash != info["sha256"]:
+            return False
+    
+    return True
+```
+
+<Tip>
+JSON serialization uses `canonical_dumps()` with sorted keys for byte-identical output, ensuring consistent hashes across runs.
+</Tip>
+
+## learn.jsonl (optional)
+
+Learning signals are stored separately when the learn phase emits proposals.
+
+### Schema
+
+```json
+{"proposal_id": "prop_1", "type": "threshold", "target": "veto_confidence", "suggested_value": 0.8}
+{"proposal_id": "prop_2", "type": "memory", "key": "pattern_detected", "value": "sql_injection_attempt"}
+```
+
+### Reading learn signals
+
+```python
+import json
+from pathlib import Path
+
+learn_path = Path(f"runs/demo/{episode_id}/learn.jsonl")
+
+if learn_path.exists():
+    with open(learn_path) as f:
+        proposals = [json.loads(line) for line in f]
+    
+    for p in proposals:
+        print(f"Proposal: {p['type']} -> {p.get('target', p.get('key'))}")
+```
+
+## prompts.jsonl (opt-in)
+
+When prompt provenance is enabled (ADR-005, experimental), all prompts are recorded for debugging and auditing.
+
+### Schema
+
+```json
+{
+  "prompt_id": "pmt_abc123",
+  "timestamp": "2024-01-15T10:30:01Z",
+  "model": "gpt-4",
+  "template": "Generate release notes for:\n{changelog}",
+  "variables": {"changelog": "..."},
+  "response": "## Release Notes...",
+  "tokens": {"input": 150, "output": 200},
+  "latency_ms": 1250
+}
+```
+
+<Warning>
+**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(log_prompts=True)` only when needed for debugging or compliance.
+</Warning>
+
+### Use cases
+
+- **Debugging**: Trace exactly what prompts were sent to LLMs
+- **Compliance**: Audit trail for regulated industries
+- **Cost analysis**: Track token usage per episode
+- **Prompt optimization**: Analyze prompt patterns across runs
+
+## Storage configuration
+
+### Runs directory
+
+```python
+import noesis as ns
+
+# Set custom runs directory
+ns.set(runs_dir="./my-runs")
+
+# Or via environment
+# NOESIS_RUNS_DIR=./my-runs
+```
+
+### Labels
+
+Organize episodes with labels:
+
+```python
+import noesis as ns
+
+ns.set(label="production")
+# Artifacts go to runs/production/ep_.../
+
+ns.set(label="staging")
+# Artifacts go to runs/staging/ep_.../
+```
+
+### Retention
+
+Control artifact retention:
+
+```python
+from noesis.episode import EpisodeIndex
+
+store = EpisodeIndex("./runs/_episodes", ttl_days=14)
+store.vacuum()  # Remove episodes older than 14 days
+```
+
+## Best practices
+
+<Tip>
+**Back up production artifacts.** The runs directory contains valuable audit data—include it in your backup strategy.
+</Tip>
+
+<Warning>
+**Redact sensitive data.** Tasks and prompts may contain PII. Consider scrubbing before long-term storage.
+</Warning>
+
+<Info>
+**Use manifests for compliance.** The SHA-256 checksums in manifest.json provide tamper evidence for audits.
+</Info>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Events reference" icon="list" href="/reference/events">
+    Complete event schema documentation.
+  </Card>
+  <Card title="State reference" icon="database" href="/reference/state">
+    Complete state schema documentation.
+  </Card>
+  <Card title="Export metrics" icon="chart-bar" href="/guides/export-metrics">
+    Send metrics to observability tools.
+  </Card>
+  <Card title="Summary reference" icon="file" href="/reference/summary">
+    Complete summary schema documentation.
+  </Card>
+</CardGroup>
