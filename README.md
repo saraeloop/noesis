@@ -13,15 +13,11 @@ Noēsis is a lightweight Python cognitive framework for orchestrating and tracin
 
 Noēsis works with the graphs, tools, and runtimes you already use. It doesn’t replace your models or orchestrator; it makes their cognition legible.
 
----
-
 ## Who it’s for
 - **Builders / platform teams:** wrap LangGraph, CrewAI, or custom graphs with cognition without rewrites.
 - **Applied researchers:** collect structured traces for benchmarks, ablations, and papers.
 - **Product & GTM:** point to concrete KPIs (plan adherence, veto count, tool coverage).
 - **Ops & compliance:** review immutable JSON traces showing what happened and why it was allowed.
-
----
 
 ## Why Noēsis?
 | Proof point | What it gives you |
@@ -30,8 +26,6 @@ Noēsis works with the graphs, tools, and runtimes you already use. It doesn’t
 | **Direction + guardrails** | Planner modes (`meta` vs `minimal`) layer planning and governance over any agent graph. |
 | **Durable memory** | Plug in SQLite/FAISS/HNSW (or your own provider) so episodes learn across time. |
 | **Learning signals** | Insight metrics and `learn.emit(...)` provide structured payloads for audits and tuning. |
-
----
 
 ## Core concepts
 - Phases: **Observe → Interpret → Plan → Govern → Act → Reflect → Learn**
@@ -58,10 +52,8 @@ flowchart LR
   - `manifest.json` – SHA-256 + size ledger for tamper evidence
   - `learn.jsonl` (optional) – learning payloads
 
----
-
 ## Quickstart
-> Python ≥ 3.12. Repo is source-first.
+> Python ≥ 3.12. Source-first.
 
 Install and run a demo:
 
@@ -106,8 +98,6 @@ runs/
 
 For a fuller tour: `uv run python examples/demo.py`
 
----
-
 ## Bring your own agent / graph
 Noēsis is framework-agnostic—decorate your orchestrator and keep your tools/prompts:
 
@@ -135,8 +125,6 @@ ns.set(planner_mode="minimal")   # opt out for throughput
 ns.run("Summarize release notes", intuition=False)
 ```
 
----
-
 ## Docs & links
 - Artifacts guide: `docs/artifacts/state.md`
 - Runs cheat sheet: `runs/README.md`
@@ -145,15 +133,11 @@ ns.run("Summarize release notes", intuition=False)
 - Quickstart guide: `docs/app/guides/quickstart/page.mdx`
 - Examples overview: `examples/README.md`
 
----
-
 ## Versioning & stability
 - Package: `noesis` v1.0.0
 - Schema pack: summary/state/events/kpi v1.0.0
 - Python: ≥ 3.12
 - CI: contracts, schema guard, and release prep run in GitHub Actions
-
----
 
 ## Community & support
 - Issues and discussions on GitHub.
