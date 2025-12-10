@@ -1,0 +1,120 @@
+---
+title: "Hello Episode: See Your Agent Think in 5 Minutes"
+description: "Run a tiny agent through Noēsis, open the artifacts, and read the timeline that shows every phase."
+slug: hello-episode
+---
+
+You want proof that Noēsis is actually recording how your agent thinks. This quickstart runs a minimal agent once, shows where the episode lands on disk, and reads the timeline so you see observe → plan → act → reflect in a few lines of code.
+
+<Tip>
+Learning path:
+1) Hello Episode (this page) → traces in 5 minutes.
+2) Guarded LangGraph Agent → veto dangerous deletes.
+3) Trace-Based Evals → score behavior over traces.
+</Tip>
+
+## What you'll build
+
+- A one-call agent that returns an LLM answer
+- A recorded episode under `runs/demo/<episode-id>/`
+- A timeline with phases and a couple of quick metrics
+
+## Prerequisites
+
+- Python environment with `noesis` installed (`uv add noesis` or `pip install noesis`)
+- An OpenAI-compatible key in `OPENAI_API_KEY` (or configure your provider in the runtime context)
+
+## 1) Run your first episode (Python-first)
+
+```python quickstart.py
+import noesis as ns
+from noesis.runtime import create_runtime_context
+
+
+def main():
+    # Minimal agent: just one LLM call via Noēsis helpers
+    ctx = create_runtime_context(model="gpt-4o-mini")
+    session = ns.NoesisSession(runtime=ctx)
+
+    episode_id = session.run("Summarize why tracing agent steps matters.")
+    print("Episode ID:", episode_id)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Run it:
+
+```bash
+python quickstart.py
+```
+
+<Note>
+Auth reminder: Noēsis does not create API keys for you. Set `OPENAI_API_KEY` (or configure your provider in `create_runtime_context`) before running.
+</Note>
+
+## 2) Open the episode folder
+
+Episodes are written to `runs/demo/<episode-id>/`. Inspect the files:
+
+```bash
+ls runs/demo/<episode-id>/
+```
+
+| File | What it tells you |
+| --- | --- |
+| `events.jsonl` | The full timeline: observe, plan, act, reflect (plus timestamps and causal links) |
+| `summary.json` | Outcome and metrics (success, plan_count, act_count, latencies) |
+| `state.json` | The persisted plan/state at the end of the run |
+| `manifest.json` | Checksums for integrity |
+
+## 3) Read the timeline
+
+```python read_timeline.py
+import noesis as ns
+
+
+def show_timeline(episode_id: str):
+    for event in ns.events.read(episode_id):
+        phase = event["phase"]
+        payload = event.get("payload", {})
+        status = payload.get("status") or payload.get("reason") or "ok"
+        print(f"[{phase:<8}] {status}")
+
+
+if __name__ == "__main__":
+    eid = "<episode-id>"  # paste from the previous step
+    show_timeline(eid)
+```
+
+You should see phases like `observe`, `plan`, `act`, `reflect` with concise statuses. That is the “agent brain” trace users keep asking for.
+
+## 4) Inspect a couple of metrics
+
+```python read_metrics.py
+import noesis as ns
+import json
+
+
+def load_metrics(episode_id: str):
+    summary = ns.summary.read(episode_id)
+    metrics = summary.get("metrics", {})
+    print(json.dumps({
+        "success": metrics.get("success"),
+        "plan_count": metrics.get("plan_count"),
+        "act_count": metrics.get("act_count"),
+        "latency_ms": metrics.get("latencies", {}).get("total_ms"),
+    }, indent=2))
+
+
+if __name__ == "__main__":
+    load_metrics("<episode-id>")  # paste the same ID
+```
+
+This is enough to prove that Noēsis is capturing the agent’s trajectory, not just the final answer.
+
+## Next steps
+
+- Move to guardrails: [Guarded LangGraph Agent](/tutorials/guarded-langgraph-agent) to see vetoes in traces.
+- Move to evals: [Trace-Based Evals](/tutorials/trace-based-evals) to score behavior across tasks.
