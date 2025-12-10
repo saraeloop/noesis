@@ -7,6 +7,19 @@
     "light":   "#3B82F6",
     "dark":    "#1E40AF"
   },
+  "fonts": {
+    "heading": {
+      "family": "Geist Sans",
+      "weight": 600
+    },
+    "body": {
+      "family": "Geist Sans",
+      "weight": 400
+    }
+  },
+  "styles": [
+    "/styles.css"
+  ],
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
