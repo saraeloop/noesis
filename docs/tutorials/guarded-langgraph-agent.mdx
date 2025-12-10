@@ -1,0 +1,199 @@
+---
+title: "Guarded LangGraph Agent: Vetoing Dangerous File Deletes"
+description: "Wrap a LangGraph agent with Noēsis so every tool call is observable and dangerous deletes get vetoed."
+slug: guarded-langgraph-agent
+---
+
+People are asking how to stop agents from deleting important files. This tutorial shows a tiny LangGraph agent with two tools—`list_files` and `delete_path`—and a Noēsis policy that vetoes dangerous deletes. You’ll see the veto in the trace and in the metrics.
+
+## What you'll build
+
+- A minimal LangGraph agent that can list files and delete a path
+- A `GuardCriticalDeletes` policy that blocks protected paths or unsafe prompts
+- Two runs: one allowed delete, one vetoed, both visible in `events.jsonl`
+
+## Prerequisites
+
+- Python with `langgraph` and `noesis` installed
+- A writable temp directory for safe deletes (e.g., `/tmp/noesis-demo`)
+
+## 1) Define the LangGraph agent
+
+```python agent.py
+from typing import TypedDict
+from langgraph.graph import StateGraph, END
+import noesis as ns
+
+
+class AgentState(TypedDict, total=False):
+    task: str
+    files: list[str]
+    delete_target: str | None
+    status: str
+
+
+def entry(task: str) -> AgentState:
+    # Capture the user prompt on state so policies can inspect it
+    return {"task": task}
+
+
+def list_files(_: AgentState) -> AgentState:
+    import os
+    return {"files": sorted(os.listdir("/tmp/noesis-demo"))}
+
+
+def decide_delete(state: AgentState) -> AgentState:
+    task = state["task"].lower()
+    if "delete" in task:
+        # naive extraction for demo purposes only
+        state["delete_target"] = task.split("delete")[-1].strip()
+    state["status"] = "planned"
+    return state
+
+
+def delete_path(state: AgentState) -> AgentState:
+    import os
+    target = state.get("delete_target")
+    if target and os.path.exists(target):
+        os.remove(target) if os.path.isfile(target) else os.rmdir(target)
+        state["status"] = "deleted"
+    return state
+
+
+def build_graph() -> StateGraph:
+    g = StateGraph(AgentState)
+    g.add_node("entry", entry)
+    g.add_node("list_files", list_files)
+    g.add_node("decide_delete", decide_delete)
+    g.add_node("delete_path", delete_path)
+    g.set_entry_point("entry")
+    g.add_edge("entry", "decide_delete")
+    g.add_edge("decide_delete", "list_files")
+    g.add_edge("list_files", "delete_path")
+    g.add_edge("delete_path", END)
+    return g.compile()
+```
+
+## 2) Define `GuardCriticalDeletes` policy
+
+```python policy.py
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class GuardCriticalDeletes(ns.DirectedIntuition):
+    """Veto dangerous deletes and flag risky prompts."""
+
+    __version__ = "1.0"
+    PROTECTED = ("/prod-data", "/Users/", "/home/", "/tmp/noesis-demo/protected")
+    RISKY_PHRASES = ("delete everything", "wipe", "remove all", "rm -rf")
+
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = (state.get("task") or "").lower()
+        target = (state.get("delete_target") or "").lower()
+
+        if any(p in task for p in self.RISKY_PHRASES):
+            return self.veto(
+                advice="Blocked: risky delete instruction detected.",
+                target="plan",
+                rationale="Prompt requested destructive deletion.",
+            )
+
+        if any(target.startswith(p) for p in self.PROTECTED):
+            return self.veto(
+                advice="Blocked: protected path.",
+                target="plan",
+                rationale=f"Path {target} is protected by policy.",
+            )
+
+        return None
+```
+
+## 3) Run two scenarios (safe vs unsafe)
+
+```python run_agent.py
+import os
+import noesis as ns
+from agent import build_graph
+from policy import GuardCriticalDeletes
+
+
+def run_case(task: str) -> str:
+    # Ensure demo files exist
+    os.makedirs("/tmp/noesis-demo", exist_ok=True)
+    with open("/tmp/noesis-demo/scratch.txt", "w") as f:
+        f.write("demo")
+
+    graph = build_graph()
+    session = ns.NoesisSession(runtime=ns.create_runtime_context(model="gpt-4o-mini"))
+    return session.run(
+        task,
+        planner=graph,
+        intuition=GuardCriticalDeletes(),
+        tags={"tutorial": "guarded-langgraph"},
+    )
+
+
+if __name__ == "__main__":
+    safe_id = run_case("Delete /tmp/noesis-demo/scratch.txt")
+    unsafe_id = run_case("Delete ~/projects/noesis and all subfolders")
+    print("Safe episode:", safe_id)
+    print("Unsafe episode (vetoed):", unsafe_id)
+```
+
+<Warning>
+This example only deletes files under `/tmp/noesis-demo`. Do not point it at real production paths.
+</Warning>
+
+## 4) Inspect the episodes
+
+Check the veto in the trace:
+
+```bash
+noesis events <unsafe_id> --phase direction -j | jq .
+```
+
+Look for:
+
+- `phase: "direction"` with `status: "blocked"`
+- `advice: "Blocked: protected path."`
+
+The safe run should show `act` events for the delete tool. The unsafe run will have no `act` event for `delete_path` because the policy vetoed it.
+
+## 5) Quick metrics check
+
+```python check_metrics.py
+import noesis as ns
+
+
+def summary_flags(episode_id: str):
+    summary = ns.summary.read(episode_id)
+    metrics = summary.get("metrics", {})
+    direction = summary.get("flags", {}).get("direction", {})
+    print({
+        "success": metrics.get("success"),
+        "plan_count": metrics.get("plan_count"),
+        "act_count": metrics.get("act_count"),
+        "veto_count": direction.get("blocked", 0),
+    })
+
+
+if __name__ == "__main__":
+    summary_flags("<unsafe_id>")
+```
+
+You now have proof—visible in `events.jsonl` and `summary.json`—that the agent tried something dangerous and the policy vetoed it.
+
+<Note>
+Noēsis wraps the LangGraph app as a planner/actuator, so every tool call shows up as `act` events in `events.jsonl`. Direction/veto events from the policy sit alongside them in the same trace.
+</Note>
+
+## Next steps
+
+- Reuse this guarded agent in [Trace-Based Evals](/tutorials/trace-based-evals).
+- Harden the policy with allowlists, approval workflows, or LLM-based prompt checks.
+
+## Next steps
+
+- Turn this into evals: reuse the guarded agent in [Trace-Based Evals](/tutorials/trace-based-evals).
+- Tighten governance: add path allowlists, approval workflows, or LLM-based prompts checks in the policy.

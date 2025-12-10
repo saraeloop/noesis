@@ -36,9 +36,9 @@
           {
             "group": "Tutorials",
             "pages": [
-              "tutorials/first-episode",
-              "tutorials/first-policy",
-              "tutorials/incident-triage"
+              "tutorials/hello-episode",
+              "tutorials/guarded-langgraph-agent",
+              "tutorials/trace-based-evals"
             ]
           },
           {
