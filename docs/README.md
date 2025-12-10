@@ -1,43 +1,35 @@
-# Mintlify Starter Kit
+# Noēsis Docs (Mintlify)
 
-Use the starter kit to get your docs deployed and ready to customize.
+This is the Mintlify site for the Noēsis documentation. We run source-first; PyPI will follow.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+## Local preview
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+Install the Mintlify CLI:
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
+```bash
+npm i -g mintlify
 ```
 
-Run the following command at the root of your documentation, where your `docs.json` is located:
+Start the dev server from `docs/`:
 
+```bash
+cd docs
+mintlify dev
 ```
-mint dev
+
+Preview at `http://localhost:3000`.
+
+## Link checks
+
+```bash
+cd docs
+mintlify broken-links
 ```
 
-View your local preview at `http://localhost:3000`.
+## Notes
 
-## Publishing changes
+- The site configuration lives in `docs/docs.json`.
+- Content is MDX under `docs/`.
+- Schema JSONs are generated under `docs/schema/` from `internal_docs/schema/*.yaml` via `python scripts/gen_schema.py`.
 
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+For CLI help: `mintlify --help` or see the [Mintlify docs](https://mintlify.com/docs).

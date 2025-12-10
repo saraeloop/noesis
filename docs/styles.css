@@ -1,0 +1,21 @@
+/* Custom font overrides for Mintlify */
+
+/* Pull Geist Sans + Geist Mono from Google Fonts */
+@import url("https://fonts.googleapis.com/css2?family=Geist+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap");
+
+:root {
+  --mint-font-body: "Geist Sans", "Inter", system-ui, -apple-system, sans-serif;
+  --mint-font-heading: "Geist Sans", "Inter", system-ui, -apple-system, sans-serif;
+  --mint-font-mono: "Geist Mono", "SFMono-Regular", Consolas, Menlo, monospace;
+}
+
+body {
+  line-height: 1.6;
+  font-family: var(--mint-font-body);
+}
+
+code,
+pre,
+pre code {
+  font-family: var(--mint-font-mono);
+}
