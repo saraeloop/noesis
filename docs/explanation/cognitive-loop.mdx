@@ -1,0 +1,473 @@
+---
+title: "The cognitive loop"
+description: "Understanding the nine-phase cognitive cycle that makes Noēsis episodes observable and auditable."
+---
+
+The cognitive loop is the core abstraction that makes agent reasoning explicit and auditable. Every Noēsis episode flows through a sequence of nine phases.
+
+## The nine phases
+
+```mermaid
+flowchart TD
+    A([START]) --> B[Observe]
+    B --> C[Interpret]
+    C --> D[Plan]
+    D --> E[Direction]
+    E --> F{Governance}
+    F -->|allow/audit| G[Act]
+    F -->|veto| V[Blocked]
+    G --> H[Reflect]
+    H --> I[Learn]
+    I --> J[Insight]
+    J --> K([END])
+    V --> K
+
+    %% Feedback paths
+    H -. insight .-> C
+    I -. adaptation .-> B
+```
+
+The governance phase acts as a critical gate—if policies veto the plan, execution jumps to a blocked state. Each phase has a specific purpose and produces structured events that form the episode timeline.
+
+<Info>
+In **minimal mode**, the Direction, Governance, and Insight phases are skipped for faster execution. In **meta mode** (default), all nine phases execute with full observability.
+</Info>
+
+## Observe
+
+The **observe** phase captures the raw input at the moment an episode starts.
+
+**Purpose**: Record exactly what the agent was asked to do, with all context.
+
+**What gets recorded**:
+- Task text (the goal or prompt)
+- Tags (metadata like environment, priority)
+- Timestamp
+- Initial context
+
+**Example event**:
+
+```json
+{
+  "phase": "observe",
+  "payload": {
+    "task": "Draft release notes for v1.2.0",
+    "tags": {"priority": "high", "team": "platform"},
+    "timestamp": "2024-01-15T10:30:00Z"
+  },
+  "metrics": {
+    "duration_ms": 1
+  }
+}
+```
+
+**Why it matters**: You can confirm the exact scope the agent perceived, enabling accurate replay and debugging.
+
+## Interpret
+
+The **interpret** phase extracts signals and intent from the observed input.
+
+**Purpose**: Summarize what the policy or intuition layer noticed before any plan is locked in.
+
+**What gets recorded**:
+- Signals (risks, opportunities, constraints)
+- Intent classification
+- Relevant context from memory
+- Policy observations
+
+**Example event**:
+
+```json
+{
+  "phase": "interpret",
+  "payload": {
+    "signals": [
+      {"type": "risk", "description": "Production deployment mentioned"},
+      {"type": "constraint", "description": "Requires approval for releases"}
+    ],
+    "intent": "documentation_generation"
+  },
+  "caused_by": "observe_event_id",
+  "metrics": {
+    "duration_ms": 5
+  }
+}
+```
+
+**Why it matters**: You can see what influenced planning decisions, making the reasoning chain transparent.
+
+## Plan
+
+The **plan** phase decides what actions to take.
+
+**Purpose**: Record the selected steps so you can compare intent versus action.
+
+**What gets recorded**:
+- Ordered steps with descriptions
+- Tools or adapters to invoke
+- Expected outcomes
+- Confidence scores
+
+**Example event**:
+
+```json
+{
+  "phase": "plan",
+  "payload": {
+    "steps": [
+      {"kind": "detect", "description": "Gather changelog entries", "status": "pending"},
+      {"kind": "analyze", "description": "Categorize changes", "status": "pending"},
+      {"kind": "act", "description": "Generate release notes", "status": "pending"},
+      {"kind": "verify", "description": "Check formatting", "status": "pending"}
+    ],
+    "confidence": 0.85
+  },
+  "caused_by": "interpret_event_id",
+  "metrics": {
+    "duration_ms": 12
+  }
+}
+```
+
+**Step kinds**: The plan uses a controlled vocabulary for step types:
+
+| Kind | Purpose |
+| --- | --- |
+| `detect` | Gather information |
+| `analyze` | Process or categorize |
+| `plan` | Sub-planning |
+| `act` | Execute action |
+| `verify` | Check results |
+| `review` | Human review point |
+
+**Why it matters**: You can audit what was planned and detect drift from the original intent.
+
+## Act
+
+The **act** phase executes the planned actions.
+
+**Purpose**: Log every tool or adapter invocation with inputs and outcomes.
+
+**What gets recorded**:
+- Tool or adapter name
+- Input excerpt
+- Output or result
+- Execution metrics
+
+**Example event**:
+
+```json
+{
+  "phase": "act",
+  "payload": {
+    "tool": "changelog_reader",
+    "input_excerpt": "CHANGELOG.md",
+    "outcome": {"entries_found": 15},
+    "status": "success"
+  },
+  "caused_by": "plan_event_id",
+  "metrics": {
+    "started_at": "2024-01-15T10:30:01Z",
+    "completed_at": "2024-01-15T10:30:02Z",
+    "duration_ms": 1200
+  }
+}
+```
+
+**Why it matters**: You get a measurable execution history instead of guesswork about what happened.
+
+## Reflect
+
+The **reflect** phase evaluates what actually happened.
+
+**Purpose**: Compare outcomes against expectations and record the assessment.
+
+**What gets recorded**:
+- Success/failure status
+- Reasons for the outcome
+- Comparison to expected results
+- Issues encountered
+
+**Example event**:
+
+```json
+{
+  "phase": "reflect",
+  "payload": {
+    "success": true,
+    "reason": "All steps completed successfully",
+    "expected_outcomes": ["release_notes_generated", "format_verified"],
+    "actual_outcomes": ["release_notes_generated", "format_verified"],
+    "issues": []
+  },
+  "caused_by": "act_event_id",
+  "metrics": {
+    "duration_ms": 3
+  }
+}
+```
+
+**Why it matters**: Dashboards can alert on failures, and you can analyze patterns in successes and failures.
+
+## Learn
+
+The **learn** phase captures updates for future runs.
+
+**Purpose**: Record follow-up proposals so the next run can inherit lessons.
+
+**What gets recorded**:
+- Update proposals
+- Scope of changes
+- Memory updates
+- Policy adjustment suggestions
+
+**Example event**:
+
+```json
+{
+  "phase": "learn",
+  "payload": {
+    "updates": [
+      {"type": "memory", "key": "changelog_format", "value": "keep-a-changelog"},
+      {"type": "hint", "content": "Include breaking changes section"}
+    ],
+    "scope": "session"
+  },
+  "caused_by": "reflect_event_id",
+  "metrics": {
+    "duration_ms": 2
+  }
+}
+```
+
+**Why it matters**: Episodes can improve over time without manual intervention.
+
+## Insight
+
+The **insight** phase computes KPIs and metrics from the episode.
+
+**Purpose**: Generate structured metrics for dashboards, alerts, and analysis.
+
+**What gets computed**:
+- Plan adherence (how closely execution matched the plan)
+- Veto count
+- Tool coverage
+- Latency percentiles
+- Custom KPIs
+
+**Example event**:
+
+```json
+{
+  "phase": "insight",
+  "payload": {
+    "metrics": {
+      "plan_adherence": 0.95,
+      "veto_count": 0,
+      "tool_coverage": 1.0,
+      "branching_factor": 2
+    },
+    "kpis": {
+      "success_rate": 1.0,
+      "first_action_latency_ms": 150
+    }
+  },
+  "caused_by": "learn_event_id"
+}
+```
+
+**Why it matters**: Structured KPIs enable automated monitoring, alerting, and continuous improvement.
+
+## Phase instrumentation
+
+Since v0.7.0, every phase is instrumented with timing and lineage:
+
+```json
+{
+  "id": "7d3d...f84",
+  "phase": "plan",
+  "payload": {...},
+  "metrics": {
+    "started_at": "2024-01-15T10:30:00.500Z",
+    "completed_at": "2024-01-15T10:30:00.512Z",
+    "duration_ms": 12.7
+  },
+  "caused_by": "5c12...0a9"
+}
+```
+
+- `started_at` / `completed_at`: High-resolution timestamps
+- `duration_ms`: Phase execution time
+- `caused_by`: UUID linking to the causal parent event
+
+This enables:
+- Performance profiling per phase
+- Causal chain reconstruction
+- Bottleneck identification
+
+## Direction
+
+The **direction** phase applies policy-driven plan mutations (meta mode only).
+
+**Purpose**: Allow policies to modify the plan before execution based on intuition signals.
+
+**What gets recorded**:
+- Directive ID (deterministic UUIDv5 for lineage)
+- Status (applied, blocked, skipped)
+- Diffs showing what changed
+- Policy information
+
+**Example event**:
+
+```json
+{
+  "phase": "direction",
+  "payload": {
+    "directive_id": "dir_abc123",
+    "status": "applied",
+    "advice": "Added safety bounds to query",
+    "diff": ["plan.steps[0].parameters"],
+    "policy_id": "SafetyPolicy@1.0",
+    "confidence": 0.85
+  },
+  "caused_by": "plan_event_id"
+}
+```
+
+**Why it matters**: You can see exactly how policies modified the plan before execution.
+
+## Governance
+
+The **governance** phase is a critical gate that audits actions before execution (meta mode only).
+
+**Purpose**: Enforce pre-action policies and provide audit trails for compliance.
+
+**What gets recorded**:
+- Governance ID (deterministic UUIDv5)
+- Decision (allow, audit, veto)
+- Rule that triggered the decision
+- Confidence score
+
+**Example event**:
+
+```json
+{
+  "phase": "governance",
+  "payload": {
+    "governance_id": "gov_def456",
+    "decision": "allow",
+    "rule_id": "rules.allow.default",
+    "score": 0.95,
+    "policy_id": "governance.rules",
+    "policy_version": "1.0.0"
+  },
+  "caused_by": "direction_event_id"
+}
+```
+
+**Governance decisions**:
+
+| Decision | Effect |
+| --- | --- |
+| `allow` | Action proceeds normally |
+| `audit` | Action proceeds, flagged for review |
+| `veto` | Action blocked, episode ends |
+
+**Why it matters**: The PreActGovernor ensures dangerous actions are blocked before they execute, with full audit trails.
+
+## Event order invariant
+
+Events follow this order in **meta mode**:
+
+```
+observe → interpret → plan → direction → governance → act+ → reflect → learn → insight → terminate
+```
+
+In **minimal mode**, direction, governance, and insight are skipped:
+
+```
+observe → interpret → plan → act+ → reflect → learn? → terminate
+```
+
+<Info>
+**Invariant**: Even on an error or veto, Noēsis emits an ordered trace and summary. You always get artifacts.
+</Info>
+
+This means:
+- Failed episodes still have complete timelines
+- Vetoed episodes record why they were blocked (governance decision recorded)
+- Errors are captured in the reflect phase
+- You can always inspect what happened
+
+## Feedback loops
+
+The diagram shows two feedback paths:
+
+1. **Insight → Interpret**: Reflections from one cycle can inform the next interpretation
+2. **Learn → Observe**: Adaptations can modify how future observations are processed
+
+These enable:
+- Progressive refinement within an episode
+- Cross-episode learning
+- Policy adaptation over time
+
+## Human in the loop
+
+Human review slots naturally between Act and Reflect:
+
+```mermaid
+flowchart LR
+    A[Act] --> H{Human Review}
+    H -->|approve| R[Reflect]
+    H -->|edit| A
+    H -->|reject| R
+```
+
+Policies can flag operations for human approval, pausing the loop until a decision is made.
+
+## Reading the timeline
+
+Use the CLI to inspect the timeline:
+
+```bash
+# All events
+noesis events ep_abc123
+
+# Filter by phase
+noesis events ep_abc123 --phase plan
+
+# As JSON for scripting
+noesis events ep_abc123 -j | jq '.[] | select(.phase == "act")'
+```
+
+Or in Python:
+
+```python
+import noesis as ns
+
+events = list(ns.events.read(episode_id))
+
+# Filter phases
+plan_events = [e for e in events if e["phase"] == "plan"]
+act_events = [e for e in events if e["phase"] == "act"]
+
+# Reconstruct causal chain
+def get_causal_chain(events, event_id):
+    chain = []
+    current = next((e for e in events if e["id"] == event_id), None)
+    while current:
+        chain.append(current)
+        current = next((e for e in events if e["id"] == current.get("caused_by")), None)
+    return chain
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Faculties" icon="brain" href="/explanation/faculties">
+    How Intuition, Direction, and Insight work.
+  </Card>
+  <Card title="Events reference" icon="list" href="/reference/events">
+    Complete event schema documentation.
+  </Card>
+</CardGroup>

@@ -1,0 +1,308 @@
+---
+title: "Configure planner modes"
+description: "How to toggle between meta and minimal planner modes for different governance levels."
+---
+
+Noēsis supports two planner modes that control the level of governance and observability in your episodes.
+
+## Understanding planner modes
+
+| Mode | Description | Use when |
+| --- | --- | --- |
+| `meta` (default) | Full governance with MetaPlanner and PreActGovernor | You need auditability, vetoes, and insight KPIs |
+| `minimal` | Skips governance, uses legacy stepwise planner | Quick sanity checks or smoke tests |
+
+## Setting the planner mode
+
+### Python API
+
+```python
+import noesis as ns
+
+# Set globally
+ns.set(planner_mode="meta")  # Full governance (default)
+ns.set(planner_mode="minimal")  # Skip governance
+
+# Check current mode
+config = ns.config()
+print(config.planner_mode)
+```
+
+### Environment variable
+
+```bash
+export NOESIS_PLANNER=meta
+noesis run "my task"
+
+# Or inline
+NOESIS_PLANNER=minimal noesis run "my task"
+```
+
+### Configuration file
+
+Create a `noesis.toml` in your project root:
+
+```toml noesis.toml
+[noesis]
+planner_mode = "meta"
+runs_dir = "./runs"
+```
+
+### Precedence
+
+Configuration is resolved in this order (highest to lowest):
+
+1. `ns.set()` call in code
+2. `NOESIS_PLANNER` environment variable
+3. `noesis.toml` configuration file
+4. Default value (`meta`)
+
+## Meta mode (default)
+
+Meta mode enables full governance:
+
+```python
+import noesis as ns
+
+ns.set(planner_mode="meta")
+
+episode_id = ns.run("Provision staging infrastructure")
+
+# Check direction and governance events
+events = list(ns.events.read(episode_id))
+direction = [e for e in events if e["phase"] == "direction"]
+governance = [e for e in events if e["phase"] == "governance"]
+
+print(f"Direction events: {len(direction)}")
+print(f"Governance events: {len(governance)}")
+```
+
+### What meta mode provides
+
+- **MetaPlanner**: Threads through every episode for structured planning
+- **PreActGovernor**: Audits actions before execution, can veto
+- **Direction events**: Records directive status (`applied`, `blocked`, `skipped`)
+- **Governance events**: Records decisions (`allow`, `audit`, `veto`)
+- **Full insight metrics**: Plan adherence, veto count, tool coverage
+
+### Direction event example
+
+```json
+{
+  "phase": "direction",
+  "payload": {
+    "status": "applied",
+    "advice": "Added safety bounds",
+    "diff": ["plan.steps[0].description"],
+    "policy_id": "SafetyPolicy@1.0"
+  },
+  "caused_by": "7e0f..."
+}
+```
+
+### Governance event example
+
+```json
+{
+  "phase": "governance",
+  "payload": {
+    "decision": "audit",
+    "rule_id": "rules.audit.sensitive",
+    "score": 0.6,
+    "policy_id": "governance.rules",
+    "policy_version": "1.0.0"
+  },
+  "caused_by": "5c12..."
+}
+```
+
+## Minimal mode
+
+Minimal mode skips governance for faster execution:
+
+```python
+import noesis as ns
+
+ns.set(planner_mode="minimal")
+
+episode_id = ns.run("Quick sanity check")
+
+# No governance events
+events = list(ns.events.read(episode_id))
+governance = [e for e in events if e["phase"] == "governance"]
+assert len(governance) == 0  # No governance in minimal mode
+```
+
+### What minimal mode skips
+
+- MetaPlanner and PreActGovernor
+- Direction and governance events
+- Policy-based vetoes
+- Some insight metrics (veto_count, plan_adherence)
+
+### What minimal mode keeps
+
+- The cognitive loop (observe → interpret → plan → act → reflect → learn)
+- Event timeline (`events.jsonl`)
+- Summary artifacts (`summary.json`)
+- Basic metrics (success, act_count)
+
+## Inspecting governance metrics
+
+When using meta mode, governance metrics are available in the summary:
+
+```python
+import noesis as ns
+
+ns.set(planner_mode="meta")
+episode_id = ns.run("Sensitive operation", intuition=True)
+
+summary = ns.summary.read(episode_id)
+metrics = summary.get("insight", {}).get("metrics", {})
+
+print(f"Plan revisions: {metrics.get('plan_revisions', 0)}")
+print(f"Veto count: {metrics.get('veto_count', 0)}")
+print(f"Plan adherence: {metrics.get('plan_adherence', 1.0):.2%}")
+print(f"Tool coverage: {metrics.get('tool_coverage', 1.0):.2%}")
+```
+
+## Governance decisions
+
+The PreActGovernor can make three decisions:
+
+| Decision | Effect | When it happens |
+| --- | --- | --- |
+| `allow` | Action proceeds normally | No policy concerns |
+| `audit` | Action proceeds, marked for review | Medium-risk operations |
+| `veto` | Action blocked | High-risk or policy violations |
+
+## Handling vetoes
+
+When an action is vetoed, the episode continues but the action is blocked:
+
+```python
+import noesis as ns
+from noesis import NoesisVeto
+
+
+try:
+    episode_id = ns.run("DROP TABLE users", intuition=True)
+except NoesisVeto as e:
+    print(f"Vetoed: {e.reason}")
+    print(f"Policy: {e.policy_id}")
+    print(f"Episode: {e.episode_id}")
+```
+
+Or check the events after the fact:
+
+```python
+episode_id = ns.run("DROP TABLE users", intuition=True)
+events = list(ns.events.read(episode_id))
+
+vetoed = any(
+    e["phase"] == "direction" and e.get("payload", {}).get("status") == "blocked"
+    for e in events
+)
+
+if vetoed:
+    veto_event = next(
+        e for e in events
+        if e["phase"] == "direction" and e.get("payload", {}).get("status") == "blocked"
+    )
+    print(f"Vetoed: {veto_event['payload']['advice']}")
+```
+
+## Switching modes dynamically
+
+You can switch modes between episodes:
+
+```python
+import noesis as ns
+
+# Run with full governance
+ns.set(planner_mode="meta")
+governed_ep = ns.run("Critical operation", intuition=True)
+
+# Run quick test without governance
+ns.set(planner_mode="minimal")
+test_ep = ns.run("Quick test")
+
+# Back to governed mode
+ns.set(planner_mode="meta")
+another_governed_ep = ns.run("Another critical operation", intuition=True)
+```
+
+## CLI usage
+
+Toggle modes from the command line:
+
+```bash
+# Meta mode (default)
+noesis run "Sensitive task"
+
+# Minimal mode via environment
+NOESIS_PLANNER=minimal noesis run "Quick test"
+```
+
+## When to use each mode
+
+### Use meta mode for:
+
+- Production workloads
+- Compliance-sensitive operations
+- Operations requiring audit trails
+- Tasks with intuition policies
+- Any operation that might need to be vetoed
+
+### Use minimal mode for:
+
+- Development and testing
+- Quick sanity checks
+- Benchmarking adapter performance
+- Operations that don't need governance overhead
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No direction events appearing">
+    You're likely in `minimal` mode. Check with:
+    
+    ```python
+    config = ns.config()
+    print(config.planner_mode)  # Should be "meta"
+    ```
+    
+    Set to meta mode: `ns.set(planner_mode="meta")`
+  </Accordion>
+  
+  <Accordion title="Veto not blocking actions">
+    Ensure intuition is enabled:
+    
+    ```python
+    # Must pass intuition=True or a policy instance
+    ns.run("task", intuition=True)
+    # or
+    ns.run("task", intuition=MyPolicy())
+    ```
+  </Accordion>
+  
+  <Accordion title="Governance metrics are zero">
+    Governance metrics only populate in meta mode with active policies:
+    
+    ```python
+    ns.set(planner_mode="meta")
+    ns.run("task", intuition=MyPolicy())  # Need a policy
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Write policies" icon="pen" href="/guides/write-policies">
+    Create intuition policies for governance.
+  </Card>
+  <Card title="Export metrics" icon="chart-bar" href="/guides/export-metrics">
+    Export governance metrics to your observability stack.
+  </Card>
+</CardGroup>

@@ -190,7 +190,7 @@ jobs:
         if: needs.determine-changes.outputs.contracts == 'true'
 
   docs-build:
-    name: "docs: build (your Nextra/pnpm build)"
+    name: "docs: build (Mintlify)"
     needs: determine-changes
     runs-on: ubuntu-latest
     steps:
@@ -203,20 +203,20 @@ jobs:
           echo "No relevant files changed; skipping docs build."
           exit 0
 
-      - run: npm i -g pnpm@10.16.1
+      - name: Set up Node
         if: needs.determine-changes.outputs.contracts == 'true'
-      - uses: actions/setup-node@v4
-        if: needs.determine-changes.outputs.contracts == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+
+      - name: Install Mintlify CLI
+        if: needs.determine-changes.outputs.contracts == 'true'
+        run: npm i -g mintlify
+
+      - name: Build docs (Mintlify)
         if: needs.determine-changes.outputs.contracts == 'true'
         working-directory: docs
-      - run: pnpm run build
-        if: needs.determine-changes.outputs.contracts == 'true'
-        working-directory: docs
+        run: mintlify build
 
   build-wheel:
     name: build-wheel (packaging)

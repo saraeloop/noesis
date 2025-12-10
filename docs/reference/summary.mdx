@@ -1,0 +1,376 @@
+---
+title: "Summary schema"
+description: "Complete reference for the Noēsis summary.json artifact."
+---
+
+The `summary.json` artifact provides a high-level view of episode outcomes, metrics, and flags. It's designed for quick access to key information without parsing the full event timeline.
+
+## Schema overview
+
+```json
+{
+  "schema_version": "1.2.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "task": "Draft release notes for v1.2.0",
+  "started_at": "2024-01-15T10:30:00Z",
+  "completed_at": "2024-01-15T10:30:05Z",
+  "flags": { ... },
+  "metrics": { ... },
+  "insight": { ... },
+  "tags": { ... }
+}
+```
+
+## Root fields
+
+<ResponseField name="schema_version" type="string" required>
+Version of the summary schema. Currently `"1.2.0"`.
+</ResponseField>
+
+<ResponseField name="episode_id" type="string" required>
+Unique episode identifier.
+</ResponseField>
+
+<ResponseField name="task" type="string" required>
+The original task or goal.
+</ResponseField>
+
+<ResponseField name="started_at" type="string" required>
+ISO 8601 start timestamp.
+</ResponseField>
+
+<ResponseField name="completed_at" type="string">
+ISO 8601 completion timestamp.
+</ResponseField>
+
+## Flags
+
+Configuration flags for the episode run.
+
+```json
+{
+  "flags": {
+    "intuition": true,
+    "mode": "meta",
+    "direction": {
+      "applied": 2,
+      "vetoed": 0,
+      "policy": "SafetyPolicy@1.0",
+      "threshold": 0.75,
+      "last_diff": ["plan.steps[0].parameters"]
+    }
+  }
+}
+```
+
+<ResponseField name="flags.intuition" type="boolean" required>
+Whether intuition was enabled.
+</ResponseField>
+
+<ResponseField name="flags.mode" type="string" required>
+Execution mode: `"meta"` or `"minimal"`.
+</ResponseField>
+
+<ResponseField name="flags.direction" type="object">
+Direction statistics (meta mode only).
+
+<Expandable title="Direction properties">
+  <ResponseField name="applied" type="number">
+  Number of directives applied.
+  </ResponseField>
+  
+  <ResponseField name="vetoed" type="number">
+  Number of vetoes issued.
+  </ResponseField>
+  
+  <ResponseField name="policy" type="string">
+  Policy that issued directives.
+  </ResponseField>
+  
+  <ResponseField name="threshold" type="number">
+  Confidence threshold used.
+  </ResponseField>
+  
+  <ResponseField name="last_diff" type="array">
+  Paths modified by the last directive.
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Metrics
+
+Core execution metrics.
+
+```json
+{
+  "metrics": {
+    "success": 1,
+    "plan_count": 2,
+    "act_count": 3,
+    "reflect_count": 1,
+    "veto_count": 0,
+    "learn_proposals": 1,
+    "learn_applied": 0,
+    "latencies": {
+      "first_action_ms": 150,
+      "total_ms": 5000,
+      "planning_ms": 500,
+      "execution_ms": 4000
+    }
+  }
+}
+```
+
+<ResponseField name="metrics.success" type="number" required>
+Success indicator: `1` for success, `0` for failure.
+</ResponseField>
+
+<ResponseField name="metrics.plan_count" type="number" required>
+Number of planning iterations.
+</ResponseField>
+
+<ResponseField name="metrics.act_count" type="number" required>
+Number of actions executed.
+</ResponseField>
+
+<ResponseField name="metrics.reflect_count" type="number" required>
+Number of reflection passes.
+</ResponseField>
+
+<ResponseField name="metrics.veto_count" type="number" required>
+Number of policy vetoes.
+</ResponseField>
+
+<ResponseField name="metrics.learn_proposals" type="number">
+Number of learning proposals generated.
+</ResponseField>
+
+<ResponseField name="metrics.learn_applied" type="number">
+Number of learning proposals applied.
+</ResponseField>
+
+<ResponseField name="metrics.latencies" type="object">
+Timing metrics.
+
+<Expandable title="Latency properties">
+  <ResponseField name="first_action_ms" type="number">
+  Milliseconds to first action.
+  </ResponseField>
+  
+  <ResponseField name="total_ms" type="number">
+  Total episode duration in milliseconds.
+  </ResponseField>
+  
+  <ResponseField name="planning_ms" type="number">
+  Time spent in planning phase.
+  </ResponseField>
+  
+  <ResponseField name="execution_ms" type="number">
+  Time spent in execution phase.
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Insight
+
+Advanced insight metrics (meta mode only).
+
+```json
+{
+  "insight": {
+    "metrics": {
+      "plan_adherence": 0.95,
+      "tool_coverage": 1.0,
+      "branching_factor": 2,
+      "plan_revisions": 1
+    }
+  }
+}
+```
+
+<ResponseField name="insight.metrics" type="object">
+Computed insight metrics.
+
+<Expandable title="Insight metrics">
+  <ResponseField name="plan_adherence" type="number">
+  How closely execution matched the plan (0-1). Rounded to 4 decimal places.
+  </ResponseField>
+  
+  <ResponseField name="tool_coverage" type="number">
+  Percentage of planned tools that were used (0-1).
+  </ResponseField>
+  
+  <ResponseField name="branching_factor" type="number">
+  Count of direction events emitted.
+  </ResponseField>
+  
+  <ResponseField name="plan_revisions" type="number">
+  Number of times the plan was revised.
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Tags
+
+User-provided metadata.
+
+```json
+{
+  "tags": {
+    "environment": "staging",
+    "team": "platform",
+    "priority": "high"
+  }
+}
+```
+
+<ResponseField name="tags" type="object">
+Key-value pairs of user-provided metadata.
+</ResponseField>
+
+## Complete example
+
+```json
+{
+  "schema_version": "1.2.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "task": "Draft release notes for v1.2.0",
+  "started_at": "2024-01-15T10:30:00Z",
+  "completed_at": "2024-01-15T10:30:05Z",
+  "flags": {
+    "intuition": true,
+    "mode": "meta",
+    "direction": {
+      "applied": 1,
+      "vetoed": 0,
+      "policy": "SafetyPolicy@1.0",
+      "threshold": 0.75,
+      "last_diff": ["plan.steps[0].description"]
+    }
+  },
+  "metrics": {
+    "success": 1,
+    "plan_count": 2,
+    "act_count": 3,
+    "reflect_count": 1,
+    "veto_count": 0,
+    "learn_proposals": 0,
+    "learn_applied": 0,
+    "latencies": {
+      "first_action_ms": 150,
+      "total_ms": 5000
+    }
+  },
+  "insight": {
+    "metrics": {
+      "plan_adherence": 0.95,
+      "tool_coverage": 1.0,
+      "branching_factor": 2,
+      "plan_revisions": 1
+    }
+  },
+  "tags": {
+    "environment": "staging",
+    "team": "platform"
+  }
+}
+```
+
+## Reading summaries
+
+### Python
+
+```python
+import noesis as ns
+
+summary = ns.summary.read("ep_abc123")
+
+# Basic info
+print(f"Task: {summary['task']}")
+print(f"Success: {summary['metrics']['success']}")
+
+# Metrics
+metrics = summary['metrics']
+print(f"Actions: {metrics['act_count']}")
+print(f"Vetoes: {metrics['veto_count']}")
+print(f"First action: {metrics['latencies']['first_action_ms']}ms")
+
+# Insight (if available)
+insight = summary.get('insight', {}).get('metrics', {})
+print(f"Plan adherence: {insight.get('plan_adherence', 'N/A')}")
+```
+
+### CLI
+
+```bash
+# Human-readable
+noesis show ep_abc123
+
+# Raw JSON
+noesis show ep_abc123 -j
+
+# Extract specific fields
+noesis show ep_abc123 -j | jq '.metrics.success'
+```
+
+### File access
+
+```bash
+cat runs/demo/ep_abc123/summary.json | jq .
+```
+
+## Use cases
+
+### Check success rate
+
+```python
+import noesis as ns
+
+episodes = ns.list_runs(limit=100)
+successes = sum(
+    ns.summary.read(ep['episode_id'])['metrics']['success']
+    for ep in episodes
+)
+rate = successes / len(episodes)
+print(f"Success rate: {rate:.2%}")
+```
+
+### Find vetoed episodes
+
+```python
+import noesis as ns
+
+episodes = ns.list_runs(limit=100)
+vetoed = [
+    ep for ep in episodes
+    if ns.summary.read(ep['episode_id'])['metrics']['veto_count'] > 0
+]
+print(f"Vetoed episodes: {len(vetoed)}")
+```
+
+### Analyze latencies
+
+```python
+import noesis as ns
+import statistics
+
+episodes = ns.list_runs(limit=100)
+latencies = [
+    ns.summary.read(ep['episode_id'])['metrics']['latencies'].get('first_action_ms', 0)
+    for ep in episodes
+]
+
+print(f"Median first action: {statistics.median(latencies):.0f}ms")
+print(f"P95 first action: {statistics.quantiles(latencies, n=20)[-1]:.0f}ms")
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="State schema" icon="database" href="/reference/state">
+    State artifact reference.
+  </Card>
+  <Card title="Export metrics" icon="chart-bar" href="/guides/export-metrics">
+    Export to observability tools.
+  </Card>
+</CardGroup>

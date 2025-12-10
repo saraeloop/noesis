@@ -1,0 +1,444 @@
+---
+title: "Configuration"
+description: "Complete reference for Noēsis configuration options."
+---
+
+Noēsis can be configured through multiple sources. This page documents all available options and how to set them.
+
+## Configuration precedence
+
+Configuration is resolved in this order (highest to lowest priority):
+
+1. **`ns.set()` calls** in Python code
+2. **Environment variables** (e.g., `NOESIS_PLANNER`)
+3. **`noesis.toml`** configuration file
+4. **Default values**
+
+## Configuration options
+
+### runs_dir
+
+Directory where artifacts are stored.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(runs_dir="./my-runs")` |
+| Environment | `NOESIS_RUNS_DIR=./my-runs` |
+| TOML | `runs_dir = "./my-runs"` |
+| Default | `"./runs"` |
+
+**Example**:
+
+```python
+import noesis as ns
+
+ns.set(runs_dir="./artifacts")
+episode_id = ns.run("task")
+# Artifacts stored in ./artifacts/demo/ep_.../
+```
+
+### planner_mode
+
+Controls the level of governance and observability.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(planner_mode="meta")` |
+| Environment | `NOESIS_PLANNER=meta` |
+| TOML | `planner_mode = "meta"` |
+| Default | `"meta"` |
+
+**Values**:
+
+| Value | Description |
+| --- | --- |
+| `meta` | Full governance with MetaPlanner and PreActGovernor |
+| `minimal` | Skip governance, use legacy stepwise planner |
+
+**Example**:
+
+```python
+import noesis as ns
+
+# Full governance (default)
+ns.set(planner_mode="meta")
+
+# Skip governance for quick tests
+ns.set(planner_mode="minimal")
+```
+
+### seed
+
+Seed for reproducible episodes.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(seed=42)` |
+| Environment | `NOESIS_SEED=42` |
+| TOML | `seed = 42` |
+| Default | `None` (random) |
+
+**Example**:
+
+```python
+import noesis as ns
+
+ns.set(seed=42)
+ep1 = ns.run("task")
+
+ns.set(seed=42)
+ep2 = ns.run("task")
+# ep1 and ep2 have deterministic behavior
+```
+
+### label
+
+Subdirectory name for organizing runs.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(label="production")` |
+| Environment | `NOESIS_LABEL=production` |
+| TOML | `label = "production"` |
+| Default | `"demo"` |
+
+**Example**:
+
+```python
+import noesis as ns
+
+ns.set(label="staging")
+ns.run("task")
+# Artifacts in ./runs/staging/ep_.../
+
+ns.set(label="production")
+ns.run("task")
+# Artifacts in ./runs/production/ep_.../
+```
+
+### log_prompts
+
+Enable prompt provenance logging.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(log_prompts=True)` |
+| Environment | `NOESIS_LOG_PROMPTS=true` |
+| TOML | `log_prompts = true` |
+| Default | `false` |
+
+<Warning>
+Enable carefully—prompts may contain sensitive data. Creates `prompts.jsonl` in episode directory.
+</Warning>
+
+**Example**:
+
+```python
+import noesis as ns
+
+ns.set(log_prompts=True)
+ns.run("task")
+# Creates ./runs/demo/ep_.../prompts.jsonl
+```
+
+### learn_mode
+
+Controls how learning proposals are handled.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(learn_mode="record")` |
+| Environment | `NOESIS_LEARN_MODE=record` |
+| TOML | `learn_mode = "record"` |
+| Default | `"record"` |
+
+**Values**:
+
+| Value | Description |
+| --- | --- |
+| `off` | Disable learning |
+| `record` | Record proposals only |
+| `apply` | Auto-apply approved proposals |
+
+### learn_auto_apply_min_confidence
+
+Minimum confidence for auto-applying learn proposals.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(learn_auto_apply_min_confidence=0.9)` |
+| Environment | `NOESIS_LEARN_MIN_CONFIDENCE=0.9` |
+| TOML | `learn_auto_apply_min_confidence = 0.9` |
+| Default | `0.85` |
+
+### learn_auto_apply_min_successes
+
+Minimum successful triggers before auto-applying.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(learn_auto_apply_min_successes=5)` |
+| Environment | `NOESIS_LEARN_MIN_SUCCESSES=5` |
+| TOML | `learn_auto_apply_min_successes = 5` |
+| Default | `3` |
+
+### intuition_mode
+
+Controls intuition advisory posture.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(intuition_mode="advisory")` |
+| Environment | `NOESIS_INTUITION_MODE=advisory` |
+| TOML | `intuition_mode = "advisory"` |
+| Default | `"advisory"` |
+
+**Values**:
+
+| Value | Description |
+| --- | --- |
+| `advisory` | Intuition provides hints only |
+| `interventive` | Intuition can modify plans |
+| `hybrid` | Combination based on confidence |
+
+### direction_min_confidence
+
+Minimum confidence threshold for applying plan directives.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(direction_min_confidence=0.8)` |
+| Environment | `NOESIS_DIRECTION_MIN_CONFIDENCE=0.8` |
+| TOML | `direction_min_confidence = 0.8` |
+| Default | `0.7` |
+
+### learn_home
+
+Directory for learning data storage.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(learn_home="./learn")` |
+| Environment | `NOESIS_LEARN_HOME=./learn` |
+| TOML | `learn_home = "./learn"` |
+| Default | `"./learn"` |
+
+### default_tags
+
+Default metadata tags applied to all episodes.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(default_tags={"env": "prod"})` |
+| TOML | `default_tags = {env = "prod"}` |
+| Default | `{}` |
+
+## Configuration file
+
+Create a `noesis.toml` in your project root:
+
+```toml noesis.toml
+[noesis]
+runs_dir = "./runs"
+planner_mode = "meta"
+label = "production"
+seed = 42
+log_prompts = false
+learn_mode = "record"
+learn_home = "./learn"
+intuition_mode = "advisory"
+direction_min_confidence = 0.7
+learn_auto_apply_min_confidence = 0.85
+learn_auto_apply_min_successes = 3
+
+[noesis.default_tags]
+env = "production"
+team = "platform"
+```
+
+## Environment variables
+
+All configuration options have environment variable equivalents:
+
+| Option | Environment variable |
+| --- | --- |
+| `runs_dir` | `NOESIS_RUNS_DIR` |
+| `planner_mode` | `NOESIS_PLANNER` |
+| `seed` | `NOESIS_SEED` |
+| `label` | `NOESIS_LABEL` |
+| `log_prompts` | `NOESIS_LOG_PROMPTS` |
+| `learn_mode` | `NOESIS_LEARN_MODE` |
+| `learn_home` | `NOESIS_LEARN_HOME` |
+| `intuition_mode` | `NOESIS_INTUITION_MODE` |
+| `direction_min_confidence` | `NOESIS_DIRECTION_MIN_CONFIDENCE` |
+| `learn_auto_apply_min_confidence` | `NOESIS_LEARN_MIN_CONFIDENCE` |
+| `learn_auto_apply_min_successes` | `NOESIS_LEARN_MIN_SUCCESSES` |
+
+**Example**:
+
+```bash
+# Set via environment
+export NOESIS_PLANNER=meta
+export NOESIS_RUNS_DIR=./artifacts
+export NOESIS_LABEL=production
+
+# Or inline
+NOESIS_PLANNER=minimal noesis run "quick test"
+```
+
+## Python API
+
+### Setting configuration
+
+```python
+import noesis as ns
+
+# Set individual options
+ns.set(runs_dir="./artifacts")
+ns.set(planner_mode="meta")
+ns.set(seed=42)
+
+# Set multiple at once
+ns.set(
+    runs_dir="./artifacts",
+    planner_mode="meta",
+    seed=42,
+    label="production",
+)
+```
+
+### Reading configuration
+
+```python
+import noesis as ns
+
+config = ns.config()
+
+print(f"Runs dir: {config.runs_dir}")
+print(f"Planner mode: {config.planner_mode}")
+print(f"Seed: {config.seed}")
+print(f"Label: {config.label}")
+```
+
+### Resetting configuration
+
+```python
+import noesis as ns
+
+# Reset to defaults
+ns.reset_config()
+
+# Or set to specific values
+ns.set(
+    runs_dir="./runs",
+    planner_mode="meta",
+    seed=None,
+    label="demo",
+)
+```
+
+## Per-episode overrides
+
+Some options can be overridden per episode:
+
+```python
+import noesis as ns
+
+# Global config
+ns.set(planner_mode="meta", label="production")
+
+# Override for specific episode
+episode_id = ns.run(
+    "quick test",
+    tags={"override": "true"},
+    # Note: Some options like seed can be passed directly
+)
+```
+
+## CLI configuration
+
+Use global options or environment variables:
+
+```bash
+# Global options
+noesis --runs-dir ./artifacts run "task"
+noesis --planner minimal run "task"
+
+# Environment variables
+NOESIS_RUNS_DIR=./artifacts noesis run "task"
+NOESIS_PLANNER=minimal noesis run "task"
+```
+
+## Configuration validation
+
+Noēsis validates configuration on startup:
+
+```python
+import noesis as ns
+
+# Invalid planner mode raises ValueError
+try:
+    ns.set(planner_mode="invalid")
+except ValueError as e:
+    print(f"Invalid config: {e}")
+```
+
+## Best practices
+
+<Tip>
+**Use environment variables for deployment.** Set `NOESIS_RUNS_DIR` and `NOESIS_LABEL` in your deployment config to separate environments.
+</Tip>
+
+<Warning>
+**Don't commit secrets.** If using `noesis.toml`, ensure it doesn't contain sensitive values and is in `.gitignore` if needed.
+</Warning>
+
+<Info>
+**Use seeds for debugging.** Set a seed when debugging to get reproducible episodes, then remove it for production.
+</Info>
+
+## Example configurations
+
+### Development
+
+```toml noesis.toml
+[noesis]
+runs_dir = "./runs"
+planner_mode = "minimal"
+label = "dev"
+log_prompts = true
+```
+
+### Staging
+
+```toml noesis.toml
+[noesis]
+runs_dir = "./runs"
+planner_mode = "meta"
+label = "staging"
+learn_mode = "record"
+```
+
+### Production
+
+```toml noesis.toml
+[noesis]
+runs_dir = "/var/noesis/runs"
+planner_mode = "meta"
+label = "production"
+log_prompts = false
+learn_mode = "record"
+learn_auto_apply_min_confidence = 0.95
+learn_auto_apply_min_successes = 5
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with Noēsis.
+  </Card>
+  <Card title="Planner modes" icon="shield" href="/guides/configure-planner-modes">
+    Configure governance levels.
+  </Card>
+</CardGroup>

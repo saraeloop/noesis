@@ -1,0 +1,369 @@
+---
+title: "CLI reference"
+description: "Complete reference for the Noēsis command-line interface."
+---
+
+The Noēsis CLI is installed with the package. Run via `noesis` or `uv run noesis`.
+
+## Installation
+
+```bash
+# Install globally
+uv tool install noesis
+
+# Or run from project
+uv run noesis --help
+```
+
+## Commands
+
+### noesis run
+
+Execute a baseline episode.
+
+```bash
+noesis run "task description" [options]
+```
+
+**Arguments**:
+
+| Argument | Description |
+| --- | --- |
+| `task` | The task or goal (required) |
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--intuition CLASS` | Attach an intuition policy class | None |
+| `--tags KEY=VALUE` | Add metadata tags (repeatable) | None |
+| `--seed INT` | Seed for reproducibility | None |
+| `-j, --json` | Output as JSON | False |
+
+**Examples**:
+
+```bash
+# Simple run
+noesis run "Draft release notes"
+
+# With intuition
+noesis run "Check database" --intuition mymodule:SafetyPolicy
+
+# With tags
+noesis run "Deploy to staging" --tags env=staging --tags team=platform
+
+# JSON output
+noesis run "Test task" -j
+```
+
+### noesis solve
+
+Execute an episode through an adapter.
+
+```bash
+noesis solve "task description" --using ADAPTER [options]
+```
+
+**Arguments**:
+
+| Argument | Description |
+| --- | --- |
+| `task` | The task or goal (required) |
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--using ADAPTER` | Adapter name or path (required) | None |
+| `--intuition CLASS` | Attach an intuition policy class | None |
+| `--tags KEY=VALUE` | Add metadata tags (repeatable) | None |
+| `-j, --json` | Output as JSON | False |
+
+**Examples**:
+
+```bash
+# With registered adapter
+noesis solve "Process data" --using my-adapter
+
+# With module path
+noesis solve "Analyze logs" --using mymodule:analyzer
+
+# With intuition
+noesis solve "Deploy" --using deploy-adapter --intuition SafetyPolicy
+```
+
+### noesis list
+
+List recent episodes.
+
+```bash
+noesis list [options]
+```
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--limit INT` | Maximum episodes to show | 20 |
+| `-j, --json` | Output as JSON | False |
+
+**Examples**:
+
+```bash
+# Table output
+noesis list --limit 10
+
+# JSON output for scripting
+noesis list -j | jq '.[0].episode_id'
+```
+
+**Output columns**:
+
+| Column | Description |
+| --- | --- |
+| ID | Episode identifier |
+| Task | Truncated task description |
+| Status | `completed`, `errored`, `vetoed` |
+| Time | Completion timestamp |
+
+### noesis show
+
+Display episode summary.
+
+```bash
+noesis show EPISODE_ID [options]
+```
+
+**Arguments**:
+
+| Argument | Description |
+| --- | --- |
+| `episode_id` | Episode ID to display (required) |
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `-j, --json` | Output raw JSON | False |
+
+**Examples**:
+
+```bash
+# Friendly output
+noesis show ep_2024_abc123_s0
+
+# Raw JSON
+noesis show ep_2024_abc123_s0 -j
+```
+
+### noesis events
+
+Stream events for an episode.
+
+```bash
+noesis events EPISODE_ID [options]
+```
+
+**Arguments**:
+
+| Argument | Description |
+| --- | --- |
+| `episode_id` | Episode ID to read (required) |
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--phase PHASE` | Filter by phase | None |
+| `--follow` | Tail events continuously | False |
+| `-j, --json` | Output as JSONL | False |
+
+**Examples**:
+
+```bash
+# All events
+noesis events ep_2024_abc123_s0
+
+# Filter by phase
+noesis events ep_2024_abc123_s0 --phase act
+
+# JSON for piping
+noesis events ep_2024_abc123_s0 -j | jq '.phase'
+
+# Tail latest episode
+noesis events $(noesis list -j | jq -r '.[0].episode_id') --follow
+```
+
+**Phase values**:
+
+| Phase | Description |
+| --- | --- |
+| `observe` | Input capture |
+| `interpret` | Signal extraction |
+| `plan` | Action planning |
+| `direction` | Policy directives |
+| `governance` | Audit decisions |
+| `act` | Tool execution |
+| `reflect` | Outcome evaluation |
+| `learn` | Learning signals |
+
+### noesis insight
+
+Fetch computed insight metrics.
+
+```bash
+noesis insight EPISODE_ID [options]
+```
+
+**Arguments**:
+
+| Argument | Description |
+| --- | --- |
+| `episode_id` | Episode ID to analyze (required) |
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `-j, --json` | Output as JSON (default) | True |
+
+**Examples**:
+
+```bash
+# Get metrics
+noesis insight ep_2024_abc123_s0
+
+# Parse with jq
+noesis insight ep_2024_abc123_s0 | jq '.metrics.success'
+```
+
+**Output fields**:
+
+| Field | Description |
+| --- | --- |
+| `success` | 1 for success, 0 for failure |
+| `plan_count` | Number of planning iterations |
+| `act_count` | Number of actions executed |
+| `veto_count` | Number of policy vetoes |
+| `latencies` | Timing metrics |
+
+### noesis diagnostics
+
+Run diagnostic commands.
+
+```bash
+noesis diagnostics SUBCOMMAND [options]
+```
+
+**Subcommands**:
+
+| Subcommand | Description |
+| --- | --- |
+| `events` | Analyze event timeline |
+| `replay` | Replay an episode |
+| `validate` | Validate artifact integrity |
+
+**Examples**:
+
+```bash
+# Analyze events
+noesis diagnostics events --episode ep_2024_abc123_s0
+
+# Validate manifests
+noesis diagnostics validate --episode ep_2024_abc123_s0
+```
+
+## Global options
+
+These options work with all commands:
+
+| Option | Description |
+| --- | --- |
+| `--help` | Show help message |
+| `--version` | Show version |
+| `--runs-dir PATH` | Override runs directory |
+| `--planner MODE` | Override planner mode (`meta`/`minimal`) |
+
+## Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `NOESIS_RUNS_DIR` | Default runs directory |
+| `NOESIS_PLANNER` | Default planner mode |
+| `NOESIS_SEED` | Default seed |
+| `NOESIS_LABEL` | Default label |
+
+**Example**:
+
+```bash
+# Set planner mode via environment
+NOESIS_PLANNER=minimal noesis run "Quick test"
+
+# Set runs directory
+NOESIS_RUNS_DIR=./my-runs noesis list
+```
+
+## Scripting patterns
+
+### Get latest episode ID
+
+```bash
+LATEST=$(noesis list -j | jq -r '.[0].episode_id')
+noesis show $LATEST
+```
+
+### Check success rate
+
+```bash
+noesis list -j --limit 100 | jq '[.[] | .status == "completed"] | (map(select(.)) | length) / length'
+```
+
+### Export metrics to CSV
+
+```bash
+noesis list -j | jq -r '.[] | [.episode_id, .status, .timestamp] | @csv' > episodes.csv
+```
+
+### Filter by tag
+
+```bash
+noesis list -j | jq '[.[] | select(.tags.env == "production")]'
+```
+
+### Tail direction events
+
+```bash
+noesis events $(noesis list -j | jq -r '.[0].episode_id') \
+  --phase direction \
+  --follow
+```
+
+### Batch process episodes
+
+```bash
+for ep in $(noesis list -j | jq -r '.[].episode_id'); do
+  echo "Processing $ep"
+  noesis insight $ep > "insights/$ep.json"
+done
+```
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | General error |
+| 2 | Invalid arguments |
+| 3 | Episode not found |
+| 4 | Veto occurred |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Python API" icon="code" href="/reference/python-api">
+    Programmatic interface reference.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with the CLI.
+  </Card>
+</CardGroup>

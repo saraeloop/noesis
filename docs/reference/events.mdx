@@ -1,0 +1,542 @@
+---
+title: "Events schema"
+description: "Complete reference for Noēsis event types and their payloads."
+---
+
+Events are stored in `events.jsonl` as newline-delimited JSON. Each event represents a phase transition in the cognitive loop.
+
+## Event structure
+
+Every event follows this base structure:
+
+```json
+{
+  "id": "evt_abc123",
+  "phase": "plan",
+  "agent_id": "meta_planner",
+  "payload": { ... },
+  "metrics": {
+    "started_at": "2024-01-15T10:30:00.500Z",
+    "completed_at": "2024-01-15T10:30:00.512Z",
+    "duration_ms": 12.7
+  },
+  "caused_by": "evt_xyz789"
+}
+```
+
+<ResponseField name="id" type="string" required>
+Unique event identifier.
+</ResponseField>
+
+<ResponseField name="phase" type="string" required>
+Event phase: `observe`, `interpret`, `plan`, `direction`, `governance`, `act`, `reflect`, `learn`, `terminate`.
+</ResponseField>
+
+<ResponseField name="agent_id" type="string">
+Identifier of the component that emitted the event.
+</ResponseField>
+
+<ResponseField name="payload" type="object" required>
+Phase-specific payload data.
+</ResponseField>
+
+<ResponseField name="metrics" type="object">
+Timing metrics for the event.
+
+<Expandable title="Metrics properties">
+  <ResponseField name="started_at" type="string">
+  ISO 8601 timestamp when the phase started.
+  </ResponseField>
+  
+  <ResponseField name="completed_at" type="string">
+  ISO 8601 timestamp when the phase completed.
+  </ResponseField>
+  
+  <ResponseField name="duration_ms" type="number">
+  Duration in milliseconds.
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+<ResponseField name="caused_by" type="string">
+ID of the event that caused this one (for lineage tracking).
+</ResponseField>
+
+## Event phases
+
+### observe
+
+Captures the raw task and context at episode start.
+
+```json
+{
+  "phase": "observe",
+  "payload": {
+    "task": "Draft release notes for v1.2.0",
+    "tags": {
+      "priority": "high",
+      "team": "platform"
+    },
+    "timestamp": "2024-01-15T10:30:00Z",
+    "context": {
+      "changelog_path": "CHANGELOG.md"
+    }
+  }
+}
+```
+
+<ResponseField name="payload.task" type="string" required>
+The task or goal for the episode.
+</ResponseField>
+
+<ResponseField name="payload.tags" type="object">
+User-provided metadata tags.
+</ResponseField>
+
+<ResponseField name="payload.timestamp" type="string" required>
+ISO 8601 timestamp of observation.
+</ResponseField>
+
+<ResponseField name="payload.context" type="object">
+Additional context provided with the task.
+</ResponseField>
+
+### interpret
+
+Summarizes signals extracted from the observed input.
+
+```json
+{
+  "phase": "interpret",
+  "payload": {
+    "signals": [
+      {
+        "type": "risk",
+        "level": "medium",
+        "description": "Production deployment mentioned"
+      },
+      {
+        "type": "constraint",
+        "description": "Requires changelog file"
+      }
+    ],
+    "intent": "documentation_generation",
+    "policy_id": "SafetyPolicy@1.0"
+  }
+}
+```
+
+<ResponseField name="payload.signals" type="array" required>
+List of detected signals.
+
+<Expandable title="Signal properties">
+  <ResponseField name="type" type="string" required>
+  Signal type: `risk`, `constraint`, `opportunity`, `warning`.
+  </ResponseField>
+  
+  <ResponseField name="level" type="string">
+  Signal level: `low`, `medium`, `high`, `critical`.
+  </ResponseField>
+  
+  <ResponseField name="description" type="string" required>
+  Human-readable signal description.
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+<ResponseField name="payload.intent" type="string">
+Classified intent of the task.
+</ResponseField>
+
+<ResponseField name="payload.policy_id" type="string">
+Policy that performed interpretation.
+</ResponseField>
+
+### plan
+
+Records the selected action steps.
+
+```json
+{
+  "phase": "plan",
+  "payload": {
+    "steps": [
+      {
+        "id": "step_1",
+        "kind": "detect",
+        "description": "Read changelog entries",
+        "status": "pending"
+      },
+      {
+        "id": "step_2",
+        "kind": "act",
+        "description": "Generate summary",
+        "status": "pending"
+      }
+    ],
+    "confidence": 0.85
+  }
+}
+```
+
+<ResponseField name="payload.steps" type="array" required>
+Ordered list of planned steps.
+
+<Expandable title="Step properties">
+  <ResponseField name="id" type="string" required>
+  Unique step identifier.
+  </ResponseField>
+  
+  <ResponseField name="kind" type="string" required>
+  Step kind: `detect`, `analyze`, `plan`, `act`, `verify`, `review`.
+  </ResponseField>
+  
+  <ResponseField name="description" type="string" required>
+  Human-readable step description.
+  </ResponseField>
+  
+  <ResponseField name="status" type="string" required>
+  Step status: `pending`, `running`, `done`, `skipped`, `failed`, `vetoed`.
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+<ResponseField name="payload.confidence" type="number">
+Confidence score for the plan (0-1).
+</ResponseField>
+
+### direction
+
+Records policy directives (meta mode only).
+
+```json
+{
+  "phase": "direction",
+  "payload": {
+    "directive_id": "dir_abc123",
+    "status": "applied",
+    "advice": "Added LIMIT 1000 to query",
+    "target": "input",
+    "diff": ["plan.steps[0].parameters.limit"],
+    "policy_id": "SafetyPolicy@1.0",
+    "policy_version": "1.0",
+    "rationale": "Unbounded queries can exhaust resources"
+  }
+}
+```
+
+<ResponseField name="payload.directive_id" type="string" required>
+Unique directive identifier.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Directive status: `applied`, `blocked`, `skipped`.
+</ResponseField>
+
+<ResponseField name="payload.advice" type="string" required>
+Human-readable advice from the policy.
+</ResponseField>
+
+<ResponseField name="payload.target" type="string" required>
+Target of the directive: `input`, `plan`, `action`.
+</ResponseField>
+
+<ResponseField name="payload.diff" type="array">
+List of paths that were modified.
+</ResponseField>
+
+<ResponseField name="payload.policy_id" type="string" required>
+Policy that issued the directive.
+</ResponseField>
+
+<ResponseField name="payload.rationale" type="string">
+Explanation for the directive.
+</ResponseField>
+
+### governance
+
+Records governance decisions (meta mode only).
+
+```json
+{
+  "phase": "governance",
+  "payload": {
+    "governance_id": "gov_def456",
+    "decision_id": "dec_789",
+    "decision": "allow",
+    "rule_id": "rules.allow.default",
+    "score": 0.95,
+    "policy_id": "governance.rules",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "details": {
+      "checked_rules": ["rule1", "rule2"],
+      "matched_rule": "rule1"
+    }
+  }
+}
+```
+
+<ResponseField name="payload.governance_id" type="string" required>
+Unique governance event identifier.
+</ResponseField>
+
+<ResponseField name="payload.decision" type="string" required>
+Governance decision: `allow`, `audit`, `veto`.
+</ResponseField>
+
+<ResponseField name="payload.rule_id" type="string">
+Rule that determined the decision.
+</ResponseField>
+
+<ResponseField name="payload.score" type="number">
+Confidence score for the decision (0-1).
+</ResponseField>
+
+<ResponseField name="payload.policy_id" type="string" required>
+Governance policy identifier.
+</ResponseField>
+
+<ResponseField name="payload.details" type="object">
+Additional governance details.
+</ResponseField>
+
+### act
+
+Logs tool or adapter invocations.
+
+```json
+{
+  "phase": "act",
+  "payload": {
+    "tool": "changelog_reader",
+    "adapter": "baseline",
+    "input_excerpt": "CHANGELOG.md",
+    "outcome": {
+      "entries_found": 15,
+      "status": "success"
+    },
+    "status": "success",
+    "error": null
+  }
+}
+```
+
+<ResponseField name="payload.tool" type="string">
+Tool that was invoked.
+</ResponseField>
+
+<ResponseField name="payload.adapter" type="string">
+Adapter that was invoked.
+</ResponseField>
+
+<ResponseField name="payload.input_excerpt" type="string">
+Truncated input for logging.
+</ResponseField>
+
+<ResponseField name="payload.outcome" type="object" required>
+Result of the action.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Action status: `success`, `error`, `timeout`.
+</ResponseField>
+
+<ResponseField name="payload.error" type="string">
+Error message if action failed.
+</ResponseField>
+
+### reflect
+
+Evaluates outcomes against expectations.
+
+```json
+{
+  "phase": "reflect",
+  "payload": {
+    "success": true,
+    "reason": "All planned steps completed successfully",
+    "expected_outcomes": ["data_processed", "report_generated"],
+    "actual_outcomes": ["data_processed", "report_generated"],
+    "issues": [],
+    "metrics": {
+      "task_score": 0.95,
+      "steps_completed": 3,
+      "steps_total": 3
+    }
+  }
+}
+```
+
+<ResponseField name="payload.success" type="boolean" required>
+Whether the episode succeeded.
+</ResponseField>
+
+<ResponseField name="payload.reason" type="string" required>
+Human-readable explanation of the outcome.
+</ResponseField>
+
+<ResponseField name="payload.expected_outcomes" type="array">
+List of expected outcomes.
+</ResponseField>
+
+<ResponseField name="payload.actual_outcomes" type="array">
+List of actual outcomes.
+</ResponseField>
+
+<ResponseField name="payload.issues" type="array">
+List of issues encountered.
+</ResponseField>
+
+<ResponseField name="payload.metrics" type="object">
+Evaluation metrics.
+</ResponseField>
+
+### learn
+
+Captures learning signals for future episodes.
+
+```json
+{
+  "phase": "learn",
+  "payload": {
+    "updates": [
+      {
+        "type": "memory",
+        "key": "changelog_format",
+        "value": "keep-a-changelog"
+      },
+      {
+        "type": "proposal",
+        "target": "veto_threshold",
+        "suggested_value": 0.8,
+        "confidence": 0.75
+      }
+    ],
+    "scope": "session"
+  }
+}
+```
+
+<ResponseField name="payload.updates" type="array" required>
+List of learning updates.
+
+<Expandable title="Update properties">
+  <ResponseField name="type" type="string" required>
+  Update type: `memory`, `proposal`, `hint`.
+  </ResponseField>
+  
+  <ResponseField name="key" type="string">
+  Key for memory updates.
+  </ResponseField>
+  
+  <ResponseField name="value" type="any">
+  Value for memory updates.
+  </ResponseField>
+  
+  <ResponseField name="target" type="string">
+  Target for proposals.
+  </ResponseField>
+  
+  <ResponseField name="suggested_value" type="any">
+  Suggested value for proposals.
+  </ResponseField>
+  
+  <ResponseField name="confidence" type="number">
+  Confidence in the proposal (0-1).
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+<ResponseField name="payload.scope" type="string" required>
+Update scope: `session`, `episode`, `policy`, `global`.
+</ResponseField>
+
+### terminate
+
+Marks the end of an episode.
+
+```json
+{
+  "phase": "terminate",
+  "payload": {
+    "status": "completed",
+    "episode_id": "ep_2024_abc123_s0",
+    "duration_ms": 5000
+  }
+}
+```
+
+<ResponseField name="payload.status" type="string" required>
+Final status: `completed`, `errored`, `vetoed`, `aborted`.
+</ResponseField>
+
+<ResponseField name="payload.episode_id" type="string" required>
+Episode identifier.
+</ResponseField>
+
+<ResponseField name="payload.duration_ms" type="number" required>
+Total episode duration in milliseconds.
+</ResponseField>
+
+## Event order invariant
+
+Events follow this order:
+
+```
+observe → (interpret → plan)* → (direction → governance)? → act+ → reflect → (learn)? → terminate
+```
+
+- `observe` is always first
+- `interpret` and `plan` may repeat
+- `direction` and `governance` only appear in meta mode
+- Multiple `act` events are common
+- `learn` is optional
+- `terminate` is always last
+
+## Reading events
+
+### CLI
+
+```bash
+# All events
+noesis events ep_abc123
+
+# Filter by phase
+noesis events ep_abc123 --phase act
+
+# As JSON
+noesis events ep_abc123 -j
+```
+
+### Python
+
+```python
+import noesis as ns
+
+events = list(ns.events.read("ep_abc123"))
+
+# Filter
+act_events = [e for e in events if e["phase"] == "act"]
+
+# Reconstruct lineage
+def get_chain(events, event_id):
+    chain = []
+    current = next((e for e in events if e["id"] == event_id), None)
+    while current:
+        chain.append(current)
+        caused_by = current.get("caused_by")
+        current = next((e for e in events if e["id"] == caused_by), None)
+    return chain
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="State schema" icon="database" href="/reference/state">
+    State artifact reference.
+  </Card>
+  <Card title="Cognitive loop" icon="arrows-rotate" href="/explanation/cognitive-loop">
+    Understanding the phases.
+  </Card>
+</CardGroup>

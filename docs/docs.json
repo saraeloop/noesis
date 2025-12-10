@@ -1,0 +1,115 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "willow",
+  "name": "Noēsis",
+  "colors": {
+    "primary": "#2563EB",
+    "light":   "#3B82F6",
+    "dark":    "#1E40AF"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "tutorials/first-episode",
+              "tutorials/first-policy",
+              "tutorials/incident-triage"
+            ]
+          },
+          {
+            "group": "How-to guides",
+            "pages": [
+              "guides/write-policies",
+              "guides/integrate-adapters",
+              "guides/export-metrics",
+              "guides/human-in-the-loop",
+              "guides/configure-planner-modes"
+            ]
+          },
+          {
+            "group": "Explanation",
+            "pages": [
+              "explanation/core-concepts",
+              "explanation/cognitive-loop",
+              "explanation/faculties",
+              "explanation/artifacts",
+              "explanation/determinism"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "API reference",
+            "pages": [
+              "reference/python-api",
+              "reference/cli"
+            ]
+          },
+          {
+            "group": "Schema reference",
+            "pages": [
+              "reference/events",
+              "reference/state",
+              "reference/summary"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "reference/configuration"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/saraeloop/noesis",
+          "icon": "github"
+        }
+      ]
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/saraeloop/noesis"
+      }
+    ]
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/saraeloop/noesis"
+    }
+  }
+}
