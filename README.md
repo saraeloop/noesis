@@ -20,6 +20,7 @@ Noēsis works with the graphs, tools, and runtimes you already use. It doesn’t
 - **Ops & compliance:** review immutable JSON traces showing what happened and why it was allowed.
 
 ## Why Noēsis?
+
 | Proof point | What it gives you |
 | --- | --- |
 | **Observable cognition** | Each run emits `summary.json`, `state.json`, and `events.jsonl` for replay and evaluation. |
@@ -94,6 +95,7 @@ runs/
       events.jsonl
       manifest.json
       learn.jsonl    # optional
+      prompts.jsonl  # optional, prompt provenance (opt-in)
 ```
 
 For a fuller tour: `uv run python examples/demo.py`
