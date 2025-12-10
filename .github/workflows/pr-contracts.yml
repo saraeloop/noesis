@@ -64,26 +64,6 @@ jobs:
       - name: Sync Python dependencies
         run: uv sync --dev
 
-      - name: Install pnpm
-        run: npm i -g pnpm@10.16.1
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: "docs/pnpm-lock.yaml"
-
-      - name: Verify pnpm
-        run: |
-          echo "PATH=$PATH"
-          which pnpm
-          pnpm -v
-
-      - name: Install docs dependencies
-        working-directory: docs
-        run: pnpm install --frozen-lockfile
-
       - name: Validate export surface
         run: uv run python scripts/validate_exports.py --strict
 
@@ -190,7 +170,7 @@ jobs:
         if: needs.determine-changes.outputs.contracts == 'true'
 
   docs-build:
-    name: "docs: build (Mintlify)"
+    name: "docs: check (Mintlify)"
     needs: determine-changes
     runs-on: ubuntu-latest
     steps:
@@ -213,10 +193,10 @@ jobs:
         if: needs.determine-changes.outputs.contracts == 'true'
         run: npm i -g mintlify
 
-      - name: Build docs (Mintlify)
+      - name: Check docs (broken links)
         if: needs.determine-changes.outputs.contracts == 'true'
         working-directory: docs
-        run: mintlify build
+        run: mintlify broken-links
 
   build-wheel:
     name: build-wheel (packaging)
