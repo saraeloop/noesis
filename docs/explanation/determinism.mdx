@@ -1,83 +1,32 @@
 ---
 title: "Determinism and replay"
-description: "Understanding Noēsis deterministic infrastructure for reproducible episodes and replay validation."
+description: "Make episodes reproducible for debugging, evals, and compliance."
 ---
 
-Noēsis provides a determinism substrate that enables reproducible episode execution and replay validation. This is essential for debugging, testing, and compliance scenarios.
+Determinism is optional. Use it when you need stable traces for evals, regression tests, or debugging a specific episode. You can ignore it for casual experimentation.
 
-## Deterministic components
+## Quick setup: seed-based determinism
 
-Noēsis includes several deterministic components that can be enabled for reproducibility:
-
-| Component | Purpose | How it works |
-| --- | --- | --- |
-| **Deterministic clock** | Consistent timestamps | Uses fixed tick intervals instead of wall clock |
-| **Deterministic RNG** | Reproducible random values | Seeded random number generator |
-| **Deterministic IDs** | Stable identifiers | UUIDv5 based on namespace + content |
-| **Canonical JSON** | Byte-identical output | Sorted keys, consistent formatting |
-
-## Episode IDs
-
-Episode IDs use ULID format for sortability and uniqueness:
-
-```
-ep_20251108_120000_abc123_def4_s0
-│   │        │      │       │   │
-│   │        │      │       │   └── seed (s0)
-│   │        │      │       └────── entropy (def4)
-│   │        │      └────────────── hash (abc123)
-│   │        └───────────────────── timestamp (120000)
-│   └────────────────────────────── date (20251108)
-└────────────────────────────────── prefix (ep_)
-```
-
-**ULID properties**:
-- Monotonic (sortable by time)
-- 48-bit timestamp + 80-bit entropy
-- Lexicographically sortable
-- URL-safe characters
-
-## Directive and governance IDs
-
-Direction and governance events use deterministic UUIDv5 IDs:
-
-```python
-import uuid
-
-# Deterministic ID based on namespace and content
-directive_id = uuid.uuid5(
-    uuid.NAMESPACE_DNS,
-    f"{episode_id}:{phase}:{payload_hash}"
-)
-```
-
-This ensures:
-- Same input produces same ID
-- Causal lineage is reproducible
-- Replay comparisons are reliable
-
-## Using seeds for reproducibility
-
-Set a seed to get deterministic episode execution:
+The easiest way to get repeatable behavior is to fix a seed on your session:
 
 ```python
 import noesis as ns
+from noesis.runtime.session import SessionBuilder
 
-# Set seed for reproducibility
-ns.set(seed=42)
+session = (
+    SessionBuilder.from_env()
+    .with_determinism(seed=42)
+    .build()
+)
 
-# These episodes will have deterministic behavior
-ep1 = ns.run("task")
-
-ns.set(seed=42)
-ep2 = ns.run("task")
-
-# ep1 and ep2 have matching IDs and behavior
+ep = session.run("Summarize incident INC-1234")
 ```
 
-## Session-level determinism (clock + RNG)
+With a deterministic model/tooling stack, runs with the same seed will produce the same episode trajectory and metrics. The seed is recorded in `summary.json`.
 
-For stricter reproducibility, inject a deterministic clock and RNG when building a session:
+## Stricter reproducibility (clock + RNG)
+
+If you need fully stable timings/IDs (e.g., evals in CI), add a deterministic clock and RNG:
 
 ```python
 import noesis as ns
@@ -96,150 +45,128 @@ session = (
 ep = session.run("Draft release notes")
 ```
 
-This locks timestamps, random numbers, and episode timestamps; the seed and determinism choices are reflected in `summary.json`.
+This locks timestamps, random numbers, and episode timestamps; the configuration is reflected in `summary.json`.
 
-## Replay comparison
+## Replay and comparison
 
-Compare episode replays to detect drift:
+Compare two episodes to check for drift. Ignore timing fields to focus on behavior:
 
 ```python
 import noesis as ns
-from pathlib import Path
 
 
-def compare_episodes(ep1_id: str, ep2_id: str) -> dict:
-    """Compare two episode executions for drift detection."""
-    
-    events1 = list(ns.events.read(ep1_id))
-    events2 = list(ns.events.read(ep2_id))
-    
+def compare_episodes(ep_a: str, ep_b: str) -> dict:
+    events_a = list(ns.events.read(ep_a))
+    events_b = list(ns.events.read(ep_b))
+
     diffs = {
-        "event_count_match": len(events1) == len(events2),
+        "event_count_match": len(events_a) == len(events_b),
         "phase_sequence_match": True,
         "payload_diffs": [],
     }
-    
-    for e1, e2 in zip(events1, events2):
+
+    for e1, e2 in zip(events_a, events_b):
         if e1["phase"] != e2["phase"]:
             diffs["phase_sequence_match"] = False
             break
-        
-        # Compare payloads (excluding timestamps)
-        p1 = {k: v for k, v in e1.get("payload", {}).items() if k != "timestamp"}
-        p2 = {k: v for k, v in e2.get("payload", {}).items() if k != "timestamp"}
-        
+
+        # Ignore timing differences; compare payloads to catch behavioral drift
+        p1 = dict(e1.get("payload", {}))
+        p2 = dict(e2.get("payload", {}))
+
         if p1 != p2:
-            diffs["payload_diffs"].append({
-                "phase": e1["phase"],
-                "diff": {"expected": p1, "actual": p2}
-            })
-    
+            diffs["payload_diffs"].append(
+                {"phase": e1["phase"], "diff": {"expected": p1, "actual": p2}}
+            )
+
     return diffs
-
-
-# Compare replay
-result = compare_episodes("ep_original", "ep_replay")
-if result["payload_diffs"]:
-    print("Drift detected!")
 ```
 
-## Golden test suite
+## Golden tests (pytest)
 
-Use golden tests to validate deterministic behavior in CI:
+Use deterministic sessions in tests:
 
 ```python
 import json
 from pathlib import Path
+import noesis as ns
+from noesis.runtime.session import SessionBuilder
 
 
 def test_golden_episode():
-    """Validate episode against golden snapshot."""
-    import noesis as ns
-    
-    # Run with fixed seed
-    ns.set(seed=42)
-    episode_id = ns.run("Generate test data")
-    
-    # Load golden snapshot
-    golden_path = Path("tests/golden/generate_test_data.json")
-    with open(golden_path) as f:
-        golden = json.load(f)
-    
-    # Compare summary
+    session = (
+        SessionBuilder.from_env()
+        .with_determinism(seed=42)
+        .build()
+    )
+    episode_id = session.run("Generate test data")
+
     summary = ns.summary.read(episode_id)
-    
+    events = list(ns.events.read(episode_id))
+
+    golden = json.loads(Path("tests/golden/generate_test_data.json").read_text())
+
     assert summary["metrics"]["success"] == golden["metrics"]["success"]
     assert summary["metrics"]["act_count"] == golden["metrics"]["act_count"]
-    
-    # Compare event sequence
-    events = list(ns.events.read(episode_id))
-    assert len(events) == len(golden["events"])
-    
-    for actual, expected in zip(events, golden["events"]):
-        assert actual["phase"] == expected["phase"]
+    assert [e["phase"] for e in events] == [e["phase"] for e in golden["events"]]
 ```
 
-## Runtime clock
+## Episode ID format
 
-The `RuntimeClock` provides deterministic timing:
+Episode IDs are human-readable and sortable:
 
-```python
-from noesis.runtime.determinism import RuntimeClock
-
-# Deterministic clock with fixed tick interval
-clock = RuntimeClock(deterministic=True, tick_interval_ms=10)
-
-# Each call advances by tick_interval
-t1 = clock.now()  # 0
-t2 = clock.now()  # 10
-t3 = clock.now()  # 20
-
-# Real clock for production
-real_clock = RuntimeClock(deterministic=False)
+```
+ep_<YYYYMMDD>_<HHMMSS>_<hash>_<entropy>_s<seed>
 ```
 
-## Canonical JSON serialization
+- Prefix `ep_`
+- Date + time for sortability
+- Content hash + entropy for uniqueness
+- Seed suffix (`s0` if unset) for reproducibility
 
-Noēsis uses canonical JSON for byte-identical output:
+## Deterministic components (overview)
+
+| Component | Purpose | How it works |
+| --- | --- | --- |
+| Deterministic clock | Consistent timestamps | Fixed tick intervals instead of wall clock |
+| Deterministic RNG | Reproducible random values | Seeded random number generator |
+| Deterministic IDs | Stable identifiers | UUIDv5 based on namespace + content |
+| Canonical JSON | Byte-identical output | Sorted keys, consistent formatting |
+
+Direction/governance events use deterministic UUIDv5 IDs so the same inputs produce the same identifiers, making replay comparisons reliable.
+
+## Advanced: canonical JSON
+
+Artifacts use canonical JSON so the same data yields the same bytes:
 
 ```python
 from noesis.runtime.determinism import canonical_dumps
 
-data = {"b": 2, "a": 1, "c": [3, 1, 2]}
-
-# Canonical output: sorted keys, consistent formatting
-output = canonical_dumps(data)
-# '{"a": 1, "b": 2, "c": [3, 1, 2]}'
-
-# Same input always produces same bytes
-assert canonical_dumps(data) == canonical_dumps(data)
+payload = {"b": 2, "a": 1, "c": [3, 1, 2]}
+assert canonical_dumps(payload) == canonical_dumps(payload)
 ```
 
-This ensures:
-- Manifest hashes are reproducible
-- Artifact comparison is reliable
-- Git diffs are meaningful
+This keeps manifest hashes and diffs stable.
 
 ## When to use determinism
 
 <Tip>
-**Use deterministic mode for**:
-- Unit and integration tests
-- Golden test validation
-- Debugging specific issues
-- Compliance audits requiring reproducibility
+Use deterministic mode for:
+- Evals and golden tests
+- Debugging specific runs
+- Compliance scenarios that require reproducibility
 </Tip>
 
 <Warning>
-**Avoid deterministic mode for**:
-- Production workloads (use real timestamps)
+Avoid deterministic mode for:
+- Production workloads that need real timestamps/IDs
 - Performance benchmarks
-- Security-sensitive operations (predictable IDs)
+- Security-sensitive operations where predictable IDs are a risk
 </Warning>
 
 ## CI validation
 
-Add determinism checks to your CI pipeline:
+Add deterministic tests and replay checks to CI:
 
 ```yaml
 # .github/workflows/determinism.yml
@@ -253,23 +180,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      
+
       - name: Run golden tests
-        run: |
-          uv run pytest tests/golden/ -v
-      
+        run: uv run pytest tests/golden/ -v
+
       - name: Check replay stability
-        run: |
-          uv run python scripts/validate_replay.py
+        run: uv run python scripts/validate_replay.py
 ```
-
-## Next steps
-
-<CardGroup cols={2}>
-  <Card title="Artifacts" icon="files" href="/explanation/artifacts">
-    Understanding artifact structure.
-  </Card>
-  <Card title="Configuration" icon="gear" href="/reference/configuration">
-    Configure determinism settings.
-  </Card>
-</CardGroup>

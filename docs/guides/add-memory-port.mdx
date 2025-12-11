@@ -1,0 +1,104 @@
+---
+title: "Add a memory port"
+description: "Plug long-term memory into Noēsis using SQLite, your DB, or a custom store."
+---
+
+Noēsis can persist episode facts into a long-term memory backend. You bring the storage (SQLite, Postgres, vector store, etc.), and expose it through the `MemoryPort` contract.
+
+## When to use
+
+- You want episodes to leave behind a fact you can query later (e.g., for chat history, incident recall, eval traces).
+- You need to link episodes to facts for audit/search.
+- You want a minimal, schema-light way to store summaries without wiring a new service.
+
+If you just need artifacts on disk, you can skip memory entirely.
+
+## Quick start: SQLite memory port
+
+Use the built-in SQLite adapter for a lightweight, file-backed memory:
+
+```python
+from pathlib import Path
+from noesis.runtime.session import SessionBuilder
+from noesis.infrastructure.memory.sqlite import SQLiteMemory
+
+memory = SQLiteMemory(db_path=Path("memory/noesis.db"))
+
+session = (
+    SessionBuilder.from_env()
+    .with_port("memory", memory, api=memory.__api_version__)
+    .build()
+)
+
+ep = session.run("Summarize incident INC-1234")
+```
+
+What happens:
+- After the episode, Noēsis writes a `memory` event and persists a fact (built from `summary.json`) into SQLite.
+- The memory event records status (persisted/skipped/error) in `events.jsonl`.
+- Episodes are linked to fact IDs for later lookup.
+
+## Querying memory
+
+You can query the memory port directly:
+
+```python
+from noesis.interfaces.memory import MemoryQuery
+
+results = memory.query(MemoryQuery(text="incident"), k=5)
+for fact in results:
+    print(fact.id, fact.content)
+```
+
+Facts include `id`, `content`, and `metadata` (e.g., tags, artifacts, timestamps).
+
+## Implement your own memory port
+
+Implement the `MemoryPort` protocol if you want Postgres, a vector store, or another backend:
+
+```python
+from dataclasses import dataclass
+from typing import Sequence
+from noesis.interfaces.memory import Fact, MemoryPort, MemoryQuery
+
+
+@dataclass
+class PostgresMemory(MemoryPort):
+    __api_version__ = "memory/1.1"
+
+    def supports(self, capability: str) -> bool:
+        return capability in {"write_fact", "query", "episode_links", "long_term_memory"}
+
+    def write_fact(self, fact: Fact) -> None:
+        # persist fact.content + fact.metadata
+        ...
+
+    def query(self, query: MemoryQuery, *, k: int = 5) -> Sequence[Fact]:
+        # return top-k matching facts
+        ...
+
+    def link_episode(self, episode_id: str, fact_ids: Sequence[str]) -> None:
+        # link episodes to fact IDs
+        ...
+```
+
+Then register it on your session:
+
+```python
+memory = PostgresMemory(...)
+session = (
+    SessionBuilder.from_env()
+    .with_port("memory", memory, api=memory.__api_version__)
+    .build()
+)
+```
+
+## Capabilities and behavior
+
+- The memory port must return `True` for `supports("long_term_memory")` to receive persisted facts.
+- On each run, Noēsis builds a fact from `summary.json`, calls `write_fact`, and then `link_episode`.
+- Success/errors are logged as `memory` events in `events.jsonl`.
+
+<Warning>
+Avoid storing sensitive payloads verbatim. Use metadata or hashed IDs when needed; Noēsis does not enforce PII handling for you.
+</Warning>
