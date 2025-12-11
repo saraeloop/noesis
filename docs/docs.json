@@ -48,7 +48,9 @@
               "guides/integrate-adapters",
               "guides/export-metrics",
               "guides/human-in-the-loop",
-              "guides/configure-planner-modes"
+              "guides/configure-planner-modes",
+              "guides/configure-shared-storage",
+              "guides/adopting-noesis"
             ]
           },
           {

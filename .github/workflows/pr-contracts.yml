@@ -170,7 +170,7 @@ jobs:
         if: needs.determine-changes.outputs.contracts == 'true'
 
   docs-build:
-    name: "docs: build (your Nextra/pnpm build)"  # legacy name to satisfy required check
+    name: "docs: check (Mintlify)"
     needs: determine-changes
     runs-on: ubuntu-latest
     steps:
