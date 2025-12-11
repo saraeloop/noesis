@@ -47,6 +47,7 @@
               "guides/write-policies",
               "guides/integrate-adapters",
               "guides/export-metrics",
+              "guides/add-memory-port",
               "guides/human-in-the-loop",
               "guides/configure-planner-modes",
               "guides/configure-shared-storage",

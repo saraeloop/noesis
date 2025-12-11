@@ -80,7 +80,7 @@ It’s normal for early integrations to have a mix of well-instrumented tools an
 Memory is a port—you can back it with SQLite, Postgres, a vector store, or nothing.
 
 - Phase 1: No long-term memory. Treat episodes as mostly stateless; use tags + artifacts.
-- Phase 2: Simple DB-backed memory. Implement a memory port writing to your existing DB; keep schemas boring and auditable.
+- Phase 2: Simple DB-backed memory. Implement a memory port writing to your existing DB; keep schemas boring and auditable. See: [Add a memory port](/guides/add-memory-port).
 - Phase 3: Vector/hybrid memory. Only if you need semantic recall (multi-session chat, etc.); maintain an index of what/why you store.
 
 Start simple; the important part is that behavior is already traceable.
