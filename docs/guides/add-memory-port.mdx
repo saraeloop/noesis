@@ -5,6 +5,8 @@ description: "Plug long-term memory into Noēsis using SQLite, your DB, or a cus
 
 Noēsis can persist episode facts into a long-term memory backend. You bring the storage (SQLite, Postgres, vector store, etc.), and expose it through the `MemoryPort` contract.
 
+A **fact** is a small JSON-style record derived from an episode (task, outcome, tags, timestamps, and related metadata) that you can query later.
+
 ## When to use
 
 - You want episodes to leave behind a fact you can query later (e.g., for chat history, incident recall, eval traces).
@@ -34,9 +36,13 @@ ep = session.run("Summarize incident INC-1234")
 ```
 
 What happens:
-- After the episode, Noēsis writes a `memory` event and persists a fact (built from `summary.json`) into SQLite.
+- After the episode, Noēsis builds a fact from `summary.json` (task, episode ID, metrics, tags) and persists it into SQLite.
 - The memory event records status (persisted/skipped/error) in `events.jsonl`.
 - Episodes are linked to fact IDs for later lookup.
+
+<Note>
+In multi-service or multi-tenant environments, consider using a separate database, schema, or table prefix per app/tenant so facts stay isolated.
+</Note>
 
 ## Querying memory
 
@@ -67,6 +73,7 @@ class PostgresMemory(MemoryPort):
     __api_version__ = "memory/1.1"
 
     def supports(self, capability: str) -> bool:
+        # Capabilities Noēsis checks today
         return capability in {"write_fact", "query", "episode_links", "long_term_memory"}
 
     def write_fact(self, fact: Fact) -> None:

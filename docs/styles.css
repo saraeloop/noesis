@@ -19,3 +19,26 @@ pre,
 pre code {
   font-family: var(--mint-font-mono);
 }
+
+/* Show brand text next to the logo (light + dark).
+   Mintlify renders the logo as the first header link; match it broadly
+   so the label appears across themes and deployments. */
+header a[href="/"],
+header a[aria-label="Home"],
+header a[aria-label="Homepage"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--mint-font-heading);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+header a[href="/"]::after,
+header a[aria-label="Home"]::after,
+header a[aria-label="Homepage"]::after {
+  content: "Noēsis";
+  color: inherit;
+}
+

@@ -17,6 +17,10 @@
       "weight": 400
     }
   },
+  "logo": {
+    "light": "/images/noesis-logo-black.png",
+    "dark": "/images/noesis-logo-white.png"
+  },
   "styles": [
     "/styles.css"
   ],

@@ -11,10 +11,12 @@ This guide walks you through installing Noēsis and running your first observabl
 - `uv` package manager (recommended) or `pip`
 
 <Warning>
-Set any adapter-specific environment variables (model keys, endpoints) before running commands. Noēsis reads them at runtime.
+Before running commands, set any LLM adapter or model provider environment variables (keys, endpoints). Noēsis reads them at runtime.
 </Warning>
 
 ## Installation
+
+If you're trying Noēsis while it's still pre-release, start with **From source (preferred)**.
 
 <Tabs>
   <Tab title="From source (preferred)">
@@ -45,10 +47,10 @@ Set any adapter-specific environment variables (model keys, endpoints) before ru
     Execute a simple episode using the CLI:
 
     ```bash
-    noesis run "hello world"
+    noesis run "hello world" 
     ```
 
-    This returns an episode ID (e.g., `ep_abc123`) and creates artifacts in the `./runs` directory.
+    This prints and stores the episode ID (for example, `ep_abc123`) and creates artifacts in the `./runs` directory, relative to where you run the command.
   </Step>
 
   <Step title="List recent episodes">
@@ -65,11 +67,9 @@ Set any adapter-specific environment variables (model keys, endpoints) before ru
     View the episode summary and insight metrics:
 
     ```bash
-    noesis show ep_abc123
-    noesis insight ep_abc123
+    noesis show "$EP_ID"
+    noesis insight "$EP_ID"
     ```
-
-    Replace `ep_abc123` with your actual episode ID.
   </Step>
 </Steps>
 
@@ -95,7 +95,7 @@ for event in events:
 
 ## Inspect artifacts
 
-Every episode creates a structured artifact directory:
+Every episode creates a structured artifact directory (written under `./runs` by default, relative to where you run the command):
 
 ```
 runs/
@@ -110,15 +110,17 @@ runs/
 
 <Tip>
 Use `jq` for pretty-printing JSON artifacts: `cat runs/demo/ep_abc123/summary.json | jq .`
+
+To change the artifact location, set `NOESIS_RUNS_DIR` or in Python call `ns.set(runs_dir="./my-runs")`.
 </Tip>
 
 ## What's next?
 
 <CardGroup cols={2}>
-  <Card title="Hello Episode" icon="play" href="/tutorials/hello-episode">
+  <Card title="Your first episode" icon="play" href="/tutorials/first-episode">
     A deeper walkthrough of running and inspecting episodes.
   </Card>
-  <Card title="Guarded LangGraph Agent" icon="shield" href="/tutorials/guarded-langgraph-agent">
+  <Card title="Your first policy" icon="shield" href="/tutorials/first-policy">
     Learn how to add guardrails with intuition policies.
   </Card>
   <Card title="Core concepts" icon="lightbulb" href="/explanation/core-concepts">
