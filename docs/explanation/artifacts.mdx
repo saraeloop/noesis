@@ -34,18 +34,28 @@ The summary captures episode outcomes, metrics, and cross-references.
   "schema_version": "1.2.0",
   "episode_id": "ep_2024_abc123_s0",
   "task": "Draft release notes for v1.2.0",
+  "seed": 42,
   "started_at": "2024-01-15T10:30:00Z",
-  "completed_at": "2024-01-15T10:30:05Z",
+  "duration_sec": 5.12,
   "flags": {
     "intuition": true,
     "mode": "meta",
+    "using": "langgraph",
     "direction": {
       "applied": 1,
       "vetoed": 0,
       "policy": "SafetyPolicy@1.0",
-      "threshold": 0.75
+      "threshold": 0.75,
+      "last_diff": [
+        "plan.steps[0].params.limit: null → 100"
+      ]
     }
   },
+  "ports": {
+    "model": "openai:gpt-4o-mini"
+  },
+  "agents_config_hash": "sha256:9f7d...",
+  "answer": {},
   "metrics": {
     "success": 1,
     "plan_count": 2,
@@ -76,7 +86,11 @@ The summary captures episode outcomes, metrics, and cross-references.
 | `schema_version` | Version of the summary schema |
 | `episode_id` | Unique identifier |
 | `task` | The original task/goal |
+| `seed` | Seed used for deterministic runs (if provided) |
+| `duration_sec` | Wall-clock duration of the episode |
 | `flags` | Configuration flags for the run |
+| `ports` | Adapter labels bound to the run (e.g., model provider) |
+| `agents_config_hash` | Hash of adapters + intuition config for reproducibility |
 | `metrics` | Computed metrics |
 | `insight` | Advanced insight metrics |
 | `tags` | User-provided metadata |
@@ -251,6 +265,8 @@ Events are stored as newline-delimited JSON (JSONL):
 }
 ```
 
+Event metrics always include `started_at`, `completed_at`, and `duration_ms`, which you can aggregate for per-phase latency.
+
 ### Event phases
 
 | Phase | Purpose |
@@ -297,32 +313,34 @@ noesis events ep_abc123 -j | jq '.[] | select(.phase == "plan")'
 
 ## manifest.json
 
-The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional HMAC signatures for tamper detection.
+The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional signatures.
 
 ### Schema
 
 ```json
 {
-  "schema_version": "1.0.0",
-  "episode_id": "ep_20251108_120000_abc123_def4_s0",
+  "schema_version": "manifest/1.0",
+  "episode_id": "ep_2024_abc123_s0",
   "created_at": "2024-01-15T10:30:05Z",
-  "files": {
-    "summary.json": {
-      "sha256": "abc123def456...",
-      "size": 1234
-    },
-    "state.json": {
-      "sha256": "789ghi012jkl...",
-      "size": 5678
-    },
-    "events.jsonl": {
-      "sha256": "mno345pqr678...",
-      "size": 9012
-    }
-  },
-  "hmac": "optional_hmac_signature_for_tamper_detection"
+  "files": [
+    {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
+    {"name": "state.json", "sha256": "sha256:def456...", "size_bytes": 5678, "kind": "state"},
+    {"name": "events.jsonl", "sha256": "sha256:ghi789...", "size_bytes": 9012, "kind": "events"}
+  ],
+  "signature": {
+    "alg": "hs256",
+    "kid": "ops-key-1",
+    "value": "base64sig",
+    "ts": "2024-01-15T10:30:05Z"
+  }
 }
 ```
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Manifest schema (`manifest/1.0`) |
+| `files` | Array of files with `name`, `sha256`, `size_bytes`, `kind` (`summary`, `state`, `events`, `learn`, `attachment`, `custom`) |
+| `signature` | Optional signature block with algorithm, key ID, value, timestamp |
 
 ### Artifact immutability guarantees
 

@@ -75,6 +75,29 @@ ep2 = ns.run("task")
 # ep1 and ep2 have matching IDs and behavior
 ```
 
+## Session-level determinism (clock + RNG)
+
+For stricter reproducibility, inject a deterministic clock and RNG when building a session:
+
+```python
+import noesis as ns
+from noesis.runtime.session import SessionBuilder
+from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
+
+clock = DeterministicClock.from_start("2024-01-15T10:30:00Z", tick_ms=10)
+rng = DeterministicRNG(seed=42)
+
+session = (
+    SessionBuilder.from_env()
+    .with_determinism(clock=clock, rng=rng, episode_timestamp_ms=1705314600000)
+    .build()
+)
+
+ep = session.run("Draft release notes")
+```
+
+This locks timestamps, random numbers, and episode timestamps; the seed and determinism choices are reflected in `summary.json`.
+
 ## Replay comparison
 
 Compare episode replays to detect drift:
