@@ -81,7 +81,7 @@ See the [cognitive loop explanation](/explanation/cognitive-loop) for a deeper d
 
 ## Faculties
 
-Noēsis organizes capabilities into four **faculties** that execute in a canonical order:
+Noēsis organizes capabilities into four **faculties** that execute in a canonical order. Each faculty emits events so you can audit (or veto) what happened.
 
 ```
 observe → interpret → plan → direction → governance.pre_act → act → reflect → finalize
@@ -118,7 +118,7 @@ class MyPolicy(ns.DirectedIntuition):
 
 ### Governance
 
-**Governance** is the pre-action audit layer with the `PreActGovernor`.
+**Governance** is the pre-action audit layer with the `PreActGovernor`. It is the gate that enforces approvals and can veto before tools execute.
 
 **Key types**: `GovernanceResult`, `GovernanceDecision`, `PreActGovernor`
 
@@ -126,6 +126,8 @@ class MyPolicy(ns.DirectedIntuition):
 - `ALLOW`: Action proceeds normally
 - `AUDIT`: Action proceeds, flagged for review
 - `VETO`: Action blocked entirely
+
+**Use it for**: human-in-the-loop approvals, safety allowlists/blocklists, “two-person rule” for destructive tools, and recording audit reasons right before execution.
 
 ### Insight
 
@@ -152,22 +154,50 @@ runs/
 
 ### summary.json
 
-The summary captures episode outcomes and metrics:
+The summary captures episode outcomes, flags, metrics, and insight:
 
 ```json
 {
   "schema_version": "1.2.0",
   "episode_id": "ep_2024_abc123_s0",
   "task": "Draft release notes",
+  "seed": 42,
+  "started_at": "2024-01-15T10:30:00Z",
+  "duration_sec": 5.12,
   "flags": {
     "intuition": true,
-    "mode": "meta"
+    "mode": "meta",
+    "using": "langgraph",
+    "direction": {
+      "applied": 1,
+      "vetoed": 0,
+      "policy": "SafetyPolicy@1.0",
+      "threshold": 0.75,
+      "last_diff": [
+        "plan.steps[0].params.limit: null → 100"
+      ]
+    }
   },
+  "ports": {
+    "model": "openai:gpt-4o-mini"
+  },
+  "agents_config_hash": "sha256:9f7d...",
+  "answer": {},
   "metrics": {
     "success": 1,
     "plan_count": 2,
     "act_count": 3,
     "veto_count": 0
+  },
+  "insight": {
+    "plan_adherence": 0.95,
+    "tool_coverage": 1.0
+  },
+  "tags": {
+    "team": "platform"
+  },
+  "manifest": {
+    "path": "manifest.json"
   }
 }
 ```
@@ -205,11 +235,11 @@ The state captures the cognitive context:
 The event timeline records every phase:
 
 ```json
-{"phase": "observe", "payload": {"task": "Draft release notes"}, "metrics": {"duration_ms": 1}}
-{"phase": "interpret", "payload": {"signals": []}, "caused_by": "abc..."}
-{"phase": "plan", "payload": {"steps": [...]}, "caused_by": "def..."}
-{"phase": "act", "payload": {"tool": "generator"}, "caused_by": "ghi..."}
-{"phase": "reflect", "payload": {"success": true}, "caused_by": "jkl..."}
+{"phase": "observe", "payload": {"task": "Draft release notes"}, "metrics": {"started_at": "...", "completed_at": "...", "duration_ms": 1.2}}
+{"phase": "interpret", "payload": {"signals": []}, "caused_by": "abc...", "metrics": {"started_at": "...", "completed_at": "...", "duration_ms": 2.3}}
+{"phase": "plan", "payload": {"steps": [...]}, "caused_by": "def...", "metrics": {"started_at": "...", "completed_at": "...", "duration_ms": 1.0}}
+{"phase": "act", "payload": {"tool": "generator"}, "caused_by": "ghi...", "metrics": {"started_at": "...", "completed_at": "...", "duration_ms": 4.8}}
+{"phase": "reflect", "payload": {"success": true}, "caused_by": "jkl...", "metrics": {"started_at": "...", "completed_at": "...", "duration_ms": 0.6}}
 ```
 
 ### manifest.json
@@ -218,16 +248,13 @@ The manifest provides integrity verification:
 
 ```json
 {
-  "files": {
-    "summary.json": {
-      "sha256": "abc123...",
-      "size": 1234
-    },
-    "events.jsonl": {
-      "sha256": "def456...",
-      "size": 5678
-    }
-  }
+  "schema_version": "manifest/1.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "created_at": "2024-01-15T10:30:05Z",
+  "files": [
+    {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
+    {"name": "events.jsonl", "sha256": "sha256:def456...", "size_bytes": 5678, "kind": "events"}
+  ]
 }
 ```
 
@@ -301,12 +328,14 @@ flowchart TD
     subgraph Faculties
         I[Intuition<br/>policies]
         D[Direction<br/>planning]
+        G[Governance<br/>pre-act audit]
         S[Insight<br/>metrics]
     end
     
     L --> I
     I --> D
-    D --> S
+    D --> G
+    G --> S
     
     S --> A[Artifacts]
     A --> SUM[summary.json]
@@ -316,7 +345,7 @@ flowchart TD
 
 1. A **task** creates an **episode**
 2. The episode runs through the **cognitive loop**
-3. **Faculties** (Intuition, Direction, Insight) process each phase
+3. **Faculties** (Intuition, Direction, Governance, Insight) process each phase
 4. **Artifacts** capture everything for replay and analysis
 
 ## Next steps
@@ -326,7 +355,7 @@ flowchart TD
     Deep dive into the observe → learn phases.
   </Card>
   <Card title="Faculties" icon="brain" href="/explanation/faculties">
-    Understand Intuition, Direction, and Insight.
+    Understand Intuition, Direction, Governance, and Insight.
   </Card>
   <Card title="Artifacts" icon="files" href="/explanation/artifacts">
     Learn about the files Noēsis produces.
