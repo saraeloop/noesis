@@ -1,0 +1,200 @@
+---
+title: "Adopting Noēsis in real systems"
+description: "Move from local traces to team-wide observability and evals without surprises."
+---
+
+Noēsis is easy to try locally: install the package, run an episode, open `runs/demo/...`, and you can literally **see your agent think**. This guide is for the moment _after_ that first “wow”:
+
+> “I like this. How do I use it responsibly in a real service, team, or eval harness?”
+
+It's practical and opinionated: what to do, what to avoid, and how to fit Noēsis into your stack without a big migration.
+
+## 1) What Noēsis actually adds
+
+- **Episodes**: every run is a cognitive episode with a stable ID.
+- **Artifacts**: `events.jsonl`, `summary.json`, `state.json`, `manifest.json`, optional `prompts.jsonl`.
+- **Cognitive phases**: `observe → interpret → plan → direction → governance → act → reflect → learn → insight`.
+- **Governance & direction**: policies that hint, intervene, or veto, with explicit flags in summary + events.
+- **Determinism controls**: seeds, deterministic clocks/IDs, replay support.
+
+What it **doesn’t** do:
+- Replace your log platform/APM/metrics.
+- Create API keys, databases, or vector stores for you.
+- Magically make unsafe tools safe—you still design the policies.
+
+You’re plugging in a **cognitive trace layer**, not rebuilding your stack.
+Most teams start by wrapping a single agent or eval harness and grow from there.
+
+## 2) Start local, then widen the radius
+
+1. Run [Hello Episode](/tutorials/hello-episode).
+2. Turn on a single guarded agent (e.g., [Guarded LangGraph Agent](/tutorials/guarded-langgraph-agent)).
+3. Inspect a handful of `events.jsonl` + `summary.json`.
+
+Only then ask: “Where should these episodes live if multiple people or services produce them?”
+
+- Local only: keep default `./runs/demo/...`.
+- Shared dev: network volume/S3/mounted path in Docker/Kubernetes.
+- Service-level: scoped location per app/team.
+
+You don’t need a perfect “episode store” on day one—pick **one** place they live for now, and refine later if adoption grows. See: [Configure shared episode storage](/guides/configure-shared-storage).
+
+## 3) Where to store episodes
+
+```
+./runs/demo/<episode-id>/
+  events.jsonl
+  summary.json
+  state.json
+  manifest.json
+```
+
+<Note>
+Goal: make episodes easy to find, safe to keep, and cheap to delete.
+</Note>
+
+**Local dev / CI**
+- Keep `./runs/...`.
+- Add cleanup: in CI delete after each job; on dev machines prune old runs (`find runs -mtime +7 -delete` or similar).
+
+**Shared / long-lived (later, if Noēsis becomes central)**
+- Centralize base path: `/var/noesis/runs/<service>/<date>/...` or a mounted volume/S3 prefix.
+- Add retention: keep N latest per service, and “golden” episodes (evals, interesting failures) tagged for longer.
+- Noēsis never deletes by itself—use your scheduler/scripts.
+
+## 4) Tools, side-effects, and partial visibility
+
+Noēsis records cognitive steps: plan events, tool calls under `act`, governance decisions under direction/governance, reflect outcomes. It does not intercept every network packet or syscall.
+
+- Wrap side-effects as tools so they show up as `act` events with inputs/outputs.
+- Log enough context to explain behavior without storing sensitive data verbatim.
+
+<Note>
+Partial visibility is fine: e.g., log hashed record IDs instead of full PII. Noēsis still provides useful traces.
+
+It’s normal for early integrations to have a mix of well-instrumented tools and “black boxes” — you can tighten coverage over time.
+</Note>
+
+## 5) Memory backends: don’t overthink day one
+
+Memory is a port—you can back it with SQLite, Postgres, a vector store, or nothing.
+
+- Phase 1: No long-term memory. Treat episodes as mostly stateless; use tags + artifacts.
+- Phase 2: Simple DB-backed memory. Implement a memory port writing to your existing DB; keep schemas boring and auditable.
+- Phase 3: Vector/hybrid memory. Only if you need semantic recall (multi-session chat, etc.); maintain an index of what/why you store.
+
+Start simple; the important part is that behavior is already traceable.
+
+## 6) Determinism and replay in practice
+
+Determinism is a dial, not a cliff:
+- Minimum: set a seed for basic reproducibility.
+- Evals/regressions: add deterministic clock/IDs and replay comparisons.
+
+For many teams, a simple seed is enough:
+
+```python
+import noesis as ns
+from noesis.runtime.session import SessionBuilder
+
+session = (
+  SessionBuilder.from_env()
+  .with_determinism(seed=42)
+  .build()
+)
+
+ep = session.run("Draft release notes")
+```
+
+When you need fully repeatable timings and IDs (e.g., evals in CI), configure the clock/RNG explicitly:
+
+```python
+import noesis as ns
+from noesis.runtime.session import SessionBuilder
+from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
+
+clock = DeterministicClock.from_start("2024-01-15T10:30:00Z", tick_ms=10)
+rng = DeterministicRNG(seed=42)
+
+session = (
+  SessionBuilder.from_env()
+  .with_determinism(clock=clock, rng=rng, episode_timestamp_ms=1705314600000)
+  .build()
+)
+
+ep = session.run("Draft release notes")
+```
+
+## 7) Integrating with your observability stack
+
+Artifacts are JSON—great for dashboards, alerts, and evals.
+
+- Periodic job: scan new `summary.json`, push metrics/flags into Prometheus/Datadog/etc.
+- Log pipeline: ship `events.jsonl` to Loki/Elastic; index by episode_id, task, tags, phase.
+- Don’t replace existing observability—extend it with cognitive traces.
+
+If you don’t have a metrics or log pipeline yet, you can ignore this section entirely — Noēsis works fine with artifacts on disk only.
+
+## 8) Rollout plan (safe by default)
+
+<Steps>
+  <Step title="Instrument one path">
+    Pick one agent/workflow and run it through Noēsis in non-prod.
+  </Step>
+  <Step title="Read 10 episodes by hand">
+    Open artifacts, walk timelines, verify traces match expectations.
+  </Step>
+  <Step title="Add one guardrail">
+    Add a simple policy (e.g., block dangerous deletes) and verify vetoes in `events.jsonl` and `summary.json`.
+  </Step>
+  <Step title="Define storage + retention">
+    Decide where episodes live, who can access them, and how long you keep them.
+  </Step>
+  <Step title="Wire a small eval">
+    Use [Trace-Based Evals](/tutorials/trace-based-evals) with 20–50 tasks.
+  </Step>
+  <Step title="Scale gradually">
+    Only after this feels boring should you enable Noēsis for more flows or teams.
+  </Step>
+</Steps>
+
+## 9) Adoption FAQ
+
+**Do I need a database or vector store on day one?**  
+No. You can run Noēsis with nothing but artifacts on disk. Add memory ports later if you actually need long-term recall (chat history, cross-session behavior, etc.).
+
+**Can I use it “just” with **LangGraph**?**  
+Yes. Wrap your graph as the planner/actuator and you’ll see `plan` / `act` / `governance` events plus direction flags in `summary.json`. You don’t have to change your graph structure to get traces.
+
+**What about **CrewAI**?**  
+Yes. Treat the CrewAI crew as the planner/actuator and wrap the tools/skills so they show up as `act` events with inputs/outputs. Governance/direction events will surface the same way.
+
+**What if my tools are messy or opaque?**  
+Start by wrapping only the high-risk tools (deletes, writes, external APIs). It’s fine to have a mix of well-instrumented tools and “black boxes”; you can tighten coverage over time as you gain confidence.
+
+**Will this replace my logs/APM?**  
+No. Noēsis augments your existing observability with cognitive traces (episodes, phases, vetoes). Keep your current logs, metrics, and APM; if you want dashboards/alerts, feed Noēsis artifacts into that stack.
+
+**Where should episodes live?**  
+Pick one location per environment (local path, mounted volume, or bucket) and point Noēsis there. Start simple; add retention/cleanup policies once more services or teams are writing episodes.
+
+**How much overhead is this in practice?**  
+For most teams, the first step is: set a runs directory, wrap one agent/workflow, and read a few episodes. You don’t need a new database, control plane, or infra team—just a directory and a bit of configuration.
+
+## 10) Quick checklist
+
+<Check>
+- Where do episodes live in this environment?
+- How long do we keep them, and how do we delete them?
+- Which agents are guarded by policies, and what do those policies block or veto?
+- Do we have at least one small eval that uses traces (not just final answers)?
+- Do we know how to replay a “weird” episode and read its timeline?
+</Check>
+
+If you can answer these, you’re already ahead of most “agentic” setups in the wild.
+
+## 11) Where to go next
+
+- Just getting started? → [Hello Episode](/tutorials/hello-episode)
+- Want to see vetoes? → [Guarded LangGraph Agent](/tutorials/guarded-langgraph-agent)
+- Ready for evals? → [Trace-Based Evals](/tutorials/trace-based-evals)

@@ -27,20 +27,12 @@ poetry.lock
 ### Node / Next.js (Docs)
 node_modules/
 .next/
-.nextra/
-.nextra-cache/
 out/
 public/static/
 package-lock.json
 yarn.lock
 bun.lock*
 bun.lockb
-
-# Build artifacts
-.nextra-dist/
-.nextra-static/
-.nextra-static-cache/
-.nextra-static-dist/
 
 ### OS & Editor Junk
 .DS_Store

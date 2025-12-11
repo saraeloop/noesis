@@ -72,7 +72,6 @@ Start from a clean branch, confirm the freeze window is active, and target a tag
 - [Manual] Tag the release: `git tag -s vX.Y.Z -m "Noēsis vX.Y.Z"` and push with signatures.
 - [Manual] Draft the GitHub release; attach wheels, SBOM, hashes, and the changelog excerpt.
 - [Manual] Paste the runtime × schema × policy version matrix table into the release notes.
-- [CI] Confirm the docs link checker (`pnpm nextra check-links` or equivalent) passes on the release commit.
 - [Manual] Announce support timelines and upgrade guidance (Docs site, X, internal Slack) with a `noesis migrate` cheat sheet.
 
 ## Optional automation
