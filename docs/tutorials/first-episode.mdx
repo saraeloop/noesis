@@ -1,0 +1,194 @@
+---
+title: "Your first episode"
+description: "Learn how to run, inspect, and understand Noēsis episodes step by step."
+---
+
+This tutorial takes you through creating your first Noēsis episode and understanding what gets produced. By the end, you'll know how to run episodes, read artifacts, and interpret the event timeline.
+
+## What you'll learn
+
+- How to run an episode with the CLI and Python
+- What artifacts get created and what they contain
+- How to read and interpret the event timeline
+- How to access insight metrics
+
+## Prerequisites
+
+- Noēsis installed (`uv add noesis` or `pip install noesis`)
+- A terminal with access to the `noesis` command
+- Optionally, `jq` for pretty-printing JSON
+
+## Step 1: Run your first episode
+
+Let's start with a simple task using the CLI:
+
+```bash
+noesis run "Summarize the key points of effective documentation"
+```
+
+You'll see output like:
+
+```
+Episode started: ep_2024_abc123_s0
+Episode completed: ep_2024_abc123_s0
+```
+
+<Tip>
+The episode ID format is `ep_<timestamp>_<hash>_s<seed>`. The seed ensures reproducibility when you need deterministic runs.
+</Tip>
+
+## Step 2: List and find your episode
+
+View recent episodes:
+
+```bash
+noesis list --limit 5
+```
+
+This displays a table with episode IDs, tasks, status, and timestamps. For machine-readable output:
+
+```bash
+noesis list -j | jq '.[0]'
+```
+
+## Step 3: Explore the artifacts
+
+Navigate to the runs directory to see what was created:
+
+```bash
+ls runs/demo/ep_2024_abc123_s0/
+```
+
+You'll find:
+
+| File | Purpose |
+| --- | --- |
+| `summary.json` | Episode outcome, metrics, and cross-links |
+| `state.json` | Current plan and cognitive state |
+| `events.jsonl` | Timeline of all phases with causal IDs |
+| `manifest.json` | SHA-256 checksums for tamper evidence |
+
+### Reading the summary
+
+```bash
+cat runs/demo/ep_2024_abc123_s0/summary.json | jq .
+```
+
+```json
+{
+  "schema_version": "1.2.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "task": "Summarize the key points of effective documentation",
+  "flags": {
+    "intuition": false,
+    "mode": "baseline"
+  },
+  "metrics": {
+    "success": 1,
+    "plan_count": 1,
+    "act_count": 1,
+    "reflect_count": 1,
+    "latencies": {
+      "first_action_ms": 5
+    }
+  }
+}
+```
+
+### Reading the event timeline
+
+```bash
+cat runs/demo/ep_2024_abc123_s0/events.jsonl | jq -s .
+```
+
+Each event includes:
+
+- `phase`: The cognitive phase (observe, interpret, plan, act, reflect, learn)
+- `payload`: Phase-specific data
+- `metrics`: Timing information (started_at, completed_at, duration_ms)
+- `caused_by`: UUID linking to the causal parent event
+
+## Step 4: Run with Python
+
+The same episode can be run programmatically:
+
+```python
+import noesis as ns
+
+# Run the episode
+episode_id = ns.run("Summarize the key points of effective documentation")
+
+# Read the summary
+summary = ns.summary.read(episode_id)
+print(f"Task: {summary['task']}")
+print(f"Success: {summary['metrics']['success']}")
+
+# Read events
+events = list(ns.events.read(episode_id))
+for event in events:
+    print(f"  {event['phase']}: {event.get('payload', {}).get('status', 'ok')}")
+```
+
+## Step 5: Capture insight metrics
+
+Get computed metrics for any episode:
+
+```bash
+noesis insight ep_2024_abc123_s0
+```
+
+Or in Python:
+
+```python
+import noesis as ns
+
+episode_id = ns.last()  # Get most recent episode
+summary = ns.summary.read(episode_id)
+
+metrics = summary.get("metrics", {})
+print(f"Plan count: {metrics.get('plan_count', 0)}")
+print(f"Act count: {metrics.get('act_count', 0)}")
+print(f"First action latency: {metrics.get('latencies', {}).get('first_action_ms', 'N/A')}ms")
+```
+
+## Understanding the cognitive phases
+
+Every episode flows through these phases:
+
+<Steps>
+  <Step title="Observe">
+    Captures the raw task and context at episode start.
+  </Step>
+  <Step title="Interpret">
+    Summarizes signals noticed by policy or intuition layers before planning.
+  </Step>
+  <Step title="Plan">
+    Records the selected steps, comparing intent versus action.
+  </Step>
+  <Step title="Act">
+    Logs every tool or adapter invocation with inputs and outcomes.
+  </Step>
+  <Step title="Reflect">
+    Evaluates what happened against expectations with success flags and reasons.
+  </Step>
+  <Step title="Learn">
+    Optionally captures follow-up updates for future runs to inherit.
+  </Step>
+</Steps>
+
+## What you've learned
+
+<Check>
+You can now run episodes, locate artifacts, and read the event timeline and metrics that Noēsis produces.
+</Check>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Add a policy" icon="shield" href="/tutorials/first-policy">
+    Learn how to add guardrails with intuition policies.
+  </Card>
+  <Card title="Cognitive loop" icon="arrows-rotate" href="/explanation/cognitive-loop">
+    Deep dive into the observe → learn phases.
+  </Card>
+</CardGroup>
