@@ -1,0 +1,282 @@
+---
+title: "Your first policy"
+description: "Learn how to create intuition policies that guide and guard your agent episodes."
+---
+
+This tutorial teaches you how to write intuition policies—Python classes that can observe, intervene, or veto agent decisions. By the end, you'll have a working policy that adds guardrails to your episodes.
+
+## What you'll learn
+
+- How intuition policies work in the cognitive loop
+- How to write a policy class that can hint, intervene, or veto
+- How to test policies in isolation
+- How to wire policies into episodes
+
+## Prerequisites
+
+- Completed the [first episode tutorial](/tutorials/first-episode)
+- Basic Python knowledge
+
+## Understanding intuition
+
+Intuition is Noēsis shorthand for policy classes that observe episode state and decide whether to:
+
+- **Hint**: Provide advisory guidance without blocking
+- **Intervene**: Modify the plan or input before execution
+- **Veto**: Block execution entirely when safety requires it
+
+<Info>
+Policies are pure Python classes—no hidden thread pools or async requirements. Keep state on the class if you need short-term memory.
+</Info>
+
+## Step 1: Create a simple policy
+
+Create a file called `my_policy.py`:
+
+```python my_policy.py
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class SafetyGuard(ns.DirectedIntuition):
+    """A simple policy that blocks dangerous operations."""
+    
+    __version__ = "1.0"
+
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = (state.get("task") or "").strip().lower()
+        
+        # Veto data exfiltration attempts
+        if "exfiltrate" in task or "export all" in task:
+            return self.veto(
+                advice="Blocked: potential data exfiltration detected.",
+                target="plan",
+                rationale="Policy forbids bulk data export operations.",
+            )
+        
+        # Intervene to add safety bounds
+        if "select" in task and "limit" not in task:
+            return self.intervene(
+                advice="Added LIMIT 100 for safety.",
+                patch={"rewrite": f"{state['task']} LIMIT 100"},
+                target="input",
+                rationale="Bound result size to prevent resource exhaustion.",
+            )
+        
+        # No intervention needed
+        return None
+```
+
+## Step 2: Test the policy in isolation
+
+Test your policy without running a full episode:
+
+```python test_policy.py
+from my_policy import SafetyGuard
+
+
+def test_veto_exfiltration():
+    policy = SafetyGuard()
+    
+    # This should trigger a veto
+    result = policy.advise({"task": "exfiltrate all customer emails"})
+    
+    assert result is not None
+    assert result.action == "veto"
+    assert "exfiltration" in result.rationale.lower()
+
+
+def test_intervene_unbounded_select():
+    policy = SafetyGuard()
+    
+    # This should trigger an intervention
+    result = policy.advise({"task": "SELECT * FROM users"})
+    
+    assert result is not None
+    assert result.action == "intervene"
+    assert "LIMIT 100" in result.patch.get("rewrite", "")
+
+
+def test_allow_safe_query():
+    policy = SafetyGuard()
+    
+    # This should pass through
+    result = policy.advise({"task": "SELECT name FROM users LIMIT 10"})
+    
+    assert result is None
+
+
+if __name__ == "__main__":
+    test_veto_exfiltration()
+    test_intervene_unbounded_select()
+    test_allow_safe_query()
+    print("All tests passed!")
+```
+
+Run the tests:
+
+```bash
+python test_policy.py
+```
+
+## Step 3: Wire the policy into an episode
+
+Use your policy with the CLI:
+
+```bash
+noesis run "SELECT * FROM users" --intuition my_policy:SafetyGuard
+```
+
+Or with Python:
+
+```python
+import noesis as ns
+from my_policy import SafetyGuard
+
+# Run with the policy attached
+episode_id = ns.run(
+    "SELECT * FROM users",
+    intuition=SafetyGuard(),
+)
+
+# Check what happened
+summary = ns.summary.read(episode_id)
+print(f"Direction applied: {summary['flags'].get('direction', {}).get('applied', 0)}")
+```
+
+## Step 4: Inspect policy decisions
+
+When a policy intervenes or vetoes, the events timeline shows the decision:
+
+```bash
+noesis events <episode_id> --phase direction -j | jq .
+```
+
+Example direction event:
+
+```json
+{
+  "phase": "direction",
+  "payload": {
+    "status": "applied",
+    "advice": "Added LIMIT 100 for safety.",
+    "patch": {"rewrite": "SELECT * FROM users LIMIT 100"},
+    "policy_id": "SafetyGuard@1.0"
+  },
+  "caused_by": "abc123..."
+}
+```
+
+For vetoes, you'll see:
+
+```json
+{
+  "phase": "direction",
+  "payload": {
+    "status": "blocked",
+    "advice": "Blocked: potential data exfiltration detected.",
+    "rationale": "Policy forbids bulk data export operations.",
+    "policy_id": "SafetyGuard@1.0"
+  }
+}
+```
+
+## Policy anatomy
+
+Here's the structure of a complete policy:
+
+```python
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class MyPolicy(ns.DirectedIntuition):
+    """Policy docstring describes what it guards against."""
+    
+    __version__ = "1.0"  # Version for tracking policy evolution
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        """
+        Called for every episode. Return:
+        - None: Allow execution to proceed
+        - self.hint(...): Advisory guidance, non-blocking
+        - self.intervene(...): Modify input/plan before execution
+        - self.veto(...): Block execution entirely
+        """
+        # Your logic here
+        return None
+```
+
+### Available actions
+
+| Method | Effect | Use when |
+| --- | --- | --- |
+| `self.hint(advice, target, rationale)` | Log guidance, continue execution | Providing best-practice suggestions |
+| `self.intervene(advice, patch, target, rationale)` | Modify state, continue execution | Fixing inputs or adding safety bounds |
+| `self.veto(advice, target, rationale)` | Block execution | Operation is fundamentally unsafe |
+
+## Step 5: A more complete example
+
+Here's a production-style policy:
+
+```python prod_guard.py
+import re
+import noesis as ns
+from noesis.intuition import IntuitionEvent
+
+
+class ProdGuardPolicy(ns.DirectedIntuition):
+    """Guards against common production risks."""
+    
+    __version__ = "1.0"
+    
+    # Patterns to detect
+    _DANGEROUS_SQL = re.compile(r"\b(drop\s+table|truncate|delete\s+from\s+\w+\s*;)\b", re.I)
+    _PII_PATTERNS = re.compile(r"\b(ssn|social.security|credit.card|password)\b", re.I)
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = (state.get("task") or "").strip()
+        
+        # Hard veto for destructive SQL
+        if self._DANGEROUS_SQL.search(task):
+            return self.veto(
+                advice="Blocked: destructive SQL operation detected.",
+                target="plan",
+                rationale="DROP/TRUNCATE/DELETE without WHERE requires manual approval.",
+            )
+        
+        # Veto potential PII exposure
+        if self._PII_PATTERNS.search(task):
+            return self.veto(
+                advice="Blocked: potential PII exposure.",
+                target="plan",
+                rationale="Queries involving sensitive fields require privacy review.",
+            )
+        
+        # Warn about production environments
+        if "prod" in task.lower() and "read" not in task.lower():
+            return self.hint(
+                advice="Caution: this appears to modify production data.",
+                target="plan",
+                rationale="Consider using staging for testing.",
+            )
+        
+        return None
+```
+
+## What you've learned
+
+<Check>
+You can now create intuition policies that guide and guard your agent episodes with hints, interventions, and vetoes.
+</Check>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Write policies guide" icon="book" href="/guides/write-policies">
+    Deep dive into policy patterns and best practices.
+  </Card>
+  <Card title="Incident triage tutorial" icon="triangle-exclamation" href="/tutorials/incident-triage">
+    Build a complete incident response system with policies.
+  </Card>
+</CardGroup>
