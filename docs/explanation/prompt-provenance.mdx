@@ -1,0 +1,109 @@
+---
+title: "Prompt provenance"
+description: "How Noēsis records prompt provenance and how to control it."
+---
+
+Prompt provenance captures how prompts were constructed and used during an episode. It is experimental and opt-in and not part of the replay gate. Use it for auditability, debugging, and reproducibility, while balancing privacy via storage modes.
+
+## Artifact snapshot
+
+| Property | Value |
+| --- | --- |
+| File | `prompts.jsonl` |
+| Location | `runs/<label>/<episode_id>/prompts.jsonl` |
+| Schema | `$schema_name: "prompt"`, `$schema_version: "1.1.0"` |
+| Kind | `attachment` in `manifest.json` |
+| Opt-in | `prompt_provenance_enabled` (bool) |
+| Mode | `prompt_provenance_mode` (`full`, `hash_only`, `redacted`) |
+
+## Record fields (schema 1.1.0)
+
+Core:
+- `$schema_name`, `$schema_version`
+- `episode_id`
+- `phase` (`observe`, `interpret`, `plan`, `governance`, `act`, `reflect`, `learn`)
+- `agent_id`
+- `fingerprint` (`sha256:<hex>` of normalized prompt)
+- `timestamp` (ISO-8601)
+- `mode` (`full`/`hash_only`/`redacted`)
+
+Linkage:
+- `event_id` (from `events.jsonl`, optional)
+- `outcome_event_id` (optional)
+
+Content (mode dependent):
+- `rendered`, `template`, `variables`, `template_id`
+
+Metadata:
+- `role` (`system`/`user`/`assistant`/`tool`)
+- `kind` (`system`, `reasoning`, `governance`, etc.)
+- `model`
+- `tags` (mirrors episode tags)
+
+Example (`full` mode):
+
+```json
+{
+  "$schema_name": "prompt",
+  "$schema_version": "1.1.0",
+  "episode_id": "ep_01...",
+  "phase": "plan",
+  "agent_id": "direction.planner",
+  "role": "system",
+  "template_id": "planner.v2",
+  "template": "Plan for: {{goal}}",
+  "rendered": "Plan for: ship the release",
+  "variables": {"goal": "ship the release"},
+  "fingerprint": "sha256:...",
+  "timestamp": "2025-11-21T12:34:56.789Z",
+  "model": "gpt-4.1",
+  "mode": "full",
+  "tags": {"env": "production"}
+}
+```
+
+## Storage modes
+
+| Mode | rendered/template | variables | fingerprint | Use |
+| --- | --- | --- | --- | --- |
+| `full` | Stored | Stored | Stored | Debug/research |
+| `hash_only` | Omitted | Omitted | Stored | Production (minimal PII) |
+| `redacted` | `"__redacted__"` | Omitted | Stored | Compliance-sensitive |
+
+Mode logic lives in `noesis/runtime/prompt_recorder.py`.
+
+## Enable and configure
+
+- Python: `ns.set(prompt_provenance_enabled=True, prompt_provenance_mode="hash_only")`
+- Env: set `NOESIS_PROMPT_PROVENANCE_ENABLED=true` and `NOESIS_PROMPT_PROVENANCE_MODE=hash_only`
+- TOML: `prompt_provenance_enabled = true` and `prompt_provenance_mode = "hash_only"`
+- Session: `SessionBuilder(...).with_config(prompt_provenance_enabled=True, prompt_provenance_mode="full")`
+
+When disabled, no `prompts.jsonl` is written. Writes are blocked after `manifest.json` is finalized (artifact immutability).
+
+## Integration points (current coverage)
+
+PromptRecorder is wired into:
+- `plan` (direction planner)
+- `governance` (pre-act governor)
+- `reflect` (reflection)
+- `interpret` (when intuition uses LLM)
+
+Other phases may be added later (see roadmap).
+
+## Reading prompts
+
+There is no dedicated helper yet; read JSONL directly:
+
+```python
+from pathlib import Path
+import json
+
+def read_prompts(run_dir: Path) -> list[dict]:
+    path = run_dir / "prompts.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.open(encoding="utf-8")]
+```
+
+Join to events via `event_id`, or filter by `phase` to analyze prompt usage.
