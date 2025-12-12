@@ -43,9 +43,8 @@ Episode metadata and timestamps.
       "environment": "staging",
       "team": "platform"
     },
-    "adapter": "baseline",
-    "started_at": "2024-01-15T10:30:00Z",
-    "completed_at": "2024-01-15T10:30:05Z"
+    "using": "baseline",
+    "started_at": "2024-01-15T10:30:00Z"
   }
 }
 ```
@@ -62,16 +61,12 @@ Seed used for reproducibility.
 User-provided metadata tags.
 </ResponseField>
 
-<ResponseField name="episode.adapter" type="string">
-Adapter used for execution.
+<ResponseField name="episode.using" type="string">
+Adapter label used for execution (optional).
 </ResponseField>
 
 <ResponseField name="episode.started_at" type="string" required>
 ISO 8601 start timestamp.
-</ResponseField>
-
-<ResponseField name="episode.completed_at" type="string">
-ISO 8601 completion timestamp.
 </ResponseField>
 
 ## Goal
@@ -82,20 +77,13 @@ The task the agent is pursuing.
 {
   "goal": {
     "task": "Draft release notes for v1.2.0",
-    "context": {
-      "changelog_path": "CHANGELOG.md",
-      "format": "markdown"
-    }
+    "type": "task"
   }
 }
 ```
 
 <ResponseField name="goal.task" type="string" required>
 The original task or goal.
-</ResponseField>
-
-<ResponseField name="goal.context" type="object">
-Additional context provided with the task.
 </ResponseField>
 
 ## Beliefs
@@ -184,6 +172,13 @@ Ordered steps describing the execution plan.
 Ordered list of plan steps.
 </ResponseField>
 
+<ResponseField name="plan.source" type="string">
+Origin of the plan (e.g., `"direction"`, when present).
+</ResponseField>
+
+<ResponseField name="plan.updated_at" type="string">
+ISO 8601 timestamp of the last plan update (when present).
+</ResponseField>
 ### Step fields
 
 <ResponseField name="plan.steps[].id" type="string" required>
@@ -335,45 +330,11 @@ Final outcome status (controlled vocabulary):
 </ResponseField>
 
 <ResponseField name="outcomes.actions" type="array">
-Log of actions executed.
-</ResponseField>
-
-### Action fields
-
-<ResponseField name="outcomes.actions[].id" type="string" required>
-Unique action identifier.
-</ResponseField>
-
-<ResponseField name="outcomes.actions[].tool" type="string">
-Tool that was invoked.
-</ResponseField>
-
-<ResponseField name="outcomes.actions[].input" type="any">
-Input to the action.
-</ResponseField>
-
-<ResponseField name="outcomes.actions[].output" type="any">
-Output from the action.
-</ResponseField>
-
-<ResponseField name="outcomes.actions[].timestamp" type="string" required>
-When the action was executed.
-</ResponseField>
-
-<ResponseField name="outcomes.actions[].duration_ms" type="number">
-Action duration in milliseconds.
+Structured action records (id, kind, tool, result_status, artifacts, provenance). Shape mirrors the events emitted during execution.
 </ResponseField>
 
 <ResponseField name="outcomes.metrics" type="object">
-Evaluation metrics (e.g., `task_score`).
-</ResponseField>
-
-<ResponseField name="outcomes.artifacts" type="array">
-List of produced artifact paths.
-</ResponseField>
-
-<ResponseField name="outcomes.error" type="string">
-Error message if status is `error`.
+Outcome metrics (e.g., total duration).
 </ResponseField>
 
 ## Complete example
@@ -386,13 +347,12 @@ Error message if status is `error`.
     "id": "ep_2024_abc123_s0",
     "seed": 0,
     "tags": {"team": "platform"},
-    "adapter": "baseline",
-    "started_at": "2024-01-15T10:30:00Z",
-    "completed_at": "2024-01-15T10:30:05Z"
+    "using": "baseline",
+    "started_at": "2024-01-15T10:30:00Z"
   },
   "goal": {
     "task": "Draft release notes for v1.2.0",
-    "context": {"changelog_path": "CHANGELOG.md"}
+    "type": "task"
   },
   "beliefs": [
     {
@@ -402,6 +362,8 @@ Error message if status is `error`.
     }
   ],
   "plan": {
+    "source": "direction",
+    "updated_at": "2024-01-15T10:30:01Z",
     "steps": [
       {"id": "step_1", "kind": "detect", "description": "Read changelog", "status": "done"},
       {"id": "step_2", "kind": "act", "description": "Generate notes", "status": "done"}

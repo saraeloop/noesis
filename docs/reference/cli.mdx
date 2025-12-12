@@ -11,13 +11,16 @@ The CLI surface is intentionally small in this release. A more robust CLI is in 
 
 ## Installation
 
-```bash
-# Install globally
-uv tool install noesis
+Install from source while the PyPI name is pending:
 
-# Or run from project
-uv run noesis --help
+```bash
+git clone https://github.com/saraeloop/noesis.git
+cd noesis
+uv tool install .
+# or: pipx install .
 ```
+
+When the PyPI release is live, you can also use `uv add noesis` or `pip install noesis`.
 
 ## Commands
 

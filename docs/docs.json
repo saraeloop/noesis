@@ -65,7 +65,8 @@
               "explanation/cognitive-loop",
               "explanation/faculties",
               "explanation/artifacts",
-              "explanation/determinism"
+              "explanation/determinism",
+              "explanation/prompt-provenance"
             ]
           }
         ]

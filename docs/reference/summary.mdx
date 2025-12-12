@@ -13,7 +13,7 @@ The `summary.json` artifact provides a high-level view of episode outcomes, metr
   "episode_id": "ep_2024_abc123_s0",
   "task": "Draft release notes for v1.2.0",
   "started_at": "2024-01-15T10:30:00Z",
-  "completed_at": "2024-01-15T10:30:05Z",
+  "duration_sec": 5.0,
   "flags": { ... },
   "metrics": { ... },
   "insight": { ... },
@@ -39,8 +39,8 @@ The original task or goal.
 ISO 8601 start timestamp.
 </ResponseField>
 
-<ResponseField name="completed_at" type="string">
-ISO 8601 completion timestamp.
+<ResponseField name="duration_sec" type="number" required>
+Total episode duration in seconds.
 </ResponseField>
 
 ## Flags
@@ -173,7 +173,7 @@ Timing metrics.
 
 ## Insight
 
-Advanced insight metrics (meta mode only).
+Advanced insight metrics (meta mode only; may be absent in minimal mode).
 
 ```json
 {
@@ -236,7 +236,7 @@ Key-value pairs of user-provided metadata.
   "episode_id": "ep_2024_abc123_s0",
   "task": "Draft release notes for v1.2.0",
   "started_at": "2024-01-15T10:30:00Z",
-  "completed_at": "2024-01-15T10:30:05Z",
+  "duration_sec": 5.0,
   "flags": {
     "intuition": true,
     "mode": "meta",

@@ -27,16 +27,6 @@ Directory where artifacts are stored.
 | TOML | `runs_dir = "./my-runs"` |
 | Default | `"./runs"` |
 
-**Example**:
-
-```python
-import noesis as ns
-
-ns.set(runs_dir="./artifacts")
-episode_id = ns.run("task")
-# Artifacts stored in ./artifacts/demo/ep_.../
-```
-
 ### planner_mode
 
 Controls the level of governance and observability.
@@ -55,91 +45,16 @@ Controls the level of governance and observability.
 | `meta` | Full governance with MetaPlanner and PreActGovernor |
 | `minimal` | Skip governance, use legacy stepwise planner |
 
-**Example**:
+### timeout_sec
 
-```python
-import noesis as ns
-
-# Full governance (default)
-ns.set(planner_mode="meta")
-
-# Skip governance for quick tests
-ns.set(planner_mode="minimal")
-```
-
-### seed
-
-Seed for reproducible episodes.
+Episode timeout in seconds.
 
 | Source | Setting |
 | --- | --- |
-| Python | `ns.set(seed=42)` |
-| Environment | `NOESIS_SEED=42` |
-| TOML | `seed = 42` |
-| Default | `None` (random) |
-
-**Example**:
-
-```python
-import noesis as ns
-
-ns.set(seed=42)
-ep1 = ns.run("task")
-
-ns.set(seed=42)
-ep2 = ns.run("task")
-# ep1 and ep2 have deterministic behavior
-```
-
-### label
-
-Subdirectory name for organizing runs.
-
-| Source | Setting |
-| --- | --- |
-| Python | `ns.set(label="production")` |
-| Environment | `NOESIS_LABEL=production` |
-| TOML | `label = "production"` |
-| Default | `"demo"` |
-
-**Example**:
-
-```python
-import noesis as ns
-
-ns.set(label="staging")
-ns.run("task")
-# Artifacts in ./runs/staging/ep_.../
-
-ns.set(label="production")
-ns.run("task")
-# Artifacts in ./runs/production/ep_.../
-```
-
-### log_prompts
-
-Enable prompt provenance logging.
-
-| Source | Setting |
-| --- | --- |
-| Python | `ns.set(log_prompts=True)` |
-| Environment | `NOESIS_LOG_PROMPTS=true` |
-| TOML | `log_prompts = true` |
-| Default | `false` |
-
-<Warning>
-Enable carefully—prompts may contain sensitive data. Creates `prompts.jsonl` in episode directory.
-</Warning>
-
-**Example**:
-
-```python
-import noesis as ns
-
-ns.set(log_prompts=True)
-ns.run("task")
-# Creates ./runs/demo/ep_.../prompts.jsonl
-```
+| Python | `ns.set(timeout_sec=120)` |
+| Environment | `NOESIS_TIMEOUT_SEC=120` |
+| TOML | `timeout_sec = 120` |
+| Default | `60` |
 
 ### learn_mode
 
@@ -167,9 +82,9 @@ Minimum confidence for auto-applying learn proposals.
 | Source | Setting |
 | --- | --- |
 | Python | `ns.set(learn_auto_apply_min_confidence=0.9)` |
-| Environment | `NOESIS_LEARN_MIN_CONFIDENCE=0.9` |
+| Environment | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE=0.9` |
 | TOML | `learn_auto_apply_min_confidence = 0.9` |
-| Default | `0.85` |
+| Default | `0.75` |
 
 ### learn_auto_apply_min_successes
 
@@ -178,7 +93,7 @@ Minimum successful triggers before auto-applying.
 | Source | Setting |
 | --- | --- |
 | Python | `ns.set(learn_auto_apply_min_successes=5)` |
-| Environment | `NOESIS_LEARN_MIN_SUCCESSES=5` |
+| Environment | `NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES=5` |
 | TOML | `learn_auto_apply_min_successes = 5` |
 | Default | `3` |
 
@@ -210,7 +125,7 @@ Minimum confidence threshold for applying plan directives.
 | Python | `ns.set(direction_min_confidence=0.8)` |
 | Environment | `NOESIS_DIRECTION_MIN_CONFIDENCE=0.8` |
 | TOML | `direction_min_confidence = 0.8` |
-| Default | `0.7` |
+| Default | `0.5` |
 
 ### learn_home
 
@@ -221,17 +136,27 @@ Directory for learning data storage.
 | Python | `ns.set(learn_home="./learn")` |
 | Environment | `NOESIS_LEARN_HOME=./learn` |
 | TOML | `learn_home = "./learn"` |
-| Default | `"./learn"` |
+| Default | `~/.noesis/state` |
 
-### default_tags
+### prompt_provenance
 
-Default metadata tags applied to all episodes.
+Control prompt provenance logging.
 
 | Source | Setting |
 | --- | --- |
-| Python | `ns.set(default_tags={"env": "prod"})` |
-| TOML | `default_tags = {env = "prod"}` |
-| Default | `{}` |
+| Python | `ns.set(prompt_provenance_enabled=True)` |
+| Environment | `NOESIS_PROMPT_PROVENANCE_ENABLED=true` |
+| TOML | `prompt_provenance_enabled = true` |
+| Default | `false` |
+
+Mode for prompt provenance storage.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(prompt_provenance_mode="hash_only")` |
+| Environment | `NOESIS_PROMPT_PROVENANCE_MODE=hash_only` |
+| TOML | `prompt_provenance_mode = "hash_only"` |
+| Default | `"hash_only"` |
 
 ## Configuration file
 
@@ -241,19 +166,14 @@ Create a `noesis.toml` in your project root:
 [noesis]
 runs_dir = "./runs"
 planner_mode = "meta"
-label = "production"
-seed = 42
-log_prompts = false
 learn_mode = "record"
 learn_home = "./learn"
 intuition_mode = "advisory"
 direction_min_confidence = 0.7
 learn_auto_apply_min_confidence = 0.85
 learn_auto_apply_min_successes = 3
-
-[noesis.default_tags]
-env = "production"
-team = "platform"
+prompt_provenance_enabled = false
+prompt_provenance_mode = "hash_only"
 ```
 
 ## Environment variables
@@ -264,15 +184,17 @@ All configuration options have environment variable equivalents:
 | --- | --- |
 | `runs_dir` | `NOESIS_RUNS_DIR` |
 | `planner_mode` | `NOESIS_PLANNER` |
-| `seed` | `NOESIS_SEED` |
-| `label` | `NOESIS_LABEL` |
-| `log_prompts` | `NOESIS_LOG_PROMPTS` |
+| `agents` | `NOESIS_AGENTS` |
+| `tasks` | `NOESIS_TASKS` |
+| `timeout_sec` | `NOESIS_TIMEOUT_SEC` |
 | `learn_mode` | `NOESIS_LEARN_MODE` |
 | `learn_home` | `NOESIS_LEARN_HOME` |
 | `intuition_mode` | `NOESIS_INTUITION_MODE` |
 | `direction_min_confidence` | `NOESIS_DIRECTION_MIN_CONFIDENCE` |
-| `learn_auto_apply_min_confidence` | `NOESIS_LEARN_MIN_CONFIDENCE` |
-| `learn_auto_apply_min_successes` | `NOESIS_LEARN_MIN_SUCCESSES` |
+| `learn_auto_apply_min_confidence` | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` |
+| `learn_auto_apply_min_successes` | `NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES` |
+| `prompt_provenance_enabled` | `NOESIS_PROMPT_PROVENANCE_ENABLED` |
+| `prompt_provenance_mode` | `NOESIS_PROMPT_PROVENANCE_MODE` |
 
 **Example**:
 
@@ -280,10 +202,10 @@ All configuration options have environment variable equivalents:
 # Set via environment
 export NOESIS_PLANNER=meta
 export NOESIS_RUNS_DIR=./artifacts
-export NOESIS_LABEL=production
+export NOESIS_DIRECTION_MIN_CONFIDENCE=0.8
 
 # Or inline
-NOESIS_PLANNER=minimal noesis run "quick test"
+NOESIS_PLANNER=minimal NOESIS_RUNS_DIR=./artifacts noesis run "quick test"
 ```
 
 ## Python API
@@ -296,14 +218,14 @@ import noesis as ns
 # Set individual options
 ns.set(runs_dir="./artifacts")
 ns.set(planner_mode="meta")
-ns.set(seed=42)
+ns.set(direction_min_confidence=0.8)
 
 # Set multiple at once
 ns.set(
     runs_dir="./artifacts",
     planner_mode="meta",
-    seed=42,
-    label="production",
+    learn_mode="record",
+    prompt_provenance_enabled=False,
 )
 ```
 
@@ -312,12 +234,11 @@ ns.set(
 ```python
 import noesis as ns
 
-config = ns.config()
+config = ns.get()  # returns a mapping
 
-print(f"Runs dir: {config.runs_dir}")
-print(f"Planner mode: {config.planner_mode}")
-print(f"Seed: {config.seed}")
-print(f"Label: {config.label}")
+print(f"Runs dir: {config['runs_dir']}")
+print(f"Planner mode: {config['planner_mode']}")
+print(f"Direction min confidence: {config['direction_min_confidence']}")
 ```
 
 ### Resetting configuration
@@ -325,15 +246,16 @@ print(f"Label: {config.label}")
 ```python
 import noesis as ns
 
-# Reset to defaults
-ns.reset_config()
-
-# Or set to specific values
+# Set back to defaults explicitly
 ns.set(
     runs_dir="./runs",
     planner_mode="meta",
-    seed=None,
-    label="demo",
+    direction_min_confidence=0.5,
+    learn_mode="record",
+    learn_auto_apply_min_confidence=0.75,
+    learn_auto_apply_min_successes=3,
+    prompt_provenance_enabled=False,
+    prompt_provenance_mode="hash_only",
 )
 ```
 
@@ -345,28 +267,24 @@ Some options can be overridden per episode:
 import noesis as ns
 
 # Global config
-ns.set(planner_mode="meta", label="production")
+ns.set(planner_mode="meta")
 
 # Override for specific episode
 episode_id = ns.run(
     "quick test",
     tags={"override": "true"},
-    # Note: Some options like seed can be passed directly
+    seed=42,  # per-call seed for reproducibility
 )
 ```
 
 ## CLI configuration
 
-Use global options or environment variables:
+Configure the CLI via environment variables (the CLI does not expose `--runs-dir` or `--planner` flags):
 
 ```bash
-# Global options
-noesis --runs-dir ./artifacts run "task"
-noesis --planner minimal run "task"
-
-# Environment variables
 NOESIS_RUNS_DIR=./artifacts noesis run "task"
 NOESIS_PLANNER=minimal noesis run "task"
+NOESIS_DIRECTION_MIN_CONFIDENCE=0.8 noesis run "task"
 ```
 
 ## Configuration validation
@@ -386,7 +304,7 @@ except ValueError as e:
 ## Best practices
 
 <Tip>
-**Use environment variables for deployment.** Set `NOESIS_RUNS_DIR` and `NOESIS_LABEL` in your deployment config to separate environments.
+**Use environment variables for deployment.** Set `NOESIS_RUNS_DIR`, `NOESIS_PLANNER`, and related knobs per environment.
 </Tip>
 
 <Warning>
@@ -394,7 +312,7 @@ except ValueError as e:
 </Warning>
 
 <Info>
-**Use seeds for debugging.** Set a seed when debugging to get reproducible episodes, then remove it for production.
+**Use per-call seeds for debugging.** Pass `seed=` to `ns.run`/`ns.solve` when you need reproducibility; unset it for production.
 </Info>
 
 ## Example configurations
@@ -405,8 +323,8 @@ except ValueError as e:
 [noesis]
 runs_dir = "./runs"
 planner_mode = "minimal"
-label = "dev"
-log_prompts = true
+direction_min_confidence = 0.5
+prompt_provenance_enabled = false
 ```
 
 ### Staging
@@ -415,8 +333,9 @@ log_prompts = true
 [noesis]
 runs_dir = "./runs"
 planner_mode = "meta"
-label = "staging"
 learn_mode = "record"
+direction_min_confidence = 0.5
+prompt_provenance_enabled = false
 ```
 
 ### Production
@@ -425,11 +344,11 @@ learn_mode = "record"
 [noesis]
 runs_dir = "/var/noesis/runs"
 planner_mode = "meta"
-label = "production"
-log_prompts = false
 learn_mode = "record"
 learn_auto_apply_min_confidence = 0.95
 learn_auto_apply_min_successes = 5
+prompt_provenance_enabled = true
+prompt_provenance_mode = "hash_only"
 ```
 
 ## Next steps
