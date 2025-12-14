@@ -63,6 +63,7 @@ PHASES: set[str] = {
     "start",
     "intuition",
     "direction",
+    "governance",
     "reason",
     "memory",
     "terminate",

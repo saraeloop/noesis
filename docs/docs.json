@@ -100,7 +100,8 @@
           {
             "group": "Configuration",
             "pages": [
-              "reference/configuration"
+              "reference/configuration",
+              "reference/llms-txt"
             ]
           }
         ]

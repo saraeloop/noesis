@@ -29,7 +29,7 @@ Unique event identifier.
 </ResponseField>
 
 <ResponseField name="phase" type="string" required>
-Event phase. Possible values: `start`, `observe`, `interpret`, `plan`, `direction`, `intuition`, `insight`, `reason`, `governance`, `act`, `reflect`, `learn`, `terminate`, `error`.
+Event phase. Canonical values: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `act`, `reflect`, `learn`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`. Extensions may emit additional phases.
 </ResponseField>
 
 <ResponseField name="agent_id" type="string">
@@ -67,6 +67,7 @@ ID of the event that caused this one (for lineage tracking).
 Additional phases you may see:
 - **start**: episode initialization metadata.
 - **intuition**: advisory/intuition policy events.
+- **memory**: reads/writes performed by the memory port.
 - **insight**: computed insight metrics (alias of events --phase insight).
 - **reason**: reasoning traces from the planner.
 - **error**: fatal errors.
@@ -401,58 +402,35 @@ Evaluation metrics.
 
 ### learn
 
-Captures learning signals for future episodes.
+Captures learning signals for future episodes. The minimal validator expects the following keys; runners may add extra detail.
 
 ```json
 {
   "phase": "learn",
   "payload": {
-    "updates": [
-      {
-        "type": "memory",
-        "key": "changelog_format",
-        "value": "keep-a-changelog"
-      },
-      {
-        "type": "proposal",
-        "target": "veto_threshold",
-        "suggested_value": 0.8,
-        "confidence": 0.75
-      }
-    ],
-    "scope": "session"
+    "policy_id": "policy:core.meta",
+    "basis": ["rules.veto.danger"],
+    "proposal": [],
+    "applied": false,
+    "scope": "episode"
   }
 }
 ```
 
-<ResponseField name="payload.updates" type="array" required>
-List of learning updates.
+<ResponseField name="payload.policy_id" type="string" required>
+Policy that produced the learning signal.
+</ResponseField>
 
-<Expandable title="Update properties">
-  <ResponseField name="type" type="string" required>
-  Update type: `memory`, `proposal`, `hint`.
-  </ResponseField>
-  
-  <ResponseField name="key" type="string">
-  Key for memory updates.
-  </ResponseField>
-  
-  <ResponseField name="value" type="any">
-  Value for memory updates.
-  </ResponseField>
-  
-  <ResponseField name="target" type="string">
-  Target for proposals.
-  </ResponseField>
-  
-  <ResponseField name="suggested_value" type="any">
-  Suggested value for proposals.
-  </ResponseField>
-  
-  <ResponseField name="confidence" type="number">
-  Confidence in the proposal (0-1).
-  </ResponseField>
-</Expandable>
+<ResponseField name="payload.basis" type="array" required>
+Reasons or evidence that drove the learning update.
+</ResponseField>
+
+<ResponseField name="payload.proposal" type="array" required>
+List of proposed updates (may be empty).
+</ResponseField>
+
+<ResponseField name="payload.applied" type="boolean" required>
+Whether the proposed updates were applied.
 </ResponseField>
 
 <ResponseField name="payload.scope" type="string" required>
@@ -486,20 +464,14 @@ Episode identifier.
 Total episode duration in milliseconds.
 </ResponseField>
 
-## Event order invariant
+## Phase order (partial)
 
-Events follow this order:
+Current phases: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `act`, `reflect`, `learn`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`.
 
-```
-observe → (interpret → plan)* → (direction → governance)? → act+ → reflect → (learn)? → terminate
-```
-
-- `observe` is always first
-- `interpret` and `plan` may repeat
-- `direction` and `governance` only appear in meta mode
-- Multiple `act` events are common
-- `learn` is optional
-- `terminate` is always last
+- Required: `start` kicks off every episode; `terminate` marks completion.
+- Typical loop: `observe` → `interpret` → `plan` → (`direction`/`governance` in meta mode) → `act` → `reflect` → (`learn` optionally).
+- Optional tail: `insight` and `memory` may emit *after* `terminate` for scoring/persistence.
+- Partial order: phases follow the sequence above when present, but not every phase appears in every run.
 
 ## Reading events
 
