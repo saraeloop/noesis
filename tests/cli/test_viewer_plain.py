@@ -100,6 +100,7 @@ def test_plain_viewer_output_matches_fixture(demo_run: Path, monkeypatch: pytest
     monkeypatch.chdir(demo_run.parent)
 
     view = load_episode_view(str(demo_run), ns=noesis, runtime_context=None)
+    assert view.validation == []
 
     renderer = PlainRenderer()
     buffer = StringIO()
