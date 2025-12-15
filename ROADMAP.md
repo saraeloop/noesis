@@ -167,6 +167,45 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 ---
 
+### Phase 1.7 — Governance Modes (ADR-007 — Proposed)
+
+**Focus:** Make governance an explicit 3-mode faculty (**off / audit / enforce**) with canonical veto semantics and schema-governed signaling.
+
+**Faculty order (canonical):** Intuition → Direction → Governance → Act → Reflect → Insight. Governance is **pre-act** and runs **after** Direction has produced a plan.
+
+**Delivered**
+
+- None; ADR-007 drafted with canonical status and event semantics.
+
+**Remaining (Blocking)**
+
+- Add `governance.mode` (`off` default) and `governance.failure_policy` defaults (**audit: fail_open**, **enforce: fail_closed**, with override).
+- Enforce canonical episode outcome **`vetoed`** (episode-level). Keep **`blocked`** as an **event-level** reason only (direction/governance events). **`blocked` MUST NOT appear as an episode outcome.**
+- Veto scope: In **enforce**, a **pre-act veto terminates the episode** with outcome `vetoed` (not “skip one step and continue”), and **no Act event is emitted**.
+- Governance event schema (ADR-003 governed): minimal required fields  
+  (`mode`, `failure_policy`, `enforced`, `decision`, `policy_id`, `policy_version`, `policy_kind`, `rule_id`, `score`, `message`, `caused_by`; optional `details`, `suggested_fixes`, `error`).
+  - Consistency rule: `enforced == (mode == "enforce")`.
+  - Failure semantics: `fail_closed` ⇒ treat policy failure/timeout as **VETO** and emit `error` metadata in the governance payload.
+- Policy contract stays pure: input (**goal, plan**, optional minimal **context** if defined), output `GovernanceResult` (decision/rule/message/score/fixes), **no side effects**.
+- Tests:
+  - Unit coverage for **off/audit/enforce**.
+  - Integration: **“enforce veto terminates before Act”** with terminate/summary status `vetoed`.
+  - Governance + `direction_blocked` events recorded with lineage (`caused_by`).
+  - Determinism golden includes at least one **enforce-veto** episode and is wired into the replay gate.
+- Docs:
+  - “Governance modes”
+  - “What veto means” (outcome vs event reason)
+  - Failure policy semantics (fail_open vs fail_closed)
+  - Link the enforce-veto golden episode to the replay gate docs.
+
+**Exit Criteria**
+
+- Governance mode/config defaults are explicit and test-backed.
+- Episode-level outcome `vetoed` is canonical across `summary.json`, `state.json`, and terminate semantics (where applicable).
+- Governance events are schema-governed and lineage-linked; **audit never blocks**, **enforce fail-fast blocks Act** and terminates the episode.
+- Determinism/replay gate includes at least one enforce-veto golden.
+
+
 ### Phase 2 — NoesisSession GA (ADR-001 → Accepted; finalize GA proof)
 
 **Focus:** Make the session the public, deterministic entrypoint.
