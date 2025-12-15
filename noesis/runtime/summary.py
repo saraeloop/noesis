@@ -64,6 +64,16 @@ def finalize_summary(
         "intuition": intuition_enabled,
         "mode": intuition_mode.value if intuition_enabled else "off",
     }
+    # Governance configuration flags (best effort; remain strings for schema stability)
+    governance_mode = getattr(config, "governance_mode", "off")
+    if hasattr(governance_mode, "value"):
+        governance_mode = governance_mode.value
+    flags["governance_mode"] = str(governance_mode)
+    failure_policy = getattr(config, "governance_failure_policy", None)
+    if hasattr(failure_policy, "value"):
+        failure_policy = failure_policy.value
+    if failure_policy is not None:
+        flags["governance_failure_policy"] = str(failure_policy)
     if using_label is not None:
         flags["using"] = using_label
 

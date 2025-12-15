@@ -12,7 +12,10 @@
     "policy_id",
     "policy_version",
     "policy_kind",
-    "governance_id"
+    "governance_id",
+    "enforced",
+    "mode",
+    "failure_policy"
   ],
   "properties": {
     "schema_version": {
@@ -47,8 +50,30 @@
       "type": "string",
       "enum": ["llm", "rules", "hybrid"]
     },
+    "mode": {
+      "type": "string",
+      "enum": ["off", "audit", "enforce"]
+    },
+    "failure_policy": {
+      "type": "string",
+      "enum": ["fail_open", "fail_closed"]
+    },
+    "enforced": {
+      "type": "boolean"
+    },
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
     "details": {
       "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "suggested_fixes": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object"
+      },
       "additionalProperties": true
     }
   },
