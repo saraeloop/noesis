@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from noesis.cli import main as cli_main
 
 
@@ -11,10 +13,16 @@ def _episode_dir(root: Path) -> Path:
     return candidates[0]
 
 
-def test_cli_diagnostics_replay_no_drift(capsys) -> None:
-    base = Path("tests/golden/deterministic_run")
-    run_a = _episode_dir(base / "run_a")
-    run_b = _episode_dir(base / "run_b")
+@pytest.mark.parametrize(
+    "dataset",
+    [
+        Path("tests/golden/deterministic_run"),
+        Path("tests/golden/veto_enforce"),
+    ],
+)
+def test_cli_diagnostics_replay_no_drift(capsys, dataset: Path) -> None:
+    run_a = _episode_dir(dataset / "run_a")
+    run_b = _episode_dir(dataset / "run_b")
 
     code = cli_main(["diagnostics", "replay", str(run_a), str(run_b)])
 
