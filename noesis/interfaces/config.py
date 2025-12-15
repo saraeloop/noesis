@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Mapping, Protocol
 
 from noesis.domain.faculties.intuition import IntuitionMode
+from noesis.domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode
 from noesis.domain.learning.model import LearnMode
 
 __all__ = ["ConfigSnapshot", "ConfigPort", "PlannerMode"]
@@ -36,6 +37,9 @@ class ConfigSnapshot:
     learn_auto_apply_min_confidence: float
     prompt_provenance_enabled: bool
     prompt_provenance_mode: Literal["full", "hash_only", "redacted"]
+    governance_mode: GovernanceMode
+    governance_failure_policy: GovernanceFailurePolicy
+    governance_timeout_ms: int | None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "ConfigSnapshot":
@@ -85,12 +89,43 @@ class ConfigSnapshot:
                 f"prompt_provenance_mode must be 'full', 'hash_only', or 'redacted', got: {raw!r}"
             )
 
+        def _governance_mode(raw: Any) -> GovernanceMode:
+            if isinstance(raw, GovernanceMode):
+                return raw
+            if isinstance(raw, str):
+                return GovernanceMode(raw.strip().lower())
+            raise TypeError(f"Unsupported governance_mode value: {raw!r}")
+
+        def _governance_failure_policy(
+            raw: Any,
+            mode: GovernanceMode,
+        ) -> GovernanceFailurePolicy:
+            if raw is None:
+                return GovernanceFailurePolicy.default_for(mode)
+            if isinstance(raw, GovernanceFailurePolicy):
+                return raw
+            if isinstance(raw, str):
+                return GovernanceFailurePolicy(raw.strip().lower())
+            raise TypeError(f"Unsupported governance_failure_policy value: {raw!r}")
+
+        def _timeout(raw: Any) -> int | None:
+            if raw is None:
+                return None
+            try:
+                value = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise TypeError(f"Unsupported governance_timeout_ms value: {raw!r}") from exc
+            if value <= 0:
+                raise ValueError("governance_timeout_ms must be > 0")
+            return value
+
         raw_aliases = data.get("policy_aliases", {})
         if raw_aliases is None:
             raw_aliases = {}
         if not isinstance(raw_aliases, Mapping):
             raise TypeError(f"policy_aliases must be a mapping, got: {raw_aliases!r}")
 
+        governance_mode_value = _governance_mode(data.get("governance_mode", GovernanceMode.OFF.value))
         return cls(
             runs_dir=Path(str(data["runs_dir"])),
             agents=str(data["agents"]),
@@ -115,6 +150,12 @@ class ConfigSnapshot:
             prompt_provenance_mode=_prompt_mode(
                 data.get("prompt_provenance_mode", "hash_only")
             ),
+            governance_mode=governance_mode_value,
+            governance_failure_policy=_governance_failure_policy(
+                data.get("governance_failure_policy"),
+                governance_mode_value,
+            ),
+            governance_timeout_ms=_timeout(data.get("governance_timeout_ms")),
         )
 
     def to_mapping(self) -> Dict[str, object]:
@@ -138,6 +179,9 @@ class ConfigSnapshot:
             ),
             "prompt_provenance_enabled": self.prompt_provenance_enabled,
             "prompt_provenance_mode": self.prompt_provenance_mode,
+            "governance_mode": self.governance_mode.value,
+            "governance_failure_policy": self.governance_failure_policy.value,
+            "governance_timeout_ms": self.governance_timeout_ms,
         }
 
 

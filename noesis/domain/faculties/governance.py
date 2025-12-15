@@ -20,7 +20,7 @@ across process boundaries.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, ClassVar, Dict, Mapping, Optional, Sequence
 from uuid import UUID, uuid4
@@ -29,7 +29,14 @@ from noesis.domain.state import PlanStep
 from .identifiers import GovernanceIdentifier, make_governance_identifier
 from .versioning import current_version, is_compatible
 
-__all__ = ["GovernanceDecision", "GovernanceResult", "PreActGovernor"]
+__all__ = [
+    "GovernanceDecision",
+    "GovernanceResult",
+    "GovernanceMode",
+    "GovernanceFailurePolicy",
+    "PreActGovernor",
+    "with_governance_context",
+]
 
 
 class GovernanceDecision(str, Enum):
@@ -38,6 +45,29 @@ class GovernanceDecision(str, Enum):
     ALLOW = "allow"
     AUDIT = "audit"
     VETO = "veto"
+
+
+class GovernanceMode(str, Enum):
+    """Runtime mode for governance evaluation."""
+
+    OFF = "off"
+    AUDIT = "audit"
+    ENFORCE = "enforce"
+
+
+class GovernanceFailurePolicy(str, Enum):
+    """How to handle governance errors/timeouts."""
+
+    FAIL_OPEN = "fail_open"
+    FAIL_CLOSED = "fail_closed"
+
+    @classmethod
+    def default_for(cls, mode: GovernanceMode) -> "GovernanceFailurePolicy":
+        if mode is GovernanceMode.AUDIT:
+            return cls.FAIL_OPEN
+        if mode is GovernanceMode.ENFORCE:
+            return cls.FAIL_CLOSED
+        return cls.FAIL_OPEN
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +88,10 @@ class GovernanceResult:
         policy_id: Optional identifier of the policy source.
         policy_version: Optional version string of the policy.
         details: Optional structured diagnostic or contextual data.
+        mode: Optional governance mode used during evaluation.
+        failure_policy: Optional failure handling applied during evaluation.
+        enforced: True when the decision will affect control flow.
+        error: Optional structured error metadata when evaluation fails.
 
     This class is side-effect-free and safe to persist or transmit as JSON.
     """
@@ -71,6 +105,10 @@ class GovernanceResult:
     policy_version: str = "0.0.0"
     policy_kind: str = "rules"
     details: Optional[Dict[str, Any]] = None
+    mode: GovernanceMode | None = None
+    failure_policy: GovernanceFailurePolicy | None = None
+    enforced: bool = False
+    error: Optional[Dict[str, Any]] = None
     governance_id: GovernanceIdentifier | None = None
     decision_id: UUID = field(default_factory=uuid4)
 
@@ -90,6 +128,13 @@ class GovernanceResult:
         }
         if self.details:
             payload["details"] = dict(self.details)
+        if self.mode:
+            payload["mode"] = self.mode.value
+        if self.failure_policy:
+            payload["failure_policy"] = self.failure_policy.value
+        payload["enforced"] = bool(self.enforced)
+        if self.error:
+            payload["error"] = dict(self.error)
         return payload
 
     def __post_init__(self) -> None:
@@ -138,6 +183,18 @@ class GovernanceResult:
         details = payload.get("details")
         if details is not None and not isinstance(details, dict):
             details = None
+        mode_raw = payload.get("mode")
+        mode = GovernanceMode(mode_raw) if isinstance(mode_raw, str) and mode_raw in GovernanceMode._value2member_map_ else None
+        failure_policy_raw = payload.get("failure_policy")
+        failure_policy = (
+            GovernanceFailurePolicy(failure_policy_raw)
+            if isinstance(failure_policy_raw, str) and failure_policy_raw in GovernanceFailurePolicy._value2member_map_
+            else None
+        )
+        enforced = bool(payload.get("enforced", False))
+        error = payload.get("error")
+        if error is not None and not isinstance(error, dict):
+            error = None
         governance_identifier: GovernanceIdentifier | None = None
         if isinstance(governance_id_raw, str) and _looks_like_governance_id(governance_id_raw):
             governance_identifier = GovernanceIdentifier(governance_id_raw)
@@ -163,7 +220,34 @@ class GovernanceResult:
             policy_version=str(payload.get("policy_version", "0.0.0")),
             policy_kind=policy_kind,
             details=details,
+            mode=mode,
+            failure_policy=failure_policy,
+            enforced=enforced,
+            error=error,
         )
+
+
+def with_governance_context(
+    result: GovernanceResult,
+    *,
+    mode: GovernanceMode,
+    failure_policy: GovernanceFailurePolicy | None,
+    enforced: bool,
+    error: Optional[Dict[str, Any]] = None,
+) -> GovernanceResult:
+    """
+    Attach runtime governance metadata to a pure policy result.
+
+    This preserves immutability while threading mode/failure_policy/enforced
+    into the emitted payload.
+    """
+    return replace(
+        result,
+        mode=mode,
+        failure_policy=failure_policy or GovernanceFailurePolicy.default_for(mode),
+        enforced=enforced,
+        error=error,
+    )
 
 
 def _looks_like_governance_id(value: str) -> bool:

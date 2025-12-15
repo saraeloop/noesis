@@ -45,7 +45,7 @@ from .episode import EpisodeIndex
 # Domain / use-case layer imports
 from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
-from .domain.faculties.governance import PreActGovernor
+from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from .interfaces.observability import RuntimeEventBus
 from .interfaces.config import PlannerMode
@@ -459,6 +459,30 @@ def _mint_episode_ids(seed: int, determinism: "_DeterminismConfig | None") -> Ep
     return EpisodeIds.mint(seed=seed)
 
 
+def _parse_governance_mode(raw: object) -> GovernanceMode:
+    """Coerce arbitrary input into a GovernanceMode enum."""
+    if raw is None:
+        return GovernanceMode.OFF
+    if isinstance(raw, GovernanceMode):
+        return raw
+    s = str(raw).strip().lower()
+    if "." in s:
+        s = s.split(".")[-1]
+    return GovernanceMode(s)
+
+
+def _parse_governance_failure_policy(raw: object, mode: GovernanceMode) -> GovernanceFailurePolicy:
+    """Coerce arbitrary input into a GovernanceFailurePolicy, with mode default."""
+    if raw is None:
+        return GovernanceFailurePolicy.default_for(mode)
+    if isinstance(raw, GovernanceFailurePolicy):
+        return raw
+    s = str(raw).strip().lower()
+    if "." in s:
+        s = s.split(".")[-1]
+    return GovernanceFailurePolicy(s)
+
+
 def _init_clock(determinism: "_DeterminismConfig | None") -> tuple[RuntimeClock | None, Callable[[], str]]:
     if determinism:
         from noesis.runtime.determinism import DeterministicClock
@@ -680,7 +704,13 @@ def _run_minimal_episode(
 
     event_bus, instrumentation, lineage = _build_runner_ports(setup)
     direction_planner = MetaPlanner() if setup.cfg.planner_mode is PlannerMode.META else None
-    governance_policy = PreActGovernor() if setup.cfg.planner_mode is PlannerMode.META else None
+    governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
+    governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
+    governance_failure_policy = _parse_governance_failure_policy(
+        getattr(setup.cfg, "governance_failure_policy", None),
+        governance_mode,
+    )
+    governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
     deps = EpisodeDependencies(
         planner=MinimalPlanner(),
         actuator=MinimalActuator(tool_label=setup.adapter_label),
@@ -688,6 +718,9 @@ def _run_minimal_episode(
         state_repository=setup.state_repo,
         direction_planner=direction_planner,
         governance_policy=governance_policy,
+        governance_mode=governance_mode,
+        governance_failure_policy=governance_failure_policy,
+        governance_timeout_ms=governance_timeout_ms,
     )
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
     episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=setup.episode_ctx)

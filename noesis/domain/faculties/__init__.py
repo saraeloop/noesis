@@ -7,7 +7,14 @@ from .direction import (  # noqa: F401
     DirectiveStatus,
     PlannerDirective,
 )
-from .governance import GovernanceDecision, GovernanceResult, PreActGovernor  # noqa: F401
+from .governance import (  # noqa: F401
+    GovernanceDecision,
+    GovernanceFailurePolicy,
+    GovernanceMode,
+    GovernanceResult,
+    PreActGovernor,
+    with_governance_context,
+)
 from .hooks import FACULTY_HOOK_ORDER, validate_hook_sequence  # noqa: F401
 from .insight import compute_metrics, InsightMetrics  # noqa: F401
 from .intuition import (  # noqa: F401

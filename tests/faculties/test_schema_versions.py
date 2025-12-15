@@ -79,6 +79,7 @@ def test_round_trip_serialization() -> None:
     expected_governance = dict(governance_payload)
     expected_governance["decision_id"] = str(governance.decision_id)
     expected_governance["governance_id"] = str(governance.governance_id)
+    expected_governance["enforced"] = False
     assert governance.to_mapping() == expected_governance
 
     insight_payload = {

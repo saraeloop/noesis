@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Mapping, Literal
+from typing import Mapping, Literal, Optional
 
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
@@ -26,6 +26,9 @@ ALLOWED_CONFIG_KEYS: frozenset[str] = frozenset(
         "learn_auto_apply_min_confidence",
         "prompt_provenance_enabled",
         "prompt_provenance_mode",
+        "governance_mode",
+        "governance_failure_policy",
+        "governance_timeout_ms",
     }
 )
 
@@ -48,6 +51,9 @@ class RuntimeConfig:
     learn_auto_apply_min_confidence: float
     prompt_provenance_enabled: bool
     prompt_provenance_mode: Literal["full", "hash_only", "redacted"]
+    governance_mode: str
+    governance_failure_policy: Optional[str]
+    governance_timeout_ms: Optional[int]
 
 
 def default_runtime_config() -> RuntimeConfig:
@@ -67,6 +73,9 @@ def default_runtime_config() -> RuntimeConfig:
         learn_auto_apply_min_confidence=0.75,
         prompt_provenance_enabled=False,
         prompt_provenance_mode="hash_only",
+        governance_mode="off",
+        governance_failure_policy=None,
+        governance_timeout_ms=None,
     )
 
 
@@ -134,6 +143,15 @@ def apply_runtime_overrides(
             updated = replace(updated, prompt_provenance_enabled=_parse_bool(value, "prompt_provenance_enabled"))
         elif key == "prompt_provenance_mode":
             updated = replace(updated, prompt_provenance_mode=_parse_provenance_mode(value))
+        elif key == "governance_mode":
+            updated = replace(updated, governance_mode=_parse_governance_mode(value))
+        elif key == "governance_failure_policy":
+            updated = replace(
+                updated,
+                governance_failure_policy=_parse_governance_failure_policy(value),
+            )
+        elif key == "governance_timeout_ms":
+            updated = replace(updated, governance_timeout_ms=_parse_timeout_ms(value))
     return updated
 
 
@@ -193,3 +211,33 @@ def _parse_provenance_mode(value: object) -> Literal["full", "hash_only", "redac
                 return "redacted"
             return "hash_only"
     raise ValueError("prompt_provenance_mode must be 'full', 'hash_only', or 'redacted'")
+
+
+def _parse_governance_mode(value: object) -> str:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"off", "audit", "enforce"}:
+            return normalized
+    raise ValueError("governance_mode must be 'off', 'audit', or 'enforce'")
+
+
+def _parse_governance_failure_policy(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"fail_open", "fail_closed"}:
+            return normalized
+    raise ValueError("governance_failure_policy must be 'fail_open' or 'fail_closed'")
+
+
+def _parse_timeout_ms(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        timeout = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("governance_timeout_ms must be an int") from exc
+    if timeout <= 0:
+        raise ValueError("governance_timeout_ms must be > 0")
+    return timeout
