@@ -214,8 +214,17 @@ def _parse_provenance_mode(value: object) -> Literal["full", "hash_only", "redac
 
 
 def _parse_governance_mode(value: object) -> str:
+    try:
+        from noesis.domain.faculties.governance import GovernanceMode  # local import to avoid cycle
+    except Exception:  # pragma: no cover - fallback
+        GovernanceMode = None  # type: ignore
+
+    if GovernanceMode is not None and isinstance(value, GovernanceMode):
+        return value.value
     if isinstance(value, str):
         normalized = value.strip().lower()
+        if "." in normalized:
+            normalized = normalized.split(".")[-1]
         if normalized in {"off", "audit", "enforce"}:
             return normalized
     raise ValueError("governance_mode must be 'off', 'audit', or 'enforce'")
@@ -226,8 +235,18 @@ def _parse_governance_failure_policy(value: object) -> str | None:
         return None
     if isinstance(value, str):
         normalized = value.strip().lower()
+        if "." in normalized:
+            normalized = normalized.split(".")[-1]
         if normalized in {"fail_open", "fail_closed"}:
             return normalized
+    # Allow enum instances passed through ns.set
+    try:
+        from noesis.domain.faculties.governance import GovernanceFailurePolicy  # local import to avoid cycle
+
+        if isinstance(value, GovernanceFailurePolicy):
+            return value.value
+    except Exception:
+        pass
     raise ValueError("governance_failure_policy must be 'fail_open' or 'fail_closed'")
 
 

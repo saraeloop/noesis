@@ -49,7 +49,7 @@ from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from .interfaces.observability import RuntimeEventBus
 from .interfaces.config import PlannerMode
-from .trace.events import write_event
+from .trace.events import write_event, read_events
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
@@ -730,13 +730,15 @@ def _run_minimal_episode(
     if result.outcome.summary:
         status_payload["message"] = result.outcome.summary
 
-    _terminate_event(
-        setup.ctx.run_dir,
-        setup.ctx.episode_id,
-        status_payload,
-        now_fn=setup.now_fn if setup.determinism else None,
-        id_factory=setup.event_id_factory,
-    )
+    existing_events = read_events(setup.ctx.run_dir)
+    if not any(evt.get("phase") == "terminate" for evt in existing_events):
+        _terminate_event(
+            setup.ctx.run_dir,
+            setup.ctx.episode_id,
+            status_payload,
+            now_fn=setup.now_fn if setup.determinism else None,
+            id_factory=setup.event_id_factory,
+        )
 
     state = result.state
     setup.state = state
