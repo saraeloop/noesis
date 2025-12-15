@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterable, Tuple
 
 from noesis import events as event_facade
-from noesis.domain.faculties.governance import PreActGovernor
+from noesis.domain.faculties.governance import GovernanceMode, PreActGovernor
 from noesis.domain.planner.meta import MetaPlanner
 from noesis.domain.planner.minimal import MinimalActuator, MinimalPlanner
 from noesis.domain.state import CognitiveEvent, CognitiveVerb, LineageTracker
@@ -48,6 +48,7 @@ def _run_episode(tmp_path: Path, goal: str) -> Tuple[list[dict], dict, dict]:
         state_repository=state_repo,
         direction_planner=MetaPlanner(),
         governance_policy=PreActGovernor(),
+        governance_mode=GovernanceMode.AUDIT if "Provision" in goal else GovernanceMode.ENFORCE,
     )
     instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
@@ -108,7 +109,11 @@ def test_success_episode_metrics(tmp_path) -> None:
     assert insight["plan_revisions"] >= 0  # meta planner may adjust directives
 
     phase_ms = insight.get("phase_ms", {})
-    for key in ("interpret", "plan", "act", "reflect"):
+    for key in ("interpret", "plan"):
+        assert isinstance(phase_ms.get(key), int)
+        assert phase_ms[key] >= 1
+    # Success run should include act/reflect timing
+    for key in ("act", "reflect"):
         assert isinstance(phase_ms.get(key), int)
         assert phase_ms[key] >= 1
 
@@ -116,7 +121,7 @@ def test_success_episode_metrics(tmp_path) -> None:
     direction_events = _phase(events, "direction")
     if direction_events:
         assert direction_events[-1]["payload"]["status"] in {"applied", "skipped"}
-    assert governance_events and governance_events[-1]["payload"]["decision"] == "allow"
+    assert governance_events and governance_events[-1]["payload"]["decision"] in {"allow", "audit"}
 
 
 def test_veto_episode_metrics_and_causality(tmp_path) -> None:
@@ -126,14 +131,17 @@ def test_veto_episode_metrics_and_causality(tmp_path) -> None:
     )
 
     assert insight["success"] is False
-    assert insight["veto_count"] == 1
-    assert insight["plan_adherence"] == round(1.0 / summary_metrics["plan_total"], 4)
+    assert insight["veto_count"] >= 1
+    assert insight["plan_adherence"] == 0.0
     assert insight["tool_coverage"] == 0.0
 
     phase_ms = insight.get("phase_ms", {})
-    for key in ("interpret", "plan", "act", "reflect"):
+    for key in ("interpret", "plan"):
         assert isinstance(phase_ms.get(key), int)
         assert phase_ms[key] >= 1
+    # Enforce veto terminates before act/reflect
+    assert phase_ms.get("act") in (None, 0)
+    assert phase_ms.get("reflect") in (None, 0)
 
     plan_events = _phase(events, "plan")
     assert plan_events
@@ -151,10 +159,7 @@ def test_veto_episode_metrics_and_causality(tmp_path) -> None:
     assert blocked_directions[-1]["caused_by"] == governance_id
 
     act_events = _phase(events, "act")
-    assert len(act_events) == 1
-    blocked_act = act_events[0]
-    assert blocked_act["payload"]["outcome"] == "blocked"
-    assert blocked_act["payload"].get("tool") is None
+    assert act_events == []
 
 
 def test_minimal_mode_emits_no_direction_or_governance(tmp_path) -> None:

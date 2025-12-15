@@ -21,7 +21,14 @@ from noesis.domain.planner.interfaces import (
 )
 from noesis.domain.planner.meta import MetaPlanner
 from noesis.domain.faculties.direction import PlannerDirective, DirectiveStatus
-from noesis.domain.faculties.governance import GovernanceDecision, GovernanceResult, PreActGovernor
+from noesis.domain.faculties.governance import (
+    GovernanceDecision,
+    GovernanceFailurePolicy,
+    GovernanceMode,
+    GovernanceResult,
+    PreActGovernor,
+    with_governance_context,
+)
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
@@ -77,6 +84,9 @@ class EpisodeDependencies:
     state_repository: StateRepositoryPort
     direction_planner: MetaPlanner | None = None
     governance_policy: PreActGovernor | None = None
+    governance_mode: GovernanceMode = GovernanceMode.OFF
+    governance_failure_policy: GovernanceFailurePolicy = GovernanceFailurePolicy.default_for(GovernanceMode.OFF)
+    governance_timeout_ms: int | None = None
 
 
 @dataclass(slots=True)
@@ -136,6 +146,19 @@ class EpisodeRunner:
         interpret_event = self._run_interpret(request)
         plan, plan_event, direction_event_id = self._run_plan(request, state)
         actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
+        if actuation.status == OUTCOME_STATUS_VETOED:
+            state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
+            state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
+            self._deps.state_repository.persist(state)
+            outcome = EpisodeOutcome(
+                status=actuation.status,
+                success=actuation.success,
+                summary=actuation.summary,
+                metrics=actuation.metrics,
+                reasons=actuation.reasons,
+            )
+            return EpisodeResult(state=state, outcome=outcome, plan=plan)
+
         reflect_event = self._run_reflect(actuation, plan_event.event_id)
         self._run_learn(actuation, reflect_event.event_id)
 
@@ -266,7 +289,7 @@ class EpisodeRunner:
         direction_event_id: Optional[UUID],
         request: EpisodeRequest,
         state: NoesisState,
-    ) -> tuple[ActuationResult, CognitiveEvent]:
+    ) -> tuple[ActuationResult, CognitiveEvent | None]:
         verb = CognitiveVerb.ACT
         context = request.context
         self._hooks.before_phase(verb, context)
@@ -275,9 +298,35 @@ class EpisodeRunner:
         latest_direction_id: Optional[UUID] = direction_event_id
         governance_result: GovernanceResult | None = None
         governance_event_id: Optional[UUID] = None
-        if self._deps.governance_policy is not None:
-            governance_result = self._deps.governance_policy.evaluate(goal=request.goal, plan=plan)
-            governance_result = _with_stable_governance_id(governance_result, context.episode_id)
+        mode = _parse_governance_mode(getattr(self._deps, "governance_mode", GovernanceMode.OFF))
+        failure_policy = _parse_failure_policy(
+            getattr(self._deps, "governance_failure_policy", None),
+            mode,
+        )
+        if self._deps.governance_policy is not None and mode is not GovernanceMode.OFF:
+            governance_error: Dict[str, object] | None = None
+            try:
+                raw_result = self._deps.governance_policy.evaluate(goal=request.goal, plan=plan)
+            except Exception as exc:  # noqa: BLE001
+                decision = GovernanceDecision.VETO if failure_policy is GovernanceFailurePolicy.FAIL_CLOSED else GovernanceDecision.ALLOW
+                governance_error = {"kind": exc.__class__.__name__, "message": str(exc)}
+                raw_result = GovernanceResult(
+                    decision=decision,
+                    rule_id="governance.failure",
+                    score=1.0 if decision is GovernanceDecision.VETO else 0.0,
+                    message="Governance evaluation failed",
+                    policy_id="policy:runtime.governance",
+                    policy_version="1.0.0",
+                    policy_kind="runtime",
+                    details=None,
+                )
+            governance_result = with_governance_context(
+                _with_stable_governance_id(raw_result, context.episode_id),
+                mode=mode,
+                failure_policy=failure_policy,
+                enforced=mode is GovernanceMode.ENFORCE and raw_result.decision is GovernanceDecision.VETO,
+                error=governance_error,
+            )
             governance_event_id = self._deps.event_bus.emit_governance(
                 result=governance_result,
                 caused_by=latest_direction_id or plan_anchor,
@@ -285,7 +334,7 @@ class EpisodeRunner:
             recorder = self._resolve_prompt_recorder(request.context)
             if recorder:
                 rendered_governance = (
-                    f"[governance] policy={governance_result.policy_id} decision={governance_result.decision.name}"
+                    f"[governance] policy={governance_result.policy_id} decision={governance_result.decision.value}"
                 )
                 self._record_prompt(
                     recorder=recorder,
@@ -298,11 +347,11 @@ class EpisodeRunner:
                     tags=request.context.tags,
                     event_id=governance_event_id,
                 )
-            if governance_result.decision is GovernanceDecision.VETO:
+            if governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.ENFORCE:
                 veto_directive = PlannerDirective(
                     steps=("governance:veto", governance_result.rule_id),
                     status=DirectiveStatus.BLOCKED,
-                    reason="veto",
+                    reason="governance_veto",
                     diff=(),
                     applied=False,
                     policy_id=governance_result.policy_id,
@@ -322,23 +371,15 @@ class EpisodeRunner:
                     "adapter": request.context.adapter_label,
                     "reasons": [governance_result.rule_id],
                 }
-                event = self._emit_event(
-                    verb=verb,
-                    context=context,
-                    payload=payload,
-                    metrics=metrics,
-                    agent_id=request.context.adapter_label,
-                    cause=latest_direction_id,
-                )
                 return (
                     ActuationResult(
                         status=OUTCOME_STATUS_VETOED,
-                        summary=governance_result.message or "Action vetoed",
+                        summary=governance_result.message or "Episode vetoed by governance",
                         metrics={},
                         reasons=[governance_result.rule_id],
                         success=False,
                     ),
-                    event,
+                    None,
                 )
         actuation = self._deps.actuator.execute(
             plan=plan,
@@ -346,7 +387,10 @@ class EpisodeRunner:
             state=state,
             event_bus=self._deps.event_bus,
         )
-        if governance_result and governance_result.decision is GovernanceDecision.AUDIT:
+        if governance_result and (
+            governance_result.decision is GovernanceDecision.AUDIT
+            or (governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.AUDIT)
+        ):
             actuation.reasons.append(governance_result.rule_id)
         metrics = self._clock.stop(token)
         excerpt_basis = plan[0].description if plan else request.goal
@@ -597,3 +641,23 @@ def _match_step_index(key: str) -> int | None:
             except ValueError:
                 return None
     return None
+def _parse_governance_mode(raw: object) -> GovernanceMode:
+    if raw is None:
+        return GovernanceMode.OFF
+    if isinstance(raw, GovernanceMode):
+        return raw
+    normalized = str(raw).strip().lower()
+    if "." in normalized:
+        normalized = normalized.split(".")[-1]
+    return GovernanceMode(normalized)
+
+
+def _parse_failure_policy(raw: object, mode: GovernanceMode) -> GovernanceFailurePolicy:
+    if raw is None:
+        return GovernanceFailurePolicy.default_for(mode)
+    if isinstance(raw, GovernanceFailurePolicy):
+        return raw
+    normalized = str(raw).strip().lower()
+    if "." in normalized:
+        normalized = normalized.split(".")[-1]
+    return GovernanceFailurePolicy(normalized)

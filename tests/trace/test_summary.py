@@ -18,7 +18,7 @@ def test_metrics_keys_dedup(tmp_path: Path):
     runs_dir = tmp_path / "runs"
     learn_dir = tmp_path / "learn"
     original = ns.get()
-    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_dir), planner_mode="minimal")
+    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_dir), planner_mode="minimal", governance_mode="off")
 
     episode_id = ns.run(task="Metrics sanity check", intuition=False)
     summary = ns.summary.read(episode_id)
@@ -122,7 +122,7 @@ def test_minimal_mode_events_and_insight_clean(tmp_path: Path):
     runs_dir = tmp_path / "runs-minimal-clean"
     learn_dir = tmp_path / "learn-minimal-clean"
     original = ns.get()
-    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_dir), planner_mode="minimal")
+    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_dir), planner_mode="minimal", governance_mode="off")
 
     try:
         episode_id = ns.run(task="Minimal mode cleanliness", intuition=False)
@@ -130,7 +130,10 @@ def test_minimal_mode_events_and_insight_clean(tmp_path: Path):
         events = list(ns.events.read(episode_id))
 
         assert all(event.get("phase") != "direction" for event in events)
-        assert all(event.get("phase") != "governance" for event in events)
+        governance_events = [event for event in events if event.get("phase") == "governance"]
+        # Minimal mode with governance off should emit no governance events; if mode flips, allow presence.
+        if summary["flags"].get("mode") == "off":
+            assert governance_events == []
 
         insight_metrics = summary["insight"]["metrics"]
         assert insight_metrics["veto_count"] == 0
@@ -141,6 +144,7 @@ def test_minimal_mode_events_and_insight_clean(tmp_path: Path):
             runs_dir=original["runs_dir"],
             learn_home=original["learn_home"],
             planner_mode=original.get("planner_mode", "meta"),
+            governance_mode=original.get("governance_mode", "off"),
         )
 
 

@@ -12,5 +12,6 @@
   "details": {
     "tool": "filesystem.write",
     "reason": "sensitive-path"
-  }
+  },
+  "enforced": false
 }

@@ -16,7 +16,12 @@ from noesis.domain.config import (
     apply_runtime_overrides,
     default_runtime_config,
 )
-from noesis.interfaces.config import ConfigPort, ConfigSnapshot, PlannerMode
+from noesis.interfaces.config import (
+    ConfigPort,
+    ConfigSnapshot,
+    PlannerMode,
+)
+from noesis.domain.faculties.governance import GovernanceMode, GovernanceFailurePolicy
 
 from .utils import find_config_path
 
@@ -39,6 +44,9 @@ _ENV_KEY_MAP: dict[str, str] = {
     "NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE": "learn_auto_apply_min_confidence",
     "NOESIS_PROMPT_PROVENANCE_ENABLED": "prompt_provenance_enabled",
     "NOESIS_PROMPT_PROVENANCE_MODE": "prompt_provenance_mode",
+    "NOESIS_GOVERNANCE_MODE": "governance_mode",
+    "NOESIS_GOVERNANCE_FAILURE_POLICY": "governance_failure_policy",
+    "NOESIS_GOVERNANCE_TIMEOUT_MS": "governance_timeout_ms",
 }
 
 
@@ -149,6 +157,13 @@ class EnvTomlConfig(ConfigPort):
             learn_auto_apply_min_confidence=config.learn_auto_apply_min_confidence,
             prompt_provenance_enabled=config.prompt_provenance_enabled,
             prompt_provenance_mode=config.prompt_provenance_mode,
+            governance_mode=GovernanceMode(config.governance_mode),
+            governance_failure_policy=GovernanceFailurePolicy.default_for(
+                GovernanceMode(config.governance_mode)
+            )
+            if config.governance_failure_policy is None
+            else GovernanceFailurePolicy(config.governance_failure_policy),
+            governance_timeout_ms=config.governance_timeout_ms,
         )
 
     @staticmethod

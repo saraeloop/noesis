@@ -72,6 +72,7 @@ def test_episode_runner_records_governance_veto(tmp_path) -> None:
         state_repository=state_repo,
         direction_planner=MetaPlanner(),
         governance_policy=PreActGovernor(),
+        governance_mode=ns.GovernanceMode.ENFORCE,
     )
     instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
@@ -88,7 +89,7 @@ def test_episode_runner_records_governance_veto(tmp_path) -> None:
     direction = [evt for evt in recorded if evt.get("phase") == "direction"]
     assert any(evt["payload"].get("status") == "blocked" for evt in direction)
     act_events = [evt for evt in recorded if evt.get("phase") == "act"]
-    assert act_events and act_events[-1]["payload"]["outcome"] == "blocked"
+    assert act_events == []
 
 
 def test_minimal_planner_emits_no_governance(tmp_path) -> None:
