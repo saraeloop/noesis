@@ -171,7 +171,7 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 **Focus:** Make governance an explicit 3-mode faculty (**off / audit / enforce**) with canonical veto semantics and schema-governed signaling.
 
-**Faculty order (canonical):** Intuition → Direction → Governance → Act → Reflect → Insight. Governance is **pre-act** and runs **after** Direction has produced a plan.
+**Faculty order (canonical):** Intuition → Direction → Governance → Insight. Governance is **pre-act** and runs **after** Direction has produced a plan.
 
 **Delivered**
 

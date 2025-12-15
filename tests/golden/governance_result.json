@@ -9,6 +9,8 @@
   "policy_id": "safety-governance",
   "policy_version": "1.0.0",
   "policy_kind": "rules",
+  "mode": "audit",
+  "failure_policy": "fail_open",
   "details": {
     "tool": "filesystem.write",
     "reason": "sensitive-path"

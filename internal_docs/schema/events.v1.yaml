@@ -1,6 +1,6 @@
 schema:
   name: events
-  version: "1.0.0"
+  version: "1.1.0"
   title: "Noēsis Event Stream"
   description: >-
     Canonical shape of each JSON object appended to events.jsonl. The stream is
@@ -8,6 +8,7 @@ schema:
   stability: stable
   owners:
     - Core Engineering
+
 json_schema:
   type: object
   additionalProperties: false
@@ -18,66 +19,178 @@ json_schema:
     - timestamp
     - phase
     - payload
+
   properties:
     schema_version:
       type: string
       description: Semver string for the event schema revision.
-      enum: ["1.0.0"]
+      enum: ["1.1.0"]
       stability: stable
+
     id:
       type: string
       description: UUIDv5 derived from episode_id + phase-local counter.
       pattern: "^[0-9a-fA-F-]{36}$"
       stability: stable
+
     episode_id:
       type: string
       description: ULID shared with other artifacts.
       pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
       stability: stable
+
     agent_id:
       type: string
       description: Identifier of the faculty/adapter emitting the event.
       stability: beta
+
     timestamp:
       type: string
       format: date-time
       description: RFC 3339 timestamp when the event was recorded.
       stability: stable
+
     phase:
       type: string
       description: Cognitive phase that produced the event.
-      enum: ["intuition", "direction", "governance", "insight", "runtime"]
+      enum:
+        - intuition
+        - interpret
+        - direction
+        - plan
+        - governance
+        - act
+        - reflect
+        - insight
+        - terminate
+        - runtime
       stability: stable
+
     payload:
       type: object
       description: Phase-specific payload; schema depends on faculty.
       additionalProperties: true
       stability: stable
+      properties:
+        mode:
+          type: string
+          description: Governance mode applied during evaluation.
+          enum: ["off", "audit", "enforce"]
+          stability: beta
+        failure_policy:
+          type: string
+          description: Governance failure handling policy.
+          enum: ["fail_open", "fail_closed"]
+          stability: beta
+        enforced:
+          type: boolean
+          description: True when governance decision affects control flow.
+          stability: beta
+        error:
+          type: object
+          description: Optional error/timeout metadata when governance evaluation fails.
+          additionalProperties: true
+          stability: beta
+        suggested_fixes:
+          type: array
+          description: Optional non-binding guidance from governance.
+          items:
+            type: object
+          stability: experimental
+
     evidence_ids:
       type: array
       description: Identifiers of upstream events supporting this payload.
-      items:
-        type: string
+      items: { type: string }
       stability: beta
+
     caused_by:
       type: string
       description: Event id that triggered this record (for causal graphs).
       stability: experimental
+
     metrics:
       type: object
       description: Timing metadata for the action captured by this event.
       additionalProperties: false
       stability: beta
       properties:
-        started_at:
-          type: string
-          format: date-time
-          stability: beta
-        completed_at:
-          type: string
-          format: date-time
-          stability: beta
-        duration_ms:
-          type: number
-          minimum: 0
-          stability: beta
+        started_at: { type: string, format: date-time, stability: beta }
+        completed_at: { type: string, format: date-time, stability: beta }
+        duration_ms: { type: number, minimum: 0, stability: beta }
+
+  # Phase-specific payload contracts (keep them minimal + stable)
+  allOf:
+    - if:
+        properties:
+          phase: { const: governance }
+      then:
+        properties:
+          payload:
+            type: object
+            additionalProperties: true
+            required:
+              - decision
+              - rule_id
+              - score
+              - message
+              - policy_id
+              - policy_version
+              - policy_kind
+              - mode
+              - failure_policy
+              - enforced
+            properties:
+              decision:
+                type: string
+                enum: ["allow", "audit", "veto"]
+              rule_id:
+                type: string
+                description: Namespaced rule identifier (e.g. rule:governance.failure).
+                pattern: "^rule:[A-Za-z0-9._-]+$"
+              score:
+                type: number
+              message:
+                type: string
+              policy_id:
+                type: string
+              policy_version:
+                type: string
+              policy_kind:
+                type: string
+                enum: ["rules", "llm", "hybrid"]
+              mode:
+                type: string
+                enum: ["off", "audit", "enforce"]
+              enforced:
+                type: boolean
+              failure_policy:
+                type: string
+                description: Configured failure policy value (stringified enum).
+                enum: ["fail_open", "fail_closed"]
+              error:
+                type: object
+                additionalProperties: false
+                required: ["type", "message"]
+                properties:
+                  type: { type: string }
+                  message: { type: string }
+                  detail: { type: string, description: Optional detail/traceback }
+              suggested_fixes:
+                type: array
+                description: Optional non-binding guidance
+                items:
+                  type: object
+
+    - if:
+        properties:
+          phase: { const: terminate }
+      then:
+        properties:
+          payload:
+            type: object
+            additionalProperties: false
+            required: ["status", "message"]
+            properties:
+              status: { type: string }
+              message: { type: string }

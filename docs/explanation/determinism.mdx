@@ -187,3 +187,5 @@ jobs:
       - name: Check replay stability
         run: uv run python scripts/validate_replay.py
 ```
+
+The replay gate includes multiple goldens; one is an enforce-veto run (`tests/golden/veto_enforce/run_{a,b}`) to ensure governance veto semantics remain deterministic (no Act events, terminate status `vetoed`, direction_blocked + governance lineage intact).
