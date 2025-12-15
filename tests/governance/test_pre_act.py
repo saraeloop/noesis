@@ -92,6 +92,66 @@ def test_episode_runner_records_governance_veto(tmp_path) -> None:
     assert act_events == []
 
 
+def test_governance_failure_fallback_uses_allowed_policy_kind(tmp_path) -> None:
+    class ExplodingGovernor:
+        def evaluate(self, *, goal: str, plan):
+            raise RuntimeError("boom")
+
+    run_dir = tmp_path / "run-failure"
+    run_dir.mkdir()
+    context = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="gov-ep-failure",
+        seed=0,
+        task="Safe task",
+        tags={},
+        adapter_label="adapter:core.minimal",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    state_repo = RuntimeStateRepository(context=context)
+    lineage = LineageTracker()
+    clock = RuntimeClock()
+    emitter = CognitiveEventEmitter(run_dir=context.run_dir)
+    event_bus = RuntimeEventBus(
+        context=context,
+        emitter=emitter,
+        lineage=lineage,
+        clock=clock,
+    )
+    deps = EpisodeDependencies(
+        planner=MinimalPlanner(),
+        actuator=MinimalActuator(tool_label=context.adapter_label),
+        event_bus=event_bus,
+        state_repository=state_repo,
+        direction_planner=MetaPlanner(),
+        governance_policy=ExplodingGovernor(),
+        governance_mode=ns.GovernanceMode.ENFORCE,
+        governance_failure_policy=ns.GovernanceFailurePolicy.FAIL_CLOSED,
+    )
+    instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
+    runner = EpisodeRunner(deps, instrumentation=instrumentation)
+
+    runtime_events.start(run_dir, context.episode_id, {"task": context.task, "seed": context.seed})
+    runtime_events.observe(run_dir, context.episode_id, task=context.task, tags=context.tags, snapshot=None)
+    request = EpisodeRequest(goal=context.task, beliefs=(), context=context)
+    result = runner.run(request)
+
+    assert result.outcome.status == "vetoed"
+    recorded = read_events(run_dir)
+    governance_events = [evt for evt in recorded if evt.get("phase") == "governance"]
+    assert governance_events
+    payload = governance_events[-1]["payload"]
+    assert payload["decision"] == "veto"
+    assert payload["policy_kind"] in {"rules", "llm", "hybrid"}
+    assert payload.get("mode") == "enforce"
+    assert payload.get("enforced") is True
+    terminate_events = [evt for evt in recorded if evt.get("phase") == "terminate"]
+    assert terminate_events
+    assert terminate_events[-1]["payload"]["status"] == "vetoed"
+    act_events = [evt for evt in recorded if evt.get("phase") == "act"]
+    assert act_events == []
+
+
 def test_minimal_planner_emits_no_governance(tmp_path) -> None:
     runs_dir = tmp_path / "runs-min"
     original = ns.get()

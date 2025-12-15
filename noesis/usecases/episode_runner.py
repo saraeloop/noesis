@@ -30,6 +30,7 @@ from noesis.domain.faculties.governance import (
     with_governance_context,
 )
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
+from noesis import events as runtime_events
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
@@ -150,6 +151,10 @@ class EpisodeRunner:
             state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
             self._deps.state_repository.persist(state)
+            self._maybe_emit_terminate(
+                context,
+                {"status": actuation.status, "message": actuation.summary},
+            )
             outcome = EpisodeOutcome(
                 status=actuation.status,
                 success=actuation.success,
@@ -165,6 +170,10 @@ class EpisodeRunner:
         state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
         state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
         self._deps.state_repository.persist(state)
+        self._maybe_emit_terminate(
+            context,
+            {"status": actuation.status, "message": actuation.summary},
+        )
 
         outcome = EpisodeOutcome(
             status=actuation.status,
@@ -174,6 +183,25 @@ class EpisodeRunner:
             reasons=actuation.reasons,
         )
         return EpisodeResult(state=state, outcome=outcome, plan=plan)
+
+    def _maybe_emit_terminate(self, context: EpisodeContext, payload: Dict[str, object]) -> None:
+        """Emit terminate once if not already recorded."""
+        events = self._event_history.read(context.run_dir)
+        if any(evt.get("phase") == "terminate" for evt in events):
+            return
+        now_fn = None
+        if hasattr(self._clock, "now"):
+            def _deterministic_now() -> str:
+                ts = self._clock.now()
+                return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+            now_fn = _deterministic_now
+        runtime_events.terminate(
+            context.run_dir,
+            context.episode_id,
+            payload,
+            now_fn=now_fn,
+            id_factory=self._event_id_factory,
+        )
 
     def _seed_lineage(self, context: EpisodeContext) -> None:
         events = self._event_history.read(context.run_dir)
@@ -309,16 +337,19 @@ class EpisodeRunner:
                 raw_result = self._deps.governance_policy.evaluate(goal=request.goal, plan=plan)
             except Exception as exc:  # noqa: BLE001
                 decision = GovernanceDecision.VETO if failure_policy is GovernanceFailurePolicy.FAIL_CLOSED else GovernanceDecision.ALLOW
-                governance_error = {"kind": exc.__class__.__name__, "message": str(exc)}
+                governance_error = {
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                }
                 raw_result = GovernanceResult(
                     decision=decision,
-                    rule_id="governance.failure",
-                    score=1.0 if decision is GovernanceDecision.VETO else 0.0,
+                    rule_id="rule:governance.failure",
+                    score=0.0,
                     message="Governance evaluation failed",
                     policy_id="policy:runtime.governance",
                     policy_version="1.0.0",
-                    policy_kind="runtime",
-                    details=None,
+                    policy_kind="rules",
+                    details={"error": governance_error},
                 )
             governance_result = with_governance_context(
                 _with_stable_governance_id(raw_result, context.episode_id),
