@@ -86,7 +86,7 @@ class EpisodeDependencies:
     direction_planner: MetaPlanner | None = None
     governance_policy: PreActGovernor | None = None
     governance_mode: GovernanceMode = GovernanceMode.OFF
-    governance_failure_policy: GovernanceFailurePolicy = GovernanceFailurePolicy.default_for(GovernanceMode.OFF)
+    governance_failure_policy: GovernanceFailurePolicy | None = None
     governance_timeout_ms: int | None = None
 
 
