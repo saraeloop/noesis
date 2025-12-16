@@ -1,7 +1,18 @@
-"""Insight faculty helpers exposed on the public surface."""
+"""Curated re-exports for insight metrics.
 
-from __future__ import annotations
+Most users read InsightMetrics from summary.json. These helpers are for
+computing custom roll-ups or parsing artifact payloads.
+"""
 
-from .domain.faculties.insight import compute_metrics
+from noesis.domain.faculties.insight import (
+    InsightMetrics,
+    build_insight_metrics,
+    compute_metrics,
+)
 
-__all__ = ["compute_metrics"]
+__all__ = [
+    "InsightMetrics",
+    "build_insight_metrics",
+    "compute_metrics",
+]
+

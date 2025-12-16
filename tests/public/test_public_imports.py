@@ -20,6 +20,7 @@ PUBLIC_IMPORTS = [
     "noesis.runtime.utils",
     "noesis.intuition",
     "noesis.direction",
+    "noesis.governance",
     "noesis.learn",
     "noesis.insight",
     "noesis.adapters",

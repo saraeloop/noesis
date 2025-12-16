@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from noesis import events as runtime_events
 import noesis as ns
-from noesis.domain.faculties.governance import GovernanceDecision, PreActGovernor
+from noesis.governance import GovernanceDecision, GovernanceFailurePolicy, GovernanceMode, PreActGovernor
 from noesis.domain.planner.meta import MetaPlanner
 from noesis.domain.planner.minimal import MinimalPlanner, MinimalActuator
 from noesis.domain.state import LineageTracker
@@ -72,7 +72,7 @@ def test_episode_runner_records_governance_veto(tmp_path) -> None:
         state_repository=state_repo,
         direction_planner=MetaPlanner(),
         governance_policy=PreActGovernor(),
-        governance_mode=ns.GovernanceMode.ENFORCE,
+        governance_mode=GovernanceMode.ENFORCE,
     )
     instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
@@ -125,8 +125,8 @@ def test_governance_failure_fallback_uses_allowed_policy_kind(tmp_path) -> None:
         state_repository=state_repo,
         direction_planner=MetaPlanner(),
         governance_policy=ExplodingGovernor(),
-        governance_mode=ns.GovernanceMode.ENFORCE,
-        governance_failure_policy=ns.GovernanceFailurePolicy.FAIL_CLOSED,
+        governance_mode=GovernanceMode.ENFORCE,
+        governance_failure_policy=GovernanceFailurePolicy.FAIL_CLOSED,
     )
     instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
     runner = EpisodeRunner(deps, instrumentation=instrumentation)

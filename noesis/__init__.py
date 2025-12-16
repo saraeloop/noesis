@@ -13,7 +13,6 @@ from .runtime.session import (
     SessionBuilder,
 )
 from .runtime.determinism import DeterministicClock, DeterministicRNG
-from .domain.faculties.governance import GovernanceMode, GovernanceFailurePolicy
 
 # Package metadata
 __version__ = "v1.0.0"
