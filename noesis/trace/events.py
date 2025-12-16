@@ -96,6 +96,7 @@ __all__ = [
     "PHASES",
     "REQUIRED_EVENT_KEYS",
     "RECOMMENDED_EVENT_KEYS",
+    "is_terminate_event",
     "canonical_dumps",
     "write_event",
     "write_cognitive_event",
@@ -197,6 +198,23 @@ def iter_events(dir_path: Path) -> Iterator[Dict[str, Any]]:
 def read_events(dir_path: Path) -> List[Dict[str, Any]]:
     """Return all events ([] if none)."""
     return list(iter_events(dir_path) or ())
+
+
+def is_terminate_event(event: Dict[str, Any]) -> bool:
+    """
+    Detect terminate events across schema revisions.
+
+    - Legacy shape: phase == "terminate"
+    - Current shape: phase == "runtime" and payload.kind/type/event == "terminate"
+    """
+    phase = event.get("phase")
+    if phase == "terminate":
+        return True
+    if phase != "runtime":
+        return False
+    payload = event.get("payload") or {}
+    kind = payload.get("kind") or payload.get("type") or payload.get("event")
+    return kind == "terminate"
 
 
 def _ensure_manifest_not_sealed(dir_path: Path) -> None:

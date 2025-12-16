@@ -31,6 +31,7 @@ from noesis.domain.faculties.governance import (
 )
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis import events as runtime_events
+from noesis.trace.events import is_terminate_event
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
@@ -187,8 +188,19 @@ class EpisodeRunner:
     def _maybe_emit_terminate(self, context: EpisodeContext, payload: Dict[str, object]) -> None:
         """Emit terminate once if not already recorded."""
         events = self._event_history.read(context.run_dir)
-        if any(evt.get("phase") == "terminate" for evt in events):
+        if any(is_terminate_event(evt) for evt in events):
             return
+        status_value = str(payload.get("status", "unknown") or "unknown")
+        default_message = "Episode terminated."
+        message_raw = payload.get("message")
+        message_value = str(message_raw).strip() if message_raw else ""
+        if not message_value:
+            message_value = (
+                f"{status_value}." if status_value and status_value != "unknown" else default_message
+            )
+        terminate_payload = dict(payload)
+        terminate_payload["status"] = status_value
+        terminate_payload["message"] = message_value
         now_fn = None
         if hasattr(self._clock, "now"):
             def _deterministic_now() -> str:
@@ -198,7 +210,7 @@ class EpisodeRunner:
         runtime_events.terminate(
             context.run_dir,
             context.episode_id,
-            payload,
+            terminate_payload,
             now_fn=now_fn,
             id_factory=self._event_id_factory,
         )
