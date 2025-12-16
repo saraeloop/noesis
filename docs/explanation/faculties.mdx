@@ -3,19 +3,33 @@ title: "Faculties"
 description: "Understanding the four cognitive faculties: Intuition, Direction, Governance, and Insight."
 ---
 
-Noēsis organizes agent cognition into four **faculties** that operate at different points in the cognitive loop. Each faculty is a pure domain entity—free of side effects and infrastructure dependencies.
+Noēsis separates **phases** (the cognitive loop) from **faculties** (domain modules that run at specific hooks).
 
-## Faculty hook order
+- **Phases** describe *when* something happens: `observe → interpret → plan → act → reflect → finalize`
+- **Faculties** describe *what* kind of cognition runs: **Intuition**, **Direction**, **Governance**, **Insight**
 
-The faculties execute in a canonical order:
+Each faculty has a stable **domain contract** (types + invariants). Implementations may call tools or LLMs, but results must flow through the typed events/artifacts defined here.
+
+## Cognitive loop hook order
+
+The runtime executes hooks in a canonical order:
 
 ```
 observe → interpret → plan → direction → governance.pre_act → act → reflect → finalize
 ```
 
 <Info>
-This ordering is enforced by `validate_hook_sequence()` in the runtime. Any violation raises an error.
+Hook ordering is enforced by `validate_hook_sequence()`. Any violation raises an error.
 </Info>
+
+## Veto semantics (canonical)
+
+A **veto** is a fail-closed stop before action execution:
+
+- Governance emits the veto decision event; the runtime emits a single `terminate` event with `status="vetoed"`.
+- No `act` events are emitted on veto paths.
+- Failure policy decides how governance exceptions resolve (e.g., enforce-veto).
+- `veto_count` is computed from governance decisions where `decision="veto"` (not from terminate status) to avoid double-counting.
 
 ## Overview
 
@@ -46,7 +60,7 @@ flowchart LR
     Governance --> Insight
 ```
 
-| Faculty | Role | Phases | Key types |
+| Faculty | Role | Hook(s) | Key types |
 | --- | --- | --- | --- |
 | **Intuition** | Policy guidance | interpret | `IntuitionEvent`, `DirectedIntuition` |
 | **Direction** | Plan mutations | direction | `PlannerDirective`, `DirectiveDiff` |
@@ -158,7 +172,7 @@ class SafetyPolicy(DirectedIntuition):
 
 ## Direction
 
-**Direction** handles plan mutations through versioned directives. It operates after planning and before governance.
+**Direction** handles plan mutations through versioned directives; it runs in the `direction` hook (after `plan`, before `governance.pre_act`) and does not perform vetoes—fail-closed gates live in Governance.
 
 ### DirectiveKind
 
@@ -168,7 +182,6 @@ from noesis.domain.faculties import DirectiveKind
 class DirectiveKind(str, Enum):
     HINT = "hint"           # Advisory, no state change
     INTERVENTION = "intervention"  # Modifies plan/input
-    VETO = "veto"           # Blocks execution
 ```
 
 ### DirectiveStatus
@@ -179,7 +192,7 @@ from noesis.domain.faculties import DirectiveStatus
 class DirectiveStatus(str, Enum):
     APPLIED = "applied"     # Directive was applied
     SKIPPED = "skipped"     # Directive was skipped
-    BLOCKED = "blocked"     # Directive caused a block (veto)
+    BLOCKED = "blocked"     # Directive rejected/failed (does not stop execution)
 ```
 
 ### PlannerDirective
@@ -248,6 +261,17 @@ directive_id = make_directive_identifier(
 ## Governance
 
 **Governance** is the pre-action audit layer that evaluates proposed actions before execution. It operates in the `governance.pre_act` hook.
+
+<Info>
+Event stream convention: governance events keep `phase="governance"`; sub-hooks (for example `pre_act`) are carried inside the payload (e.g., `payload.hook="pre_act"`). This keeps the enum stable while still surfacing hook detail.
+</Info>
+
+When a veto is issued, governance emits its decision and the **runtime** emits a runtime event whose payload marks a terminate record (see `events.v1` for the canonical terminate payload fields) before any `act` events:
+
+```json
+{"phase":"runtime","payload":{"kind":"terminate","status":"vetoed","message":"Blocked by governance"}}
+```
+_Older schema versions may differ; `events.v1` is canonical._
 
 ### GovernanceDecision
 
@@ -367,11 +391,11 @@ payload = metrics.to_mapping()
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `phase_ms` | `dict[str, int]` | Duration per phase in milliseconds |
-| `veto_count` | `int` | Number of vetoes issued |
+| `phase_ms` | `dict[str, int]` | Duration per phase in milliseconds (optional) |
+| `veto_count` | `int` | Number of governance vetoes issued (canonical fail-closed) |
 | `branching_factor` | `float` | Count of direction events |
 | `plan_adherence` | `float` | Executed steps / planned steps (0-1) |
-| `success` | `bool` | Whether episode succeeded |
+| `success` | `bool` | Whether episode succeeded (boolean for artifacts) |
 | `plan_revisions` | `int` | Number of applied directives |
 | `tool_coverage` | `float` | Number of unique tools used |
 
@@ -392,10 +416,11 @@ metrics = compute_metrics(
     ],
 )
 
-print(metrics["success"])        # 1
-print(metrics["plan_count"])     # 1
-print(metrics["act_count"])      # 1
-print(metrics["veto_count"])     # 0
+success_score = metrics["success_score"]  # 1 (int; 0/1 roll-up)
+success = metrics["success"]              # True (bool)
+print(metrics["plan_count"])            # 1
+print(metrics["act_count"])             # 1
+print(metrics["direction_blocked"])     # 0
 ```
 
 ### build_insight_metrics
@@ -416,21 +441,24 @@ print(insight.tool_coverage)   # 2.0
 
 ### Computed metrics
 
-The insight faculty computes these metrics:
+The insight faculty emits `InsightMetrics` (artifact) and roll-ups (analytics). Naming is intentional to avoid bool/int drift:
 
-| Metric | Computation |
-| --- | --- |
-| `success` | From `terminate` event status or `reflect` success |
-| `plan_count` | Count of non-synthetic `plan` events |
-| `act_count` | Count of non-synthetic `act` events |
-| `direction_applied` | Count of `applied` directives |
-| `direction_vetoed` | Count of `blocked` directives |
-| `direction_applied_rate` | `applied / total_direction_events` |
-| `veto_rate` | `vetoed / total_direction_events` |
-| `first_action_ms` | Time from `start` to first `act` |
-| `time_to_veto_ms` | Time from `start` to first veto |
-| `alignment` | Mean confidence difference (applied vs rejected) |
-| `policy_confidence_histogram` | 10-bucket histogram of confidences |
+| Metric | Shape | Notes |
+| --- | --- | --- |
+| `success` | `bool` | From `InsightMetrics` in artifacts |
+| `success_score` | `int` (0/1) | Roll-up from `compute_metrics` (prefers terminate payload status, then reflect) |
+| `plan_count` | `int` | Non-synthetic `plan` events |
+| `act_count` | `int` | Non-synthetic `act` events |
+| `direction_events` | `int` | Total direction events |
+| `direction_applied` | `int` | `payload.applied=True` and not blocked |
+| `direction_blocked` | `int` | Directives rejected/failed (`status=="blocked"`)—not a veto |
+| `direction_applied_rate` | `float` | `applied / max(direction_events, 1)` |
+| `veto_count` | `int` | Governance veto decisions (canonical fail-closed) |
+| `plan_total` | `int` | Planned steps (plan payload → summary → act fallback) |
+| `latencies` | `dict` | `first_action_ms`, `time_to_veto_ms` when timestamps exist |
+| `policy_confidence_histogram` | `list[int]` | 10 buckets across 0.0–1.0 confidence |
+| `alignment` | `float` | Mean(applied confidence) - mean(rejected confidence) |
+| `experimental` | `dict` | Included only when non-empty; placeholder for planned metrics |
 
 ---
 
