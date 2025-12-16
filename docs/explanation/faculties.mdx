@@ -3,12 +3,14 @@ title: "Faculties"
 description: "Understanding the four cognitive faculties: Intuition, Direction, Governance, and Insight."
 ---
 
-Noēsis separates **phases** (the cognitive loop) from **faculties** (domain modules that run at specific hooks).
+Noēsis separates **faculties** (domain modules that run at specific hooks) from **phases** (the cognitive loop).
 
-- **Phases** describe *when* something happens: `observe → interpret → plan → act → reflect → finalize`
 - **Faculties** describe *what* kind of cognition runs: **Intuition**, **Direction**, **Governance**, **Insight**
+- **Phases** describe *when* something happens: `observe → interpret → plan → act → reflect → finalize`
 
-Each faculty has a stable **domain contract** (types + invariants). Implementations may call tools or LLMs, but results must flow through the typed events/artifacts defined here.
+<Info>
+Most users configure faculties via `noesis.set()` and `noesis.run()`, then observe results in artifacts (`events.jsonl`, `summary.json`). Python imports are only needed for writing custom policies—see [Advanced: Writing policies](#advanced-writing-policies).
+</Info>
 
 ## Cognitive loop hook order
 
@@ -60,12 +62,12 @@ flowchart LR
     Governance --> Insight
 ```
 
-| Faculty | Role | Hook(s) | Key types |
+| Faculty | Role | Hook(s) | Artifact keys |
 | --- | --- | --- | --- |
-| **Intuition** | Policy guidance | interpret | `IntuitionEvent`, `DirectedIntuition` |
-| **Direction** | Plan mutations | direction | `PlannerDirective`, `DirectiveDiff` |
-| **Governance** | Pre-act audit | governance.pre_act | `GovernanceResult`, `PreActGovernor` |
-| **Insight** | Metrics computation | finalize | `InsightMetrics`, `compute_metrics` |
+| **Intuition** | Policy guidance | interpret | `phase="intuition"` events |
+| **Direction** | Plan mutations | direction | `phase="direction"` events |
+| **Governance** | Pre-act audit | governance.pre_act | `phase="governance"` events |
+| **Insight** | Metrics computation | finalize | `summary.json` metrics |
 
 ---
 
@@ -73,188 +75,102 @@ flowchart LR
 
 **Intuition** provides policy-driven guidance during the interpret phase. It observes episode state and emits events that can hint, intervene, or veto.
 
-### Intuition modes
-
-```python
-from noesis.domain.faculties import IntuitionMode
-
-class IntuitionMode(str, Enum):
-    ADVISORY = "advisory"       # Hints only, non-blocking
-    INTERVENTIVE = "interventive"  # Can modify state
-    HYBRID = "hybrid"           # Context-dependent
-```
-
-### IntuitionEvent
-
-The core data structure emitted by intuition policies:
-
-```python
-from noesis.domain.faculties import IntuitionEvent
-
-event = IntuitionEvent(
-    kind="intervention",          # hint | intervention | veto
-    advice="Added safety bounds",
-    confidence=0.8,               # 0.0 - 1.0
-    policy_id="SafetyPolicy",
-    policy_version="1.0.0",
-    policy_kind="rules",          # rules | llm | hybrid
-    rationale="Unbounded query detected",
-    patch={"limit": 100},         # State modifications
-    target="input",               # input | plan
-    scope="episode",              # episode | session
-    blocking=False,               # True for vetoes
-)
-```
-
-### Intuition implementations
-
-| Class | Description | Use case |
-| --- | --- | --- |
-| `NullIntuition` | No-op, returns `None` | Disabled intuition |
-| `HeuristicIntuition` | Rule-based, no LLM calls | Fast, deterministic checks |
-| `LLMIntuition` | Wraps LLM responses | Complex reasoning |
-| `DirectedIntuition` | Base class for custom policies | Your own policies |
-
-### DirectedIntuition
-
-The base class for writing custom policies:
+### Configuration
 
 ```python
 import noesis as ns
-from noesis.domain.faculties import DirectedIntuition, IntuitionEvent
 
+# Configure via noesis.set()
+ns.set(intuition_mode="advisory")  # advisory | interventive | hybrid
 
-class SafetyPolicy(DirectedIntuition):
-    """Custom policy with hint, intervene, and veto methods."""
-    
-    mode = ns.IntuitionMode.ADVISORY
-    
-    def advise(self, state: dict) -> IntuitionEvent | None:
-        task = state.get("task", "").lower()
-        
-        # Veto dangerous operations
-        if "drop table" in task:
-            return self.veto(
-                advice="Blocked: destructive SQL operation",
-                confidence=0.95,
-                rationale="DROP TABLE requires manual approval",
-            )
-        
-        # Intervene to add safety bounds
-        if "select" in task and "limit" not in task:
-            return self.intervene(
-                advice="Added LIMIT 1000",
-                patch={"task": f"{task} LIMIT 1000"},
-                confidence=0.8,
-                rationale="Unbounded queries can exhaust resources",
-            )
-        
-        # Hint about best practices
-        if "production" in task:
-            return self.hint(
-                advice="Consider testing in staging first",
-                confidence=0.6,
-                rationale="Production changes benefit from validation",
-            )
-        
-        return None
+# Or pass a policy directly
+ns.run(task="...", intuition=my_policy)
 ```
 
-### DirectedIntuition methods
+### IntuitionEvent (artifact schema)
 
-| Method | Effect | Default confidence |
-| --- | --- | --- |
-| `hint()` | Advisory guidance, non-blocking | 0.5 |
-| `intervene()` | Modifies state via `patch` | 0.6 |
-| `veto()` | Blocks execution, sets `blocking=True` | 0.8 |
+Intuition events appear in `events.jsonl` with `phase="intuition"`:
+
+```json
+{
+  "phase": "intuition",
+  "payload": {
+    "kind": "intervention",
+    "advice": "Added safety bounds",
+    "confidence": 0.8,
+    "policy_id": "SafetyPolicy",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "rationale": "Unbounded query detected",
+    "patch": {"limit": 100},
+    "target": "input",
+    "scope": "episode",
+    "blocking": false
+  }
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `kind` | `hint` \| `intervention` \| `veto` |
+| `confidence` | 0.0 – 1.0 |
+| `patch` | State modifications (for interventions) |
+| `blocking` | `true` for vetoes |
+
+### Intuition modes
+
+| Mode | Behavior |
+| --- | --- |
+| `advisory` | Hints only, non-blocking |
+| `interventive` | Can modify state |
+| `hybrid` | Context-dependent |
 
 ---
 
 ## Direction
 
-**Direction** handles plan mutations through versioned directives; it runs in the `direction` hook (after `plan`, before `governance.pre_act`) and does not perform vetoes—fail-closed gates live in Governance.
+**Direction** handles plan mutations through versioned directives. It runs in the `direction` hook (after `plan`, before `governance.pre_act`) and does not perform vetoes—fail-closed gates live in Governance.
 
-### DirectiveKind
+### PlannerDirective (artifact schema)
 
-```python
-from noesis.domain.faculties import DirectiveKind
+Direction events appear in `events.jsonl` with `phase="direction"`:
 
-class DirectiveKind(str, Enum):
-    HINT = "hint"           # Advisory, no state change
-    INTERVENTION = "intervention"  # Modifies plan/input
+```json
+{
+  "phase": "direction",
+  "payload": {
+    "schema_version": "1.0.0",
+    "steps": ["detect:Gather data", "act:Process"],
+    "status": "applied",
+    "reason": "Added safety bounds",
+    "diff": [{"key": "plan.steps[0].params.limit", "before": null, "after": 100}],
+    "applied": true,
+    "policy_id": "SafetyPolicy",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "directive_id": "dir-abc123..."
+  }
+}
 ```
 
 ### DirectiveStatus
 
-```python
-from noesis.domain.faculties import DirectiveStatus
+| Status | Meaning |
+| --- | --- |
+| `applied` | Directive was applied |
+| `skipped` | Directive was skipped |
+| `blocked` | Directive rejected/failed (does not stop execution) |
 
-class DirectiveStatus(str, Enum):
-    APPLIED = "applied"     # Directive was applied
-    SKIPPED = "skipped"     # Directive was skipped
-    BLOCKED = "blocked"     # Directive rejected/failed (does not stop execution)
-```
+### DirectiveKind
 
-### PlannerDirective
+| Kind | Meaning |
+| --- | --- |
+| `hint` | Advisory, no state change |
+| `intervention` | Modifies plan/input |
 
-The versioned contract for plan mutations:
+### Deterministic IDs
 
-```python
-from noesis.domain.faculties import PlannerDirective, DirectiveStatus, DirectiveDiff
-
-directive = PlannerDirective(
-    steps=["detect:Gather data", "act:Process"],
-    status=DirectiveStatus.APPLIED,
-    reason="Added safety bounds",
-    diff=[
-        DirectiveDiff(key="plan.steps[0].params.limit", before=None, after=100)
-    ],
-    applied=True,
-    policy_id="SafetyPolicy",
-    policy_version="1.0.0",
-    policy_kind="rules",
-)
-
-# Serialize for persistence
-payload = directive.to_mapping()
-```
-
-### DirectiveDiff
-
-Represents a single field-level mutation:
-
-```python
-from noesis.domain.faculties import DirectiveDiff
-
-diff = DirectiveDiff(
-    key="plan.steps[0].params.limit",
-    before=None,
-    after=100,
-)
-
-# Convert to mapping
-diff.to_mapping()
-# {"key": "plan.steps[0].params.limit", "before": None, "after": 100}
-```
-
-### Deterministic directive IDs
-
-Direction uses deterministic identifiers for reproducible lineage:
-
-```python
-# Directive IDs are computed from content
-directive_id = make_directive_identifier(
-    policy_id="SafetyPolicy",
-    policy_version="1.0.0",
-    policy_kind="rules",
-    steps=("detect:Gather data",),
-    status="applied",
-    reason="Added safety bounds",
-    applied=True,
-    diff=({"key": "limit", "before": None, "after": 100},),
-)
-# Returns: DirectiveIdentifier("dir-abc123...")
-```
+Directive IDs are computed from content for reproducible lineage.
 
 ---
 
@@ -262,77 +178,63 @@ directive_id = make_directive_identifier(
 
 **Governance** is the pre-action audit layer that evaluates proposed actions before execution. It operates in the `governance.pre_act` hook.
 
+### Configuration
+
+```python
+import noesis as ns
+
+# Configure via noesis.set()
+ns.set(governance_mode="enforce")  # off | audit | enforce
+ns.set(governance_failure_policy="fail_closed")  # fail_open | fail_closed
+
+# Or supply a custom governor
+ns.run(task="...", governance_policy=my_governor)
+```
+
+### GovernanceResult (artifact schema)
+
+Governance events appear in `events.jsonl` with `phase="governance"`:
+
+```json
+{
+  "phase": "governance",
+  "payload": {
+    "decision": "veto",
+    "rule_id": "rules.veto.protected",
+    "score": 1.0,
+    "message": "Task blocked by governance policy",
+    "policy_id": "governance.rules",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "mode": "enforce",
+    "enforced": true
+  }
+}
+```
+
 <Info>
-Event stream convention: governance events keep `phase="governance"`; sub-hooks (for example `pre_act`) are carried inside the payload (e.g., `payload.hook="pre_act"`). This keeps the enum stable while still surfacing hook detail.
+Event stream convention: governance events keep `phase="governance"`; sub-hooks (e.g., `pre_act`) are carried inside the payload. This keeps the phase enum stable.
 </Info>
 
-When a veto is issued, governance emits its decision and the **runtime** emits a runtime event whose payload marks a terminate record (see `events.v1` for the canonical terminate payload fields) before any `act` events:
+### GovernanceDecision
+
+| Decision | Effect |
+| --- | --- |
+| `allow` | Action proceeds normally |
+| `audit` | Action proceeds, flagged for review |
+| `veto` | Action blocked entirely |
+
+### Terminate on veto
+
+When a veto is issued, the runtime emits a terminate event:
 
 ```json
 {"phase":"runtime","payload":{"kind":"terminate","status":"vetoed","message":"Blocked by governance"}}
 ```
-_Older schema versions may differ; `events.v1` is canonical._
 
-### GovernanceDecision
+_See `events.v1` for the canonical terminate payload._
 
-```python
-from noesis.domain.faculties import GovernanceDecision
-
-class GovernanceDecision(str, Enum):
-    ALLOW = "allow"   # Action proceeds normally
-    AUDIT = "audit"   # Action proceeds, flagged for review
-    VETO = "veto"     # Action blocked entirely
-```
-
-### GovernanceResult
-
-Immutable, versioned result of a governance evaluation:
-
-```python
-from noesis.domain.faculties import GovernanceResult, GovernanceDecision
-
-result = GovernanceResult(
-    decision=GovernanceDecision.AUDIT,
-    rule_id="rules.audit.sensitive",
-    score=0.6,
-    message="Sensitive action requires review",
-    policy_id="governance.rules",
-    policy_version="1.0.0",
-    policy_kind="rules",
-    details={"goal": "Write config file"},
-)
-
-# Serialize for persistence
-payload = result.to_mapping()
-```
-
-### PreActGovernor
-
-The default rule-based governor:
-
-```python
-from noesis.domain.faculties import PreActGovernor
-from noesis.domain.state import PlanStep
-
-governor = PreActGovernor(
-    policy_id="governance.rules",
-    policy_version="1.0.0",
-    policy_kind="rules",
-)
-
-result = governor.evaluate(
-    goal="Delete user data",
-    plan=[PlanStep(description="Execute DELETE query")],
-)
-
-print(result.decision)  # GovernanceDecision.VETO
-print(result.rule_id)   # "rules.veto.protected"
-print(result.message)   # "Task blocked by governance policy"
-```
-
-### Built-in governance rules
-
-The `PreActGovernor` includes these default rules:
+### Built-in rules
 
 | Rule ID | Trigger | Decision |
 | --- | --- | --- |
@@ -341,50 +243,28 @@ The `PreActGovernor` includes these default rules:
 | `rules.audit.sensitive` | "write", "delete", "drop" | `AUDIT` |
 | `rules.allow.default` | No matches | `ALLOW` |
 
-### Deterministic governance IDs
-
-Governance uses deterministic identifiers for audit trails:
-
-```python
-# Governance IDs are computed from content
-governance_id = make_governance_identifier(
-    policy_id="governance.rules",
-    policy_version="1.0.0",
-    policy_kind="rules",
-    decision="audit",
-    rule_id="rules.audit.sensitive",
-    score=0.6,
-    message="Sensitive action requires review",
-    details={"goal": "Write config"},
-)
-# Returns: GovernanceIdentifier("gov-xyz789...")
-```
-
 ---
 
 ## Insight
 
-**Insight** computes metrics from episode traces. It operates during the finalize phase to produce the canonical `InsightMetrics` payload.
+**Insight** computes metrics from episode traces during the finalize phase.
 
-### InsightMetrics
+### InsightMetrics (artifact schema)
 
-The canonical metrics payload persisted in summary artifacts:
+Metrics appear in `summary.json`:
 
-```python
-from noesis.domain.faculties import InsightMetrics
-
-metrics = InsightMetrics(
-    phase_ms={"observe": 5, "interpret": 12, "plan": 150, "act": 2000, "reflect": 10},
-    veto_count=0,
-    branching_factor=2.0,
-    plan_adherence=0.95,
-    success=True,
-    plan_revisions=1,
-    tool_coverage=3.0,
-)
-
-# Serialize for persistence
-payload = metrics.to_mapping()
+```json
+{
+  "metrics": {
+    "phase_ms": {"observe": 5, "interpret": 12, "plan": 150, "act": 2000, "reflect": 10},
+    "veto_count": 0,
+    "branching_factor": 2.0,
+    "plan_adherence": 0.95,
+    "success": true,
+    "plan_revisions": 1,
+    "tool_coverage": 3.0
+  }
+}
 ```
 
 ### InsightMetrics fields
@@ -395,70 +275,23 @@ payload = metrics.to_mapping()
 | `veto_count` | `int` | Number of governance vetoes issued (canonical fail-closed) |
 | `branching_factor` | `float` | Count of direction events |
 | `plan_adherence` | `float` | Executed steps / planned steps (0-1) |
-| `success` | `bool` | Whether episode succeeded (boolean for artifacts) |
+| `success` | `bool` | Whether episode succeeded |
 | `plan_revisions` | `int` | Number of applied directives |
 | `tool_coverage` | `float` | Number of unique tools used |
 
-### compute_metrics
+### Computed roll-ups
 
-Compute roll-up metrics from summary and events:
-
-```python
-from noesis.domain.faculties.insight import compute_metrics
-
-metrics = compute_metrics(
-    summary={"metrics": {"ideal_steps": 5}},
-    events=[
-        {"phase": "observe", "timestamp": "..."},
-        {"phase": "plan", "payload": {"steps": ["step1", "step2"]}},
-        {"phase": "act", "payload": {"tool": "reader"}},
-        {"phase": "reflect", "payload": {"success": True}},
-    ],
-)
-
-success_score = metrics["success_score"]  # 1 (int; 0/1 roll-up)
-success = metrics["success"]              # True (bool)
-print(metrics["plan_count"])            # 1
-print(metrics["act_count"])             # 1
-print(metrics["direction_blocked"])     # 0
-```
-
-### build_insight_metrics
-
-Construct `InsightMetrics` from raw events:
-
-```python
-from noesis.domain.faculties.insight import build_insight_metrics
-
-insight = build_insight_metrics(
-    events=[...],
-    summary_metrics={"success": 1, "act_count": 3},
-)
-
-print(insight.plan_adherence)  # 0.95
-print(insight.tool_coverage)   # 2.0
-```
-
-### Computed metrics
-
-The insight faculty emits `InsightMetrics` (artifact) and roll-ups (analytics). Naming is intentional to avoid bool/int drift:
+When computing analytics from events, the insight faculty produces these roll-ups:
 
 | Metric | Shape | Notes |
 | --- | --- | --- |
-| `success` | `bool` | From `InsightMetrics` in artifacts |
-| `success_score` | `int` (0/1) | Roll-up from `compute_metrics` (prefers terminate payload status, then reflect) |
+| `success` | `bool` | From artifact |
+| `success_score` | `int` (0/1) | Numeric roll-up |
 | `plan_count` | `int` | Non-synthetic `plan` events |
 | `act_count` | `int` | Non-synthetic `act` events |
-| `direction_events` | `int` | Total direction events |
-| `direction_applied` | `int` | `payload.applied=True` and not blocked |
-| `direction_blocked` | `int` | Directives rejected/failed (`status=="blocked"`)—not a veto |
-| `direction_applied_rate` | `float` | `applied / max(direction_events, 1)` |
-| `veto_count` | `int` | Governance veto decisions (canonical fail-closed) |
-| `plan_total` | `int` | Planned steps (plan payload → summary → act fallback) |
-| `latencies` | `dict` | `first_action_ms`, `time_to_veto_ms` when timestamps exist |
-| `policy_confidence_histogram` | `list[int]` | 10 buckets across 0.0–1.0 confidence |
-| `alignment` | `float` | Mean(applied confidence) - mean(rejected confidence) |
-| `experimental` | `dict` | Included only when non-empty; placeholder for planned metrics |
+| `direction_applied` | `int` | Directives with `applied=true` |
+| `direction_blocked` | `int` | Directives with `status="blocked"` (not a veto) |
+| `veto_count` | `int` | Governance veto decisions |
 
 ---
 
@@ -482,28 +315,82 @@ Each faculty has clear responsibilities:
 **Insight** computes metrics—it should never modify state or plans.
 </Warning>
 
-This separation ensures:
-- Clear audit trails
-- Testable components
-- Reproducible behavior
-- Schema versioning compatibility
+---
 
-## Schema versioning
+## Advanced: Writing policies
 
-All faculty types include schema version tracking:
+<Info>
+This section is for users writing custom intuition policies or custom governors. Most users can skip this.
+</Info>
+
+### DirectedIntuition
+
+To write a custom policy, extend `DirectedIntuition`:
 
 ```python
-from noesis.domain.faculties import IntuitionEvent, PlannerDirective, GovernanceResult, InsightMetrics
+from noesis.direction import DirectedIntuition
+from noesis.intuition import IntuitionEvent
 
-# Each type has a class-level schema_version
-print(IntuitionEvent.schema_version)    # "1.0.0"
-print(PlannerDirective.schema_version)  # "1.0.0"
-print(GovernanceResult.schema_version)  # "1.0.0"
-print(InsightMetrics.schema_version)    # "1.0.0"
-
-# Compatibility is checked on deserialization
-result = GovernanceResult.from_mapping(payload)  # Validates version
+class SafetyPolicy(DirectedIntuition):
+    """Custom policy with hint, intervene, and veto methods."""
+    
+    def advise(self, state: dict) -> IntuitionEvent | None:
+        task = state.get("task", "").lower()
+        
+        # Veto dangerous operations
+        if "drop table" in task:
+            return self.veto(
+                advice="Blocked: destructive SQL operation",
+                confidence=0.95,
+                rationale="DROP TABLE requires manual approval",
+            )
+        
+        # Intervene to add safety bounds
+        if "select" in task and "limit" not in task:
+            return self.intervene(
+                advice="Added LIMIT 1000",
+                patch={"task": f"{task} LIMIT 1000"},
+                confidence=0.8,
+            )
+        
+        return None
 ```
+
+Then pass it to `noesis.run()`:
+
+```python
+import noesis as ns
+
+ns.run(task="...", intuition=SafetyPolicy())
+```
+
+### DirectedIntuition methods
+
+| Method | Effect | Default confidence |
+| --- | --- | --- |
+| `hint()` | Advisory guidance, non-blocking | 0.5 |
+| `intervene()` | Modifies state via `patch` | 0.6 |
+| `veto()` | Blocks execution, sets `blocking=True` | 0.8 |
+
+### Parsing artifact payloads
+
+If you need to parse artifact payloads programmatically:
+
+```python
+from noesis.direction import DirectiveKind, DirectiveStatus
+from noesis.governance import GovernanceDecision
+from noesis.insight import compute_metrics
+
+# Parse direction event
+if payload["status"] == DirectiveStatus.BLOCKED:
+    print("Directive was blocked")
+
+# Compute metrics from events
+metrics = compute_metrics(summary={...}, events=[...])
+print(metrics["veto_count"])
+```
+
+---
 
 ## Next steps
 

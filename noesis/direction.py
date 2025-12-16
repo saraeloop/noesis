@@ -1,5 +1,18 @@
-"""Compatibility shim for directional policies."""
+"""Curated re-exports for direction artifacts and policy authoring.
 
-from noesis.domain.faculties.direction import *  # noqa: F401,F403
+Most users observe directive artifacts in events.jsonl. This module exports:
+- Enums for parsing artifact payloads
+- DirectedIntuition for writing custom policies
+"""
 
-__all__ = [name for name in globals().keys() if not name.startswith("_")]
+from noesis.domain.faculties.direction import (
+    DirectedIntuition,
+    DirectiveKind,
+    DirectiveStatus,
+)
+
+__all__ = [
+    "DirectedIntuition",
+    "DirectiveKind",
+    "DirectiveStatus",
+]

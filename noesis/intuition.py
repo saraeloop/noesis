@@ -1,5 +1,20 @@
-"""Compatibility shim for legacy imports."""
+"""Curated re-exports for intuition configuration.
 
-from noesis.domain.faculties.intuition import *  # noqa: F401,F403
+Most users configure intuition via noesis.set(intuition_mode=...) and observe
+artifacts. For policy authoring, see noesis.direction (DirectedIntuition).
+"""
 
-__all__ = [name for name in globals().keys() if not name.startswith("_")]
+from noesis.domain.faculties.intuition import (
+    Intuition,
+    IntuitionEvent,
+    IntuitionMode,
+    NullIntuition,
+)
+
+__all__ = [
+    "Intuition",
+    "IntuitionEvent",
+    "IntuitionMode",
+    "NullIntuition",
+]
+
