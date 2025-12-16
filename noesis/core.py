@@ -49,7 +49,7 @@ from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from .interfaces.observability import RuntimeEventBus
 from .interfaces.config import PlannerMode
-from .trace.events import write_event, read_events
+from .trace.events import write_event, read_events, is_terminate_event
 from .intuition import Intuition, IntuitionEvent, NullIntuition, IntuitionMode
 from .exceptions import NoesisVeto
 from .loader import load_graph, GraphSource
@@ -726,12 +726,19 @@ def _run_minimal_episode(
     episode_request = EpisodeRequest(goal=task, beliefs=tuple(), context=setup.episode_ctx)
     result = runner.run(episode_request)
 
-    status_payload: Dict[str, Any] = {"status": result.outcome.status}
-    if result.outcome.summary:
-        status_payload["message"] = result.outcome.summary
+    status_value = str(result.outcome.status or "unknown")
+    default_message = "Episode terminated."
+    message_raw = result.outcome.summary
+    message_value = str(message_raw).strip() if message_raw else ""
+    if not message_value:
+        message_value = f"{status_value}." if status_value != "unknown" else default_message
+    status_payload: Dict[str, Any] = {
+        "status": status_value,
+        "message": message_value,
+    }
 
     existing_events = read_events(setup.ctx.run_dir)
-    if not any(evt.get("phase") == "terminate" for evt in existing_events):
+    if not any(is_terminate_event(evt) for evt in existing_events):
         _terminate_event(
             setup.ctx.run_dir,
             setup.ctx.episode_id,
