@@ -8,6 +8,7 @@ dist/
 build/
 .eggs/
 runs/
+artifacts/
 !docs/runs/
 !docs/runs/README.md
 .noesis/
@@ -19,6 +20,7 @@ htmlcov/
 # Virtual environments
 .venv/
 .env/
+.env
 
 # UV / Poetry / Pip
 uv.lock
@@ -49,4 +51,6 @@ Thumbs.db
 ### Cursor
 rules.md
 docs/rules.md
+noesis/.env
 AGENTS.md
+
