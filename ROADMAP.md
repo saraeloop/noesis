@@ -1,7 +1,6 @@
 # Noēsis Roadmap
 
-**Program Increment:** v0.9.5 → v1.0.0  
-**Audience:** Core Engineering, Research, and QA
+**Audience:** Users, contributors, and adopters
 
 ---
 
@@ -19,6 +18,31 @@ Every update strengthens three dimensions:
 - **Cognitive fidelity:** Observe → Interpret → Plan → Act → Reflect → Learn  
 - **Architectural purity:** clear domain boundaries, dependency inversion, zero side effects  
 - **Framework agnosticism:** interoperable with LangGraph, CrewAI, OpenDevin, MCP, etc., but dependent on none.
+
+---
+
+## Non-goals (v1.x)
+
+Noēsis is a cognitive framework. To protect its identity and prevent scope drift:
+
+- **Not a workflow engine / orchestrator** — use LangGraph, Prefect, etc. for that; Noēsis wraps them.
+- **Not a hosted agent platform** — team tooling may come later, but the core stays local-first.
+- **Not a prompt library or model router** — provider adapters are thin; prompt engineering is your domain.
+- **Not a proprietary lock-in layer** — artifacts are open, schemas are versioned, adapters are optional.
+
+---
+
+## Stability Contract
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| Artifacts (`events.jsonl`, `state.json`, `summary.json`, `manifest.json`) | **Stable** | Schema-governed, versioned, immutable |
+| Session API (`NoesisSession`, `ns.run/solve`) | **Stable** | ADR-001 Accepted |
+| Determinism + Replay Gate | **Stable** | CI-enforced, goldens checked in |
+| Governance modes (off/audit/enforce) | **Stable** | ADR-007 implemented |
+| Prompt Provenance (`prompts.jsonl`) | **Experimental** | Opt-in, schema v1.1, may evolve |
+| Provider adapters | **Experimental** | Stable interfaces targeted for v1.2 |
+| Dashboards / hosted UI | **Out of scope** | Contract may be defined in v1.3+ |
 
 ---
 
@@ -71,7 +95,7 @@ Every update strengthens three dimensions:
 
 ---
 
-## Road to v1.0.0 (In Progress)
+## v1.0.0 — Shipped (Architectural GA)
 
 ### Guiding Objectives
 
@@ -86,23 +110,23 @@ Every update strengthens three dimensions:
 - ✅ Prompt provenance v1.1 (experimental, opt-in) shipped with schema/modes/tests.
 - ✅ Minimal-mode deterministic goldens + replay comparator (`diagnostics replay`); veto scenario determinism covered in tests.
 - ✅ ADR-001 Accepted; session API documented.
-- ⚠️ Determinism drill: CI replay gate still needed (golden/regression wired into CI).
-- ⚠️ Session GA proof: threading/ownership/reentrancy tests added; keep them enforced in CI.
-- ⚠️ Real LLM example missing: no checked-in live-model run that passes replay.
+- ✅ Determinism drill: CI replay gate wired (`determinism-replay.yml` runs `replay_gate.py` on PR/push).
+- ✅ Session GA proof: threading/ownership/reentrancy tests added; keep them enforced in CI.
+- ✅ Real LLM example: checked-in live-model run replays offline (NO_DRIFT). LLM golden uses sanitized inputs and stores only minimal replay data required for determinism (no secrets, hash-only mode available).
 
-### v1.0.0 — Definition of Done (Remaining Work)
+### v1.0.0 — Definition of Done (All Met ✅)
 
 Noēsis v1.0.0 is considered **complete** when all of the following are true:
 
-1. **Determinism Drill is a CI Gate**
+1. **Determinism Drill is a CI Gate** ✅
    - A vetoed episode golden is checked in (non-minimal mode).
    - `noesis diagnostics replay` is wired into CI to replay goldens and fail on drift across `summary.json`, `state.json`, `events.jsonl`, and `manifest.json`.
 
-2. **NoesisSession GA is Verified, Not Just Documented**
+2. **NoesisSession GA is Verified, Not Just Documented** ✅
    - Threading / ownership / reentrancy tests for `NoesisSession` are present and run in CI (parallel sessions, reuse semantics, no global state leaks).
    - ADR-001 remains Accepted and matches the behaviour enforced by these tests.
 
-3. **Real LLM Example Has a Passing Golden**
+3. **Real LLM Example Has a Passing Golden** ✅
    - At least one checked-in example uses a real LLM-backed agent/graph, emits the full artifact suite, and its recorded run passes the determinism replay gate in CI.
 
 Once these three conditions are met, the Noēsis runtime and artifact model are considered **v1.0.0-complete**. Further work (curriculum runner, dashboards, expanded prompt provenance, etc.) is tracked under v1.1+ and is not blocking GA.
@@ -111,22 +135,21 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 ---
 
-### Phase 0 — Trust Spine  
-(**DONE; determinism substrate shipped, drill UX pending**)
+### Phase 0 — Trust Spine (DONE)
 
 **Focus:** Lock the “trust spine” contracts (runtime owner, artifact immutability, schema governance).
 
 **Key Deliverables**
 
-- **Runtime RFC:** Document the single-session runtime object (threading, ownership, env-var defaults), the `ns.*` shims that wrap it, and the typed Runner/graph adapter contract used by `run/solve`. (Implemented; ADR-001 pending acceptance.)
+- **Runtime RFC:** Document the single-session runtime object (threading, ownership, env-var defaults), the `ns.*` shims that wrap it, and the typed Runner/graph adapter contract used by `run/solve`. (Implemented; ADR-001 Accepted.)
 - **Artifact Spec:** Finalize directory layout (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`, optional `learn.jsonl`), ULID episode IDs plus derived UUIDv5 directive/governance IDs, and write-once rules (temp file → atomic rename, manifest with size + sha256 + optional HMAC). (ADR-002 completed.)
 - **Schema Governance Doc:** Per-file `$schema_version`, field-level `stability` flags, semver policy + migration-note checklist, and glossary that pins KPI formulas (plan_adherence, tool_coverage, veto_count, success, etc.). (ADR-003 completed.)
-- **Determinism substrate (ADR-004):** Canonical serialization + atomic writes, deterministic clock/RNG, deterministic ULID/UUID lineage, event helpers wired with `now_fn`/`id_factory`, and structural replay tests guarding summary/state/manifest/events. (Implemented; drill UX still open.)
+- **Determinism substrate (ADR-004):** Canonical serialization + atomic writes, deterministic clock/RNG, deterministic ULID/UUID lineage, event helpers wired with `now_fn`/`id_factory`, and structural replay tests guarding summary/state/manifest/events. (Implemented; drill UX shipped.)
 
 **Blocking Workstreams (PR-gated)**
 
-1. ~~**ADR-001 — Runtime ownership & NoesisSession** _(Owner: Sara)_~~ **(Implemented; ADR status pending acceptance)**  
-   Scope: single session object, threading/reentrancy guarantees, `ns.*` shims, Runner/graph adapter contract, env-defaulting without hidden globals; formal GA and acceptance still required.
+1. ~~**ADR-001 — Runtime ownership & NoesisSession** _(Owner: Sara)_~~ **(Completed; ADR-001 Accepted)**  
+   Scope: single session object, threading/reentrancy guarantees, `ns.*` shims, Runner/graph adapter contract, env-defaulting without hidden globals.
 
 2. ~~**ADR-002 — Artifact immutability & manifest** _(Owner: Sara)_~~ **(Completed)**  
    Scope: episode directory layout, temp→atomic write policy, `manifest.json` schema (sizes + SHA256 + optional HMAC), ULID episode IDs, UUIDv5 directive/governance IDs, and `noesis artifacts verify` behavior.
@@ -134,19 +157,19 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 3. ~~**ADR-003 — Schema governance & KPIs** _(Owner: Sara)_~~ **(Completed)**  
    Scope: per-file `$schema_version`, field-level stability flags, schema semver rules, mandatory migration notes, pinned KPI formulas (plan_adherence, tool_coverage, veto_count, success), and CI schema guard requirements.
 
-4. **Determinism Drill (tooling) PR** _(Owner: Sara)_  
-   Deliverables: replay CLI (`diagnostics replay`) that re-runs an episode under `DeterminismConfig`, diffs artifacts/lineage with tolerances, emits clear DRIFT/NO DRIFT, and a named vetoed golden used by both CLI and CI. **Status:** CLI + comparer + minimal-mode goldens shipped; vetoed golden + CI gate outstanding.
+4. ~~**Determinism Drill (tooling) PR** _(Owner: Sara)_~~ **(Completed)**  
+   Deliverables: replay CLI (`diagnostics replay`) that re-runs an episode under `DeterminismConfig`, diffs artifacts/lineage with tolerances, emits clear DRIFT/NO DRIFT, and a named vetoed golden used by both CLI and CI. **Status:** CLI + comparer + goldens (minimal, veto, LLM) shipped; CI gate wired via `determinism-replay.yml`.
 
-**Exit Criteria**
+**Exit Criteria** ✅
 
 - Every engineer can whiteboard an episode lifecycle (session → IDs → artifacts → manifest) without disagreement.
 - Simulated vetoed action yields deterministic directive/governance IDs and manifest entries the team can follow step-by-step.
 - Schema bumps cannot merge without an accompanying migration note template and reviewer checklist. (Met by ADR-003 guard.)
-- Minimal-mode artifact pairs diff to zero when seeded identically; divergences are explained in the drill log. (Pending determinism drill tooling.)
+- Minimal-mode artifact pairs diff to zero when seeded identically; divergences are explained in the drill log. (Met by determinism drill tooling.)
 
 ---
 
-### Phase 1 — Determinism Drill (Partially Complete; still blocking v1.0.0)
+### Phase 1 — Determinism Drill (DONE)
 
 **Focus:** Ship the replay/drift UX on top of the deterministic runtime.
 
@@ -154,12 +177,10 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 - `diagnostics replay` CLI with structural/byte diffing (`noesis/cli/commands/diagnostics.py`, `noesis/diagnostics/replay.py`).
 - Minimal-mode deterministic goldens + unit tests (`tests/golden/deterministic_run/run_{a,b}`, `tests/diagnostics/test_replay.py`).
+- CI-enforced replay gate (`determinism-replay.yml` → `replay_gate.py`).
+- Veto scenario golden (`tests/golden/veto_enforce/run_{a,b}`).
 
-**Remaining (Blocking)**
-
-- Add a CI-enforced replay gate (drift check) and persist a veto scenario regression (golden or generated fixture).
-
-**Exit Criteria**
+**Exit Criteria** ✅
 
 - Minimal-mode artifacts are bit-for-bit identical across runs (covered by current goldens).
 - Replay tool reports zero drift for goldens in CI.
@@ -167,7 +188,7 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 ---
 
-### Phase 1.7 — Governance Modes (ADR-007 — Proposed)
+### Phase 1.7 — Governance Modes (ADR-007 — DONE)
 
 **Focus:** Make governance an explicit 3-mode faculty (**off / audit / enforce**) with canonical veto semantics and schema-governed signaling.
 
@@ -175,36 +196,23 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 **Delivered**
 
-- None; ADR-007 drafted with canonical status and event semantics.
+- `GovernanceMode` enum: `OFF` (default), `AUDIT`, `ENFORCE` (`domain/faculties/governance.py`).
+- `GovernanceFailurePolicy` enum: `FAIL_OPEN`, `FAIL_CLOSED` with `default_for(mode)` (audit → fail_open, enforce → fail_closed).
+- Canonical episode outcome `vetoed`: in **enforce** mode, a pre-act veto terminates the episode immediately; **no Act event is emitted**.
+- Governance event schema includes `mode`, `failure_policy`, `enforced`, `decision`, `policy_id`, `policy_version`, `policy_kind`, `rule_id`, `score`, `message`, `caused_by`, optional `details`, `error`.
+- `fail_closed` treats policy failure/timeout as VETO with `error` metadata.
+- Policy contract is pure: input (goal, plan), output `GovernanceResult`, no side effects.
+- Tests (`tests/governance/test_pre_act.py`): off/audit/enforce coverage, enforce-veto termination, lineage wiring.
+- Enforce-veto golden (`tests/golden/veto_enforce/`) wired into CI replay gate.
 
-**Remaining (Blocking)**
-
-- Add `governance.mode` (`off` default) and `governance.failure_policy` defaults (**audit: fail_open**, **enforce: fail_closed**, with override).
-- Enforce canonical episode outcome **`vetoed`** (episode-level). Keep **`blocked`** as an **event-level** reason only (direction/governance events). **`blocked` MUST NOT appear as an episode outcome.**
-- Veto scope: In **enforce**, a **pre-act veto terminates the episode** with outcome `vetoed` (not “skip one step and continue”), and **no Act event is emitted**.
-- Governance event schema (ADR-003 governed): minimal required fields  
-  (`mode`, `failure_policy`, `enforced`, `decision`, `policy_id`, `policy_version`, `policy_kind`, `rule_id`, `score`, `message`, `caused_by`; optional `details`, `suggested_fixes`, `error`).
-  - Consistency rule: `enforced == (mode == "enforce")`.
-  - Failure semantics: `fail_closed` ⇒ treat policy failure/timeout as **VETO** and emit `error` metadata in the governance payload.
-- Policy contract stays pure: input (**goal, plan**, optional minimal **context** if defined), output `GovernanceResult` (decision/rule/message/score/fixes), **no side effects**.
-- Tests:
-  - Unit coverage for **off/audit/enforce**.
-  - Integration: **“enforce veto terminates before Act”** with terminate/summary status `vetoed`.
-  - Governance + `direction_blocked` events recorded with lineage (`caused_by`).
-  - Determinism golden includes at least one **enforce-veto** episode and is wired into the replay gate.
-- Docs:
-  - “Governance modes”
-  - “What veto means” (outcome vs event reason)
-  - Failure policy semantics (fail_open vs fail_closed)
-  - Link the enforce-veto golden episode to the replay gate docs.
-
-**Exit Criteria**
+**Exit Criteria** ✅
 
 - Governance mode/config defaults are explicit and test-backed.
-- Episode-level outcome `vetoed` is canonical across `summary.json`, `state.json`, and terminate semantics (where applicable).
-- Governance events are schema-governed and lineage-linked; **audit never blocks**, **enforce fail-fast blocks Act** and terminates the episode.
+- Episode-level outcome `vetoed` is canonical across `summary.json`, `state.json`, and terminate semantics.
+- Governance events are schema-governed and lineage-linked; audit never blocks, enforce fail-fast blocks Act and terminates the episode.
 - Determinism/replay gate includes at least one enforce-veto golden.
 
+---
 
 ### Phase 2 — NoesisSession GA (ADR-001 → Accepted; finalize GA proof)
 
@@ -246,17 +254,21 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 ---
 
-### Phase 3 — Real LLM Example (LangGraph/CrewAI-style)
+### Phase 3 — Real LLM Example (DONE)
 
 **Focus:** Prove real-world integration with a live LLM-backed flow.
 
-**Remaining**
+**Delivered**
 
-- Add one LangGraph/CrewAI-esque example hitting a real model.
-- Ensure it emits full artifacts + manifest and passes replay/determinism checks.
-- Document how to wrap external tools/graphs with Noēsis using this example.
+- LLM-backed example with recorded transcript (`tests/golden/llm_real/transcript.jsonl`).
+- Full artifact suite emitted (events, state, summary, manifest) in `tests/golden/llm_real/run_{a,b}`.
+- Wired into CI replay gate (`replay_gate.py` checks `llm-golden`).
 
-**Exit Criteria**
+**Remaining (Non-Blocking)**
+
+- Add user-facing documentation on how to wrap external tools/graphs with Noēsis.
+
+**Exit Criteria** ✅
 
 - Example reproducible by users with artifacts they can inspect and replay.
 - Demonstrates cognitive loop value (plan/govern/reflect) on a real model/tool call.
@@ -298,36 +310,94 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 ---
 
-## Future (Post v1.0.0)
+## v1.0.0 = Architectural GA
 
-### Prompt Provenance & Cognitive Provenance (ADR-005) — v1.2+
+Noēsis v1.0.0 is **architecturally complete**: deterministic cognitive loop, immutable artifacts, schema governance, and CI replay gates. It is a stable substrate for building cognitive agents.
+
+What follows is **adoption completeness**: the integrations, ergonomics, and tooling that make Noēsis usable by teams without custom glue.
+
+---
+
+## Adoption Completeness (v1.1 → v1.3)
+
+### Pillar 1 — Integration Spine (Providers + Tools)
+
+First-class LLM provider adapters (OpenAI, Anthropic, local) with stable interfaces, retries/timeouts, and prompt provenance hooks. Tool runtime contract (subprocess, HTTP, MCP).
+
+**Deliverables:**
+- Stable provider interface + versioning policy
+- Retries/timeouts/error mapping per provider
+- Standardized prompt/provenance hooks
+- Tool runtime contract (local subprocess, HTTP, MCP)
+
+**Outcome:** Users can plug in OpenAI/Anthropic/local/whatever without writing custom glue.
+
+---
+
+### Pillar 2 — Adapter Coverage (LangGraph, CrewAI, etc.)
+
+Minimal wrapper examples per ecosystem, canonical "how to integrate" docs, compatibility fixtures so adapters don't rot.
+
+**Deliverables:**
+- Minimal wrapper examples per ecosystem
+- Canonical "how to integrate" docs
+- Fixtures + compatibility tests (so adapters don't rot)
+
+**Outcome:** Noēsis feels "everywhere" without becoming dependent on anything.
+
+---
+
+### Pillar 3 — Record → Replay → Diff UX
+
+Polished CLI workflow: one command to record, one to replay+diff, clear drift explanations. Docs that show the workflow, not just the feature.
+
+**Deliverables:**
+- One command to record + label runs
+- One command to replay + diff with clean output
+- Drift explanation patterns ("what changed and why")
+- Docs that show the workflow, not just the feature
+- Governance docs: "Governance modes", "What veto means", failure policy semantics
+
+**Outcome:** Artifacts become an everyday engineering loop (like tests), not a research artifact dump.
+
+---
+
+### Pillar 4 — Evals / Benchmarks / Dashboards
+
+Opinionated eval runner, baseline suites (smoke/regression/behavior), local-first dashboard view.
+
+**Deliverables:**
+- Small, opinionated eval runner
+- Baseline suites (smoke / regression / behavior)
+- Basic dashboard view (even if local-first)
+
+**Outcome:** Teams can justify adoption because they can measure cognition changes.
+
+---
+
+### Pillar 5 — Config + Deployment Story
+
+Artifact storage backends (S3/GCS/local), team-friendly run indexing, hosted UI contract (even if "later").
+
+**Deliverables:**
+- Artifact storage backends (S3/GCS/local)
+- Team-friendly run indexing / metadata
+- Hosted UI story (define contract now, ship later)
+
+**Outcome:** Noēsis becomes team-adoptable (shared storage, indexing, deployment contracts) without changing what it is: a cognitive framework.
+
+---
+
+## Future Exploration (v1.3+)
+
+### Prompt Provenance & Cognitive Provenance (ADR-005)
 
 - Expand coverage to all cognitive phases (add observe/act/learn paths).
 - Wire prompt fingerprints into `events.jsonl` for direct joinability.
-- Provide higher-level examples/notebooks for drift and incident analysis.
-- Optional: per-field redaction/PII policies and adapter opt-ins (LangGraph/CrewAI/MCP).
+- Higher-level examples/notebooks for drift and incident analysis.
+- Optional: per-field redaction/PII policies and adapter opt-ins.
 
-### Schema Registry & Diagnostics Polish (v1.1+)
-
-- Harden schema registry UX and diagnostics integrations beyond current guard.
-- Expand local tooling and CI dashboards for schema/KPI drift.
-
-### Curriculum & Replay Harness Scale (v1.1+)
-
-- Curriculum runner and larger replay datasets.
-- Replay CLI thresholds for scale scenarios.
-
-### Documentation & Schema References (v1.1+)
-
-- Auto-generated schema pages and contracts matrix.
-- Docs build discipline and reference updates.
-
-### Release Integrity & Signing (v1.1+)
-
-- Signing/attestations gate releases once replay gates are stable.
-- Automated migration snippets in release notes.
-
-### Meta-Cognition & Ecosystem Enhancements (v1.1+ Exploration)
+### Meta-Cognition & Ecosystem Enhancements
 
 - Meta-loop reflection and cognitive graph reasoning.
 - TUI episode viewer, `noesis new-episode --danger-demo`, benchmarks expansion.
