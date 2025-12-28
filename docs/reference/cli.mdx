@@ -11,7 +11,7 @@ The CLI surface is intentionally small in this release. A more robust CLI is in 
 
 ## Installation
 
-Install from source while the PyPI name is pending:
+Install from source while the PyPI release is pending:
 
 ```bash
 git clone https://github.com/saraeloop/noesis.git
@@ -20,7 +20,7 @@ uv tool install .
 # or: pipx install .
 ```
 
-When the PyPI release is live, you can also use `uv add noesis` or `pip install noesis`.
+When PyPI is live, use `uv add noesis` or `pip install noesis`.
 
 ## Commands
 
@@ -150,6 +150,14 @@ noesis list -j | jq '.[0].episode_id'
 | Task | Truncated task description |
 | Manifest | Status note (only when `--strict-manifest` is used) |
 
+**Example output**:
+
+```
+Started              ID                      Task
+2024-12-27 10:15:32  ep_2024_abc123_s0       Draft release notes
+2024-12-27 09:45:11  ep_2024_def456_s0       Analyze logs
+```
+
 ### noesis show
 
 Display episode summary.
@@ -179,6 +187,16 @@ noesis show ep_2024_abc123_s0
 
 # Raw JSON
 noesis show ep_2024_abc123_s0 -j
+```
+
+**Example output**:
+
+```
+Episode: ep_2024_abc123_s0
+Task: Draft release notes
+Status: success
+Started: 2024-12-27T10:15:32Z
+Duration: 1.23s
 ```
 
 ### noesis view
@@ -215,6 +233,25 @@ noesis view ep_2024_abc123_s0
 
 # JSON
 noesis view ep_2024_abc123_s0 -j | jq '.summary.metrics.success'
+
+# Show artifact paths
+noesis view ep_2024_abc123_s0 --open
+```
+
+**Example output** (with `--open`):
+
+```
+=== artifacts ===
+dir: runs/ep_2024_abc123_s0
+summary: runs/ep_2024_abc123_s0/summary.json
+events: runs/ep_2024_abc123_s0/events.jsonl
+
+=== timeline ===
+[start] 2024-12-27T10:15:32.000Z
+[observe] input captured
+[plan] 3 steps planned
+[act] executed
+[reflect] success
 ```
 
 ### noesis events
@@ -276,6 +313,19 @@ noesis events $(noesis list -j | jq -r '.[0].episode_id')
 | `terminate` | End state |
 | `error` | Error events |
 
+**Example output**:
+
+```
+Episode: ep_2024_abc123_s0
+[start] 2024-12-27T10:15:32.000Z
+[observe] input captured
+[interpret] signals extracted
+[plan] 3 steps planned
+[act] step 1 executed
+[reflect] success
+[terminate] episode complete
+```
+
 ### noesis insight
 
 Show computed insight events (alias for `events --phase insight`).
@@ -326,8 +376,12 @@ noesis artifacts verify TARGET [options]
 | Option | Description | Default |
 | --- | --- | --- |
 | `--strict` | Fail when unexpected files are present | False |
-| `-j, --json` | Emit JSON report | False |
+| `--json` | Emit JSON report | False |
 | `-q, --quiet` | Suppress human-readable output | False |
+
+<Note>
+Unlike most commands, `artifacts verify` uses `--json` without a `-j` short form.
+</Note>
 
 **Exit codes**:
 
@@ -342,6 +396,22 @@ noesis artifacts verify TARGET [options]
 
 ```bash
 noesis artifacts verify ep_2024_abc123_s0 --strict
+```
+
+**Example output**:
+
+```
+=== Artifact verification ===
+manifest : runs/ep_2024_abc123_s0/manifest.json
+status   : ok
+files    : 4
+duration : 12.34 ms
+issues   : none
+files detail:
+  - summary.json: ok
+  - events.jsonl: ok
+  - state.json: ok
+  - manifest.json: ok
 ```
 
 ### noesis diagnostics
@@ -365,7 +435,19 @@ noesis diagnostics replay RUN_A RUN_B [options]
 | `-j, --json` | Emit JSON payload | False |
 | `-q, --quiet` | Suppress human-readable output | False |
 
-Checks include runs_dir health, learn_home, confidence bounds, learn thresholds, registered ports, config snapshot drift, latest summary schema, and latest manifest verification.
+**Available checks**:
+
+| Check name | What it validates |
+| --- | --- |
+| `runs_dir` | Directory exists, is writable, has free space |
+| `learn_home` | Directory exists and is valid |
+| `direction_min_confidence` | Value within [0, 1] |
+| `learn_auto_apply_min_confidence` | Value within [0, 1] |
+| `learn_auto_apply_min_successes` | Value >= 1 |
+| `ports` | Registered ports have valid API version format |
+| `config_snapshot` | Runtime config matches current snapshot |
+| `latest_summary` | Most recent summary schema version is current |
+| `artifact_manifest` | Most recent manifest passes verification |
 
 **Replay mode options**:
 
@@ -381,11 +463,36 @@ Checks include runs_dir health, learn_home, confidence bounds, learn thresholds,
 # Default diagnostics
 noesis diagnostics --strict
 
+# Run specific checks only
+noesis diagnostics --checks runs_dir,ports,artifact_manifest
+
 # Drift compare two runs
 noesis diagnostics replay runs/ep_a runs/ep_b
 ```
 
 Replay exits `1` on drift, `0` otherwise. Default mode exits `1` on errors (or warnings when `--strict`).
+
+**Example output** (default mode):
+
+```
+=== Noēsis diagnostics ===
+timestamp             : 1735312532
+version               : 1.0.0
+summary_schema_version: 1.1.0
+state_version         : 1 (schema 1.0)
+selected_checks       : all
+checks:
+  [ok] runs_dir - ./runs
+  [ok] learn_home - ~/.noesis/state
+  [ok] direction_min_confidence - 0.50
+  [ok] learn_auto_apply_min_confidence - 0.75
+  [ok] learn_auto_apply_min_successes - 3
+  [ok] ports - config=config/1.0-rc1
+  [ok] config_snapshot - in sync
+  [ok] latest_summary - runs/ep_2024_abc123_s0/summary.json
+  [ok] artifact_manifest - runs/ep_2024_abc123_s0/manifest.json
+overall status        : ok
+```
 
 ### noesis version
 
@@ -400,6 +507,12 @@ noesis version [-j]
 | Option | Description | Default |
 | --- | --- | --- |
 | `-j, --json` | Emit JSON payload | False |
+
+**Example output**:
+
+```
+Noesis 1.0.0 (core 1.0.0, adapters: langgraph@on, crewai@missing, assistants@missing)
+```
 
 ### noesis validate-ports
 
@@ -469,6 +582,9 @@ These options work with all commands:
 | `NOESIS_RUNS_DIR` | Default runs directory |
 | `NOESIS_PLANNER` | Default planner mode (`meta`/`minimal`) |
 | `NOESIS_DIRECTION_MIN_CONFIDENCE` | Default `direction_min_confidence` |
+| `NOESIS_GOVERNANCE_MODE` | Governance mode (`off`/`audit`/`enforce`) |
+| `NOESIS_GOVERNANCE_FAILURE_POLICY` | Failure policy (`fail_open`/`fail_closed`) |
+| `NOESIS_GOVERNANCE_TIMEOUT_MS` | Governance timeout in milliseconds |
 | `NOESIS_INTUITION_MODE` | Default intuition mode |
 | `NOESIS_TIMEOUT_SEC` | Default timeout |
 | `NOESIS_LEARN_HOME` | Default learn directory |

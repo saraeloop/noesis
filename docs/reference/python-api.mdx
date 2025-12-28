@@ -3,7 +3,7 @@ title: "Python API"
 description: "Complete reference for the Noēsis Python package."
 ---
 
-Install from source while the PyPI name is pending:
+Install from source while the PyPI release is pending:
 
 ```bash
 git clone https://github.com/saraeloop/noesis.git
@@ -12,7 +12,7 @@ uv tool install .
 # or: pipx install .
 ```
 
-When the PyPI release is live, you can use `uv add noesis` or `pip install noesis`. Import as `import noesis as ns`.
+When PyPI is live, use `uv add noesis` or `pip install noesis`. Import as `import noesis as ns`.
 
 ## Core functions
 
@@ -164,7 +164,7 @@ ns.set(runs_dir="./runs/demo", planner_mode="minimal", direction_min_confidence=
 config = ns.get()  # returns a mapping of current config values
 ```
 
-Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents`, `tasks`.
+Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `governance_mode` (`off`/`audit`/`enforce`), `governance_failure_policy`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents`, `tasks`.
 
 ## Intuition and policies
 
@@ -212,6 +212,81 @@ except NoesisVeto as e:
     print(f"Vetoed: {e}")
 ```
 
+## Governance
+
+Pre-act governance evaluates proposed actions before execution. Configure via `ns.set(governance_mode=...)`.
+
+### GovernanceMode
+
+```python
+from noesis.governance import GovernanceMode
+
+GovernanceMode.OFF      # Governance disabled (default)
+GovernanceMode.AUDIT    # Record decisions; never blocks execution
+GovernanceMode.ENFORCE  # Veto terminates the episode before Act
+```
+
+### GovernanceFailurePolicy
+
+```python
+from noesis.governance import GovernanceFailurePolicy
+
+GovernanceFailurePolicy.FAIL_OPEN    # On error, allow action
+GovernanceFailurePolicy.FAIL_CLOSED  # On error, treat as veto
+```
+
+Default depends on mode: `audit` → `fail_open`, `enforce` → `fail_closed`.
+
+### GovernanceDecision
+
+```python
+from noesis.governance import GovernanceDecision
+
+GovernanceDecision.ALLOW  # Action proceeds
+GovernanceDecision.AUDIT  # Action proceeds, flagged for review
+GovernanceDecision.VETO   # Action blocked
+```
+
+### GovernanceResult
+
+Immutable result from governance evaluation.
+
+```python
+from noesis.governance import GovernanceResult
+
+# Fields: decision, rule_id, score, message, policy_id, policy_version,
+#         policy_kind, mode, failure_policy, enforced, error, details
+```
+
+### Custom governors
+
+```python
+from noesis.governance import PreActGovernor, GovernanceResult, GovernanceDecision
+
+class MyGovernor(PreActGovernor):
+    def evaluate(self, *, goal: str, plan) -> GovernanceResult:
+        if "dangerous" in goal.lower():
+            return GovernanceResult(
+                decision=GovernanceDecision.VETO,
+                rule_id="custom.veto.dangerous",
+                score=0.95,
+                message="Blocked by custom policy",
+                policy_id="my_governor",
+                policy_version="1.0.0",
+            )
+        return GovernanceResult(
+            decision=GovernanceDecision.ALLOW,
+            rule_id="custom.allow.default",
+            score=0.1,
+            message="",
+            policy_id="my_governor",
+            policy_version="1.0.0",
+        )
+
+# Pass to ns.run()
+ns.run(task="...", governance_policy=MyGovernor())
+```
+
 ## Session management
 
 Use sessions when you need isolated configuration, explicit lifecycle control, or registered ports.
@@ -232,7 +307,66 @@ with session:
 - `ns.summary.read(episode_id, context=None)`: read `summary.json`.
 - `ns.events.read(episode_id, stream=False, context=None)`: iterate events; pass `stream=True` to lazily consume.
 - `ns.context`: helpers for building runtime contexts and attaching ports (advanced use — see the “Add a memory port” guide).
-- `ns.learn.emit(...)`: advanced learning signal emission (see `noesis.learn`; patterns live in guides such as export metrics/learning signals).
+- `ns.learn`: learning signal emission and proposal management (see Learning section below).
+
+## Learning
+
+The learning subsystem records proposals from episode outcomes for policy improvement.
+
+### LearnMode
+
+```python
+from noesis.learn import LearnMode
+
+LearnMode.OFF     # Disable learning
+LearnMode.RECORD  # Record proposals only (default)
+LearnMode.APPLY   # Auto-apply approved proposals
+```
+
+Configure via `ns.set(learn_mode="record")`.
+
+### LearnStatus
+
+```python
+from noesis.learn import LearnStatus
+
+LearnStatus.PENDING   # Awaiting review
+LearnStatus.APPROVED  # Approved for application
+LearnStatus.REJECTED  # Rejected
+LearnStatus.APPLIED   # Already applied
+```
+
+### LearnProposal
+
+Dataclass for learning signals. Contains `kind`, `payload`, `confidence`, `status`, and metadata.
+
+### ns.learn.emit()
+
+Emit a learning signal for an episode:
+
+```python
+import noesis as ns
+
+ns.learn.emit(
+    episode_id=ep,
+    kind="policy_update",
+    payload={"rule": "block_dangerous", "confidence": 0.9},
+    run_dir=ns.get()["runs_dir"],
+)
+```
+
+### Helper functions
+
+```python
+from noesis.learn import (
+    build_learn_payload,      # Build structured learn payloads
+    persist_episode_learning, # Write learn.jsonl
+    load_policy_snapshot,     # Read current policy state
+    update_policy_snapshot,   # Update policy state
+    derive_target_key,        # Compute target key from proposal
+    summarise_learn_kinds,    # Summarize proposal kinds
+)
+```
 
 ## Episode index
 
@@ -263,6 +397,24 @@ store = EpisodeIndex(
 
 Returned by policy methods. See schema above for fields.
 
+## Determinism utilities
+
+For reproducible testing and replay, Noesis exports deterministic clock and RNG utilities:
+
+```python
+from noesis import DeterministicClock, DeterministicRNG
+
+# Fixed-time clock for testing
+clock = DeterministicClock(start_iso="2025-01-01T00:00:00Z")
+now = clock.now()  # Always returns the same timestamp
+
+# Seeded RNG for reproducibility
+rng = DeterministicRNG(seed=42)
+value = rng.random()  # Deterministic random values
+```
+
+These are used internally by the replay gate to ensure artifact determinism. Exposed for custom test harnesses and advanced integrations.
+
 ## Environment variables
 
 | Variable | Description |
@@ -270,6 +422,8 @@ Returned by policy methods. See schema above for fields.
 | `NOESIS_RUNS_DIR` | Artifact storage directory |
 | `NOESIS_PLANNER` | Planner mode (`meta`/`minimal`) |
 | `NOESIS_DIRECTION_MIN_CONFIDENCE` | Direction minimum confidence |
+| `NOESIS_GOVERNANCE_MODE` | Governance mode (`off`/`audit`/`enforce`) |
+| `NOESIS_GOVERNANCE_FAILURE_POLICY` | Failure policy (`fail_open`/`fail_closed`) |
 | `NOESIS_INTUITION_MODE` | Intuition mode |
 | `NOESIS_TIMEOUT_SEC` | Default timeout (seconds) |
 | `NOESIS_LEARN_HOME` | Learning artifacts directory |
