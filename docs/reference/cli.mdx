@@ -159,6 +159,14 @@ STARTED_AT                  EPISODE_ID                     TASK
 2024-12-27T09:45:11  ep_01JH6Z1S9WZJ2K1ZB2R7C2JX0T  Analyze logs
 ```
 
+**Example output**:
+
+```
+Started              ID                      Task
+2024-12-27 10:15:32  ep_2024_abc123_s0       Draft release notes
+2024-12-27 09:45:11  ep_2024_def456_s0       Analyze logs
+```
+
 ### noesis show
 
 Display episode summary.
@@ -198,6 +206,16 @@ Episode
   task    : Draft release notes
   started : 2024-12-27T10:15:32Z
   duration: 1.23s
+```
+
+**Example output**:
+
+```
+Episode: ep_2024_abc123_s0
+Task: Draft release notes
+Status: success
+Started: 2024-12-27T10:15:32Z
+Duration: 1.23s
 ```
 
 ### noesis view
@@ -406,6 +424,22 @@ noesis artifacts verify ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --strict
 ```
 Artifact verification
 manifest : runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
+status   : ok
+files    : 4
+duration : 12.34 ms
+issues   : none
+files detail:
+  - summary.json: ok
+  - events.jsonl: ok
+  - state.json: ok
+  - manifest.json: ok
+```
+
+**Example output**:
+
+```
+=== Artifact verification ===
+manifest : runs/ep_2024_abc123_s0/manifest.json
 status   : ok
 files    : 4
 duration : 12.34 ms
