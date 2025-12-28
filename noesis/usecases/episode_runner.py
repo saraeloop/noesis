@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Sequence
 from uuid import UUID, uuid4
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from noesis.domain.planner.interfaces import (
     Actuator,
@@ -29,6 +30,7 @@ from noesis.domain.faculties.governance import (
     PreActGovernor,
     with_governance_context,
 )
+from noesis.domain.faculties.intuition import Intuition, IntuitionEvent
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis import events as runtime_events
 from noesis.trace.events import is_terminate_event
@@ -60,6 +62,19 @@ class EpisodeRequest:
     goal: str
     beliefs: tuple[str, ...]
     context: EpisodeContext
+    using_label: str | None = None
+
+    @property
+    def episode_id(self) -> str:
+        return self.context.episode_id
+
+    @property
+    def seed(self) -> int:
+        return self.context.seed
+
+    @property
+    def adapter_label(self) -> str:
+        return self.context.adapter_label
 
 
 @dataclass(slots=True)
@@ -89,6 +104,8 @@ class EpisodeDependencies:
     governance_mode: GovernanceMode = GovernanceMode.OFF
     governance_failure_policy: GovernanceFailurePolicy | None = None
     governance_timeout_ms: int | None = None
+    intuition_policy: Intuition | None = None
+    intuition_enabled: bool = False
 
 
 @dataclass(slots=True)
@@ -145,10 +162,13 @@ class EpisodeRunner:
         self._seed_lineage(context)
         state = self._deps.state_repository.init(request.context)
 
-        interpret_event = self._run_interpret(request)
-        plan, plan_event, direction_event_id = self._run_plan(request, state)
+        observe_event = self._run_observe(request, state)
+        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
+        signals = tuple(request.beliefs) + tuple(intuition_signals)
+        interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
+        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
         actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
-        if actuation.status == OUTCOME_STATUS_VETOED:
+        if act_event is None:
             state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
             self._deps.state_repository.persist(state)
@@ -184,6 +204,73 @@ class EpisodeRunner:
             reasons=actuation.reasons,
         )
         return EpisodeResult(state=state, outcome=outcome, plan=plan)
+
+    def _run_observe(self, request: EpisodeRequest, state: NoesisState) -> CognitiveEvent:
+        verb = CognitiveVerb.OBSERVE
+        context = request.context
+        self._hooks.before_phase(verb, context)
+        token = self._clock.start(verb)
+        metrics = self._clock.stop(token)
+        snapshot = self._build_snapshot(request, state)
+        observed_at = metrics.started_at.isoformat() if metrics else self._now().isoformat()
+        payload: Dict[str, object] = {
+            "task": request.goal,
+            "tags": context.tags,
+            "timestamp": observed_at,
+            "experimental": {"snapshot": snapshot},
+        }
+        event = self._emit_event(verb=verb, context=context, payload=payload, metrics=metrics)
+        self._hooks.after_phase(verb, context, event)
+        return event
+
+    def _run_intuition(
+        self,
+        request: EpisodeRequest,
+        state: NoesisState,
+        caused_by: UUID | None,
+    ) -> tuple[list[str], UUID | None]:
+        if not self._deps.intuition_enabled or self._deps.intuition_policy is None:
+            return [], None
+
+        snapshot = self._build_snapshot(request, state)
+        result: IntuitionEvent | None = self._deps.intuition_policy.advise(snapshot)
+        if result is None:
+            return [], None
+
+        event_id = self._event_id_factory()
+        timestamp = self._now().isoformat()
+        record: Dict[str, object] = {
+            "id": str(event_id),
+            "timestamp": timestamp,
+            "episode_id": request.context.episode_id,
+            "agent_id": "intuition",
+            "phase": "intuition",
+            "payload": result.to_dict(),
+            "evidence_ids": [],
+        }
+        if caused_by is not None:
+            record["caused_by"] = str(caused_by)
+        from noesis.trace.events import write_event
+
+        write_event(request.context.run_dir, record)
+
+        recorder = self._resolve_prompt_recorder(request.context)
+        if recorder:
+            rendered = f"[intuition] goal={request.goal or 'unspecified'} | kind={result.kind}"
+            self._record_prompt(
+                recorder=recorder,
+                phase="intuition",
+                agent_id="intuition",
+                rendered=rendered,
+                role="system",
+                kind="intuition",
+                template_id="intuition.v1",
+                tags=request.context.tags,
+                event_id=event_id,
+            )
+
+        signals = [f"directive:{result.kind}", result.advice]
+        return signals, event_id
 
     def _maybe_emit_terminate(self, context: EpisodeContext, payload: Dict[str, object]) -> None:
         """Emit terminate once if not already recorded."""
@@ -251,27 +338,32 @@ class EpisodeRunner:
         self._hooks.after_phase(verb, context, linked)
         return linked
 
-    def _run_interpret(self, request: EpisodeRequest) -> CognitiveEvent:
+    def _run_interpret(
+        self,
+        request: EpisodeRequest,
+        signals: Sequence[str],
+        *,
+        caused_by: UUID | None = None,
+    ) -> CognitiveEvent:
         verb = CognitiveVerb.INTERPRET
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
-        signals = list(request.beliefs)
         metrics = self._clock.stop(token)
-        payload: Dict[str, object] = {"signals": signals}
-        event = self._emit_event(verb=verb, context=context, payload=payload, metrics=metrics)
+        payload: Dict[str, object] = {"signals": list(signals)}
+        event = self._emit_event(verb=verb, context=context, payload=payload, metrics=metrics, cause=caused_by)
 
         recorder = self._resolve_prompt_recorder(context)
         if recorder:
-            rendered = f"[intuition] interpret goal={request.goal or 'unspecified'} | beliefs={len(signals)}"
+            rendered = f"[interpret] goal={request.goal or 'unspecified'} | signals={len(signals)}"
             self._record_prompt(
                 recorder=recorder,
                 phase="interpret",
-                agent_id="intuition",
+                agent_id="interpret",
                 rendered=rendered,
                 role="system",
                 kind="reasoning",
-                template_id="intuition.v1",
+                template_id="interpret.v1",
                 tags=context.tags,
                 event_id=event.event_id,
             )
@@ -282,17 +374,18 @@ class EpisodeRunner:
         self,
         request: EpisodeRequest,
         state: NoesisState,
+        beliefs: Sequence[str],
     ) -> tuple[list[PlanStep], CognitiveEvent, Optional[UUID]]:
         verb = CognitiveVerb.PLAN
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
-        plan = self._deps.planner.build_plan(goal=request.goal, beliefs=request.beliefs)
+        plan = self._deps.planner.build_plan(goal=request.goal, beliefs=beliefs)
         directive: PlannerDirective | None = None
         if self._deps.direction_planner is not None:
             proposed = self._deps.direction_planner.propose(
                 goal=request.goal,
-                beliefs=request.beliefs,
+                beliefs=beliefs,
                 base_plan=plan,
             )
             if proposed is not None:
@@ -346,15 +439,16 @@ class EpisodeRunner:
         if self._deps.governance_policy is not None and mode is not GovernanceMode.OFF:
             governance_error: Dict[str, object] | None = None
             try:
-                raw_result = self._deps.governance_policy.evaluate(goal=request.goal, plan=plan)
+                raw_result = _evaluate_governance(
+                    policy=self._deps.governance_policy,
+                    goal=request.goal,
+                    plan=plan,
+                    timeout_ms=getattr(self._deps, "governance_timeout_ms", None),
+                )
             except Exception as exc:  # noqa: BLE001
-                decision = GovernanceDecision.VETO if failure_policy is GovernanceFailurePolicy.FAIL_CLOSED else GovernanceDecision.ALLOW
-                governance_error = {
-                    "type": exc.__class__.__name__,
-                    "message": str(exc),
-                }
+                governance_error = _governance_error_payload(exc)
                 raw_result = GovernanceResult(
-                    decision=decision,
+                    decision=GovernanceDecision.AUDIT,
                     rule_id="rule:governance.failure",
                     score=0.0,
                     message="Governance evaluation failed",
@@ -367,12 +461,29 @@ class EpisodeRunner:
                 _with_stable_governance_id(raw_result, context.episode_id),
                 mode=mode,
                 failure_policy=failure_policy,
-                enforced=mode is GovernanceMode.ENFORCE and raw_result.decision is GovernanceDecision.VETO,
+                enforced=(
+                    mode is GovernanceMode.ENFORCE
+                    and raw_result.decision is GovernanceDecision.VETO
+                    and governance_error is None
+                ),
                 error=governance_error,
             )
+            blocked_direction_id: Optional[UUID] = None
+            if (
+                governance_result.decision is GovernanceDecision.VETO
+                and mode is GovernanceMode.ENFORCE
+                and governance_error is None
+            ):
+                blocked_direction_id = _emit_governance_blocked_direction(
+                    event_bus=self._deps.event_bus,
+                    plan=plan,
+                    governance_result=governance_result,
+                    caused_by=latest_direction_id or plan_anchor,
+                )
+                latest_direction_id = blocked_direction_id
             governance_event_id = self._deps.event_bus.emit_governance(
                 result=governance_result,
-                caused_by=latest_direction_id or plan_anchor,
+                caused_by=blocked_direction_id or latest_direction_id or plan_anchor,
             )
             recorder = self._resolve_prompt_recorder(request.context)
             if recorder:
@@ -382,7 +493,7 @@ class EpisodeRunner:
                 self._record_prompt(
                     recorder=recorder,
                     phase="governance",
-                    agent_id="governance.pre_act",
+                    agent_id="governance",
                     rendered=rendered_governance,
                     role="system",
                     kind="governance",
@@ -390,30 +501,20 @@ class EpisodeRunner:
                     tags=request.context.tags,
                     event_id=governance_event_id,
                 )
+            if governance_error and mode is GovernanceMode.ENFORCE and failure_policy is GovernanceFailurePolicy.FAIL_CLOSED:
+                _ = self._clock.stop(token)
+                return (
+                    ActuationResult(
+                        status="error",
+                        summary=governance_result.message or "Governance evaluation failed",
+                        metrics={},
+                        reasons=["governance_failure"],
+                        success=False,
+                    ),
+                    None,
+                )
             if governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.ENFORCE:
-                veto_directive = PlannerDirective(
-                    steps=("governance:veto", governance_result.rule_id),
-                    status=DirectiveStatus.BLOCKED,
-                    reason="governance_veto",
-                    diff=(),
-                    applied=False,
-                    policy_id=governance_result.policy_id,
-                    policy_version=governance_result.policy_version,
-                    policy_kind=governance_result.policy_kind,
-                )
-                veto_directive = _with_stable_directive_id(veto_directive, context.episode_id)
-                latest_direction_id = self._deps.event_bus.emit_direction(
-                    directive=veto_directive,
-                    caused_by=governance_event_id,
-                )
-                metrics = self._clock.stop(token)
-                excerpt_basis = plan[0].description if plan else request.goal
-                payload: Dict[str, object] = {
-                    "input_excerpt": excerpt_basis or "",
-                    "outcome": "blocked",
-                    "adapter": request.context.adapter_label,
-                    "reasons": [governance_result.rule_id],
-                }
+                _ = self._clock.stop(token)
                 return (
                     ActuationResult(
                         status=OUTCOME_STATUS_VETOED,
@@ -579,6 +680,19 @@ class EpisodeRunner:
             return None
         return recorder
 
+    def _build_snapshot(self, request: EpisodeRequest, state: NoesisState) -> Dict[str, object]:
+        using_label = request.using_label or request.context.adapter_label
+        return {
+            "task": request.goal,
+            "seed": request.context.seed,
+            "history": [],
+            "tools_seen": [],
+            "tags": request.context.tags,
+            "state_path": "state.json",
+            "state": state.to_dict(),
+            "using": using_label,
+        }
+
 
 class DirectiveApplicationError(RuntimeError):
     """Signals that a PlannerDirective could not be applied to the plan."""
@@ -684,6 +798,8 @@ def _match_step_index(key: str) -> int | None:
             except ValueError:
                 return None
     return None
+
+
 def _parse_governance_mode(raw: object) -> GovernanceMode:
     if raw is None:
         return GovernanceMode.OFF
@@ -704,3 +820,62 @@ def _parse_failure_policy(raw: object, mode: GovernanceMode) -> GovernanceFailur
     if "." in normalized:
         normalized = normalized.split(".")[-1]
     return GovernanceFailurePolicy(normalized)
+
+
+def _evaluate_governance(
+    *,
+    policy: PreActGovernor,
+    goal: str,
+    plan: Sequence[PlanStep],
+    timeout_ms: int | None,
+) -> GovernanceResult:
+    if timeout_ms is None:
+        return policy.evaluate(goal=goal, plan=plan)
+    timeout_sec = max(timeout_ms, 1) / 1000.0
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(policy.evaluate, goal=goal, plan=plan)
+        try:
+            return future.result(timeout=timeout_sec)
+        except FutureTimeoutError as exc:
+            raise TimeoutError("governance_timeout") from exc
+
+
+def _governance_error_payload(exc: Exception) -> Dict[str, object]:
+    payload: Dict[str, object] = {
+        "type": exc.__class__.__name__,
+        "message": str(exc),
+    }
+    if isinstance(exc, TimeoutError):
+        payload["timeout"] = True
+    return payload
+
+
+def _emit_governance_blocked_direction(
+    *,
+    event_bus: EventBus,
+    plan: Sequence[PlanStep],
+    governance_result: GovernanceResult,
+    caused_by: UUID | None,
+) -> UUID:
+    directive = PlannerDirective(
+        steps=[step.id for step in plan],
+        status=DirectiveStatus.BLOCKED,
+        reason="governance_veto",
+        applied=False,
+        policy_id=governance_result.policy_id,
+        policy_version=governance_result.policy_version,
+        policy_kind=governance_result.policy_kind,
+    )
+    payload = directive.to_mapping()
+    payload.update(
+        {
+            "rule_id": governance_result.rule_id,
+            "score": governance_result.score,
+            "policy": governance_result.policy_id,
+        }
+    )
+    return event_bus.emit_direction_payload(
+        payload=payload,
+        agent_id=governance_result.policy_id,
+        caused_by=caused_by,
+    )

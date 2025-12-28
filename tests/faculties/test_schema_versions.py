@@ -86,6 +86,7 @@ def test_round_trip_serialization() -> None:
         "schema_version": current_version("insight"),
         "phase_ms": {"act": 100},
         "veto_count": 0,
+        "would_veto_count": 0,
         "branching_factor": 0.0,
         "plan_adherence": 1.0,
         "success": True,
@@ -101,7 +102,7 @@ def test_validate_hook_sequence() -> None:
     with pytest.raises(ValueError):
         validate_hook_sequence(["interpret", "observe"])
     with pytest.raises(ValueError):
-        validate_hook_sequence(["observe", "act", "governance.pre_act"])
+        validate_hook_sequence(["observe", "act", "governance"])
 
 
 def test_warn_on_incompatibility() -> None:

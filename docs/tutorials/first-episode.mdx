@@ -153,17 +153,26 @@ print(f"First action latency: {metrics.get('latencies', {}).get('first_action_ms
 
 ## Understanding the cognitive phases
 
-Every episode flows through these phases:
+Every episode emits these phases into the trace (faculties can exist even when they emit nothing):
 
 <Steps>
   <Step title="Observe">
     Captures the raw task and context at episode start.
+  </Step>
+  <Step title="Intuition">
+    Records policy guidance (hints/interventions/veto signals).
   </Step>
   <Step title="Interpret">
     Summarizes signals noticed by policy or intuition layers before planning.
   </Step>
   <Step title="Plan">
     Records the selected steps, comparing intent versus action.
+  </Step>
+  <Step title="Direction">
+    Applies plan directives before governance.
+  </Step>
+  <Step title="Governance">
+    Audits the plan and can veto before action execution.
   </Step>
   <Step title="Act">
     Logs every tool or adapter invocation with inputs and outcomes.
@@ -173,6 +182,15 @@ Every episode flows through these phases:
   </Step>
   <Step title="Learn">
     Optionally captures follow-up updates for future runs to inherit.
+  </Step>
+  <Step title="Terminate">
+    Records the episode end status and message.
+  </Step>
+  <Step title="Insight">
+    Computes KPI rollups from the trace.
+  </Step>
+  <Step title="Memory">
+    Records persistence/port outcomes.
   </Step>
 </Steps>
 

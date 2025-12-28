@@ -1,0 +1,29 @@
+# Pytest / typecheck / tooling caches
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.cache/
+
+# uv / pip caches
+.uv-cache/
+pip-wheel-metadata/
+
+# Coverage / test artifacts
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# IDE / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Noēsis runtime outputs (very important)
+runs/
+tmp-run/
+tmp/

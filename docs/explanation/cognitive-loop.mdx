@@ -1,36 +1,38 @@
 ---
 title: "The cognitive loop"
-description: "Understanding the nine-phase cognitive cycle that makes Noēsis episodes observable and auditable."
+description: "Understanding the phase sequence that makes Noēsis episodes observable and auditable."
 ---
 
-The cognitive loop is the core abstraction that makes agent reasoning explicit and auditable. Every Noēsis episode flows through a sequence of nine phases.
+The cognitive loop is the core abstraction that makes agent reasoning explicit and auditable. Every Noēsis episode emits a sequence of observable phases.
 
-## The nine phases
+## The phase sequence
 
 ```mermaid
 flowchart TD
     A([START]) --> B[Observe]
-    B --> C[Interpret]
-    C --> D[Plan]
-    D --> E[Direction]
-    E --> F{Governance}
-    F -->|allow/audit| G[Act]
-    F -->|veto| V[Blocked]
-    G --> H[Reflect]
-    H --> I[Learn]
-    I --> J[Insight]
-    J --> K([END])
+    B --> C[Intuition]
+    C --> D[Interpret]
+    D --> E[Plan]
+    E --> F[Direction]
+    F --> G{Governance}
+    G -->|allow/audit| H[Act]
+    G -->|veto| V[Blocked]
+    H --> I[Reflect]
+    I --> J[Learn]
+    J --> K[Terminate]
+    K --> L[Insight]
+    L --> M[Memory]
     V --> K
 
     %% Feedback paths
-    H -. insight .-> C
-    I -. adaptation .-> B
+    I -. insight .-> D
+    J -. adaptation .-> B
 ```
 
 The governance phase acts as a critical gate—if policies veto the plan, execution jumps to a blocked state. Each phase has a specific purpose and produces structured events that form the episode timeline.
 
 <Info>
-In **minimal mode**, the Direction, Governance, and Insight phases are skipped for faster execution. In **meta mode** (default), all nine phases execute with full observability.
+In **minimal mode**, Direction, Governance, and Insight may emit no events for faster execution. In **meta mode** (default), all faculties are active and the full phase sequence is observable.
 </Info>
 
 ## Observe
@@ -380,13 +382,13 @@ The **governance** phase is a critical gate that audits actions before execution
 Events follow this order in **meta mode**:
 
 ```
-observe → interpret → plan → direction → governance → act+ → reflect → learn → insight → terminate
+observe → intuition → interpret → plan → direction → governance → act+ → reflect → learn → terminate → insight → memory
 ```
 
-In **minimal mode**, direction, governance, and insight are skipped:
+In **minimal mode**, Direction, Governance, and Insight may emit no events:
 
 ```
-observe → interpret → plan → act+ → reflect → learn? → terminate
+observe → intuition → interpret → plan → act+ → reflect → learn? → terminate → memory
 ```
 
 <Info>

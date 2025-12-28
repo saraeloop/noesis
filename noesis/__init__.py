@@ -14,12 +14,16 @@ from .runtime.session import (
 )
 from .runtime.determinism import DeterministicClock, DeterministicRNG
 
+# Promoted public APIs (first-class exports)
+from .direction import DirectedIntuition
+from .exceptions import NoesisVeto
+from .io import list_runs, last, paths
+
 # Package metadata
 __version__ = "v1.0.0"
 __schema_version__ = SUMMARY_SCHEMA_VERSION
 
-# Legacy config access (kept for compatibility)
-from .context import get_config_port  # re-exported via deprecated alias
+# Submodule aliases (public)
 from . import context as _context, events as _events, learn as _learn, summary as _summary
 
 _SESSION_PROVIDER = DefaultSessionProvider()
@@ -117,17 +121,29 @@ context = _context
 learn = _learn
 
 __all__ = (
+    # Core execution
     "run",
     "solve",
     "set",
     "get",
+    # Session management
     "create_session",
     "session_provider",
     "NoesisSession",
     "SessionBuilder",
     "DefaultSessionProvider",
+    # Determinism
     "DeterministicClock",
     "DeterministicRNG",
+    # Policy authoring
+    "DirectedIntuition",
+    "Intuition",
+    "NoesisVeto",
+    # Read/introspection API
+    "list_runs",
+    "last",
+    "paths",
+    # Submodules
     "summary",
     "events",
     "context",
@@ -146,12 +162,6 @@ _LEGACY_REDIRECTS = {
     "get_config_snapshot": "noesis.context:get_config_snapshot",
     # execution helpers
     "run_using": "noesis.core:run_using",
-    "list_runs": "noesis.io:list_runs",
-    "paths": "noesis.io:paths",
-    # cognition helpers
-    "Intuition": "noesis.intuition:Intuition",
-    "DirectedIntuition": "noesis.direction:DirectedIntuition",
-    "NoesisVeto": "noesis.exceptions:NoesisVeto",
     "MinimalPlanner": "noesis.domain.planner.minimal:MinimalPlanner",
     # module shortcuts
     "episode": "noesis.episode",
@@ -166,9 +176,12 @@ def __getattr__(name: str) -> Any:
 
     module_path, sep, attribute = target.partition(":")
     module = import_module(module_path)
-    warn_target = attribute or module_path
+    if attribute:
+        import_hint = f"from {module_path} import {attribute}"
+    else:
+        import_hint = f"import {module_path}"
     warn(
-        f"'noesis.{name}' is deprecated; import '{warn_target}' directly instead.",
+        f"'noesis.{name}' is deprecated; use '{import_hint}' instead.",
         DeprecationWarning,
         stacklevel=2,
     )

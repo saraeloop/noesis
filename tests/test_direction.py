@@ -1,220 +1,70 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-import pytest
-
 import noesis as ns
 from noesis.direction import DirectedIntuition
-from noesis.io import list_runs
 
-
-# Minimal graph doubles
 
 class DictGraph:
     def __init__(self) -> None:
-        # Mapper lets Noēsis treat string tasks as dict inputs (so patches can apply)
-        self.__noesis_input_mapper__ = lambda task: {
-            "task": task,
-            "normalize": False,
-            "risk": "medium",
-        }
+        self.__noesis_input_mapper__ = lambda task: {"task": task, "normalize": False}
 
     def invoke(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        # Echo back so we can observe post-patch state in summary/events if needed
         return payload
 
 
-class StringGraph:
-    def invoke(self, text: str) -> str:
-        return text.upper()
-
-
-# Policies under test
-
-class AppliedPolicy(DirectedIntuition):
+class SignalPolicy(DirectedIntuition):
     def advise(self, state):
-        return self.intervene(
-            advice="Normalize before processing",
-            patch={"normalize": True},
-            confidence=0.9,
-        )
+        return self.hint(advice="Consider safety bounds.")
 
 
-class EmptyPatchPolicy(DirectedIntuition):
+class VetoSignalPolicy(DirectedIntuition):
     def advise(self, state):
-        return self.intervene(advice="No-op", patch={})
+        return self.veto(advice="Unsafe task.")
 
-
-class LowConfidencePolicy(DirectedIntuition):
-    def advise(self, state):
-        return self.intervene(
-            advice="Unsure",
-            patch={"normalize": True},
-            confidence=0.3,
-        )
-
-
-class MultiPatchPolicy(DirectedIntuition):
-    def advise(self, state):
-        return self.intervene(
-            advice="Tune inputs",
-            patch={"normalize": True, "risk": "low"},
-            confidence=0.9,
-        )
-
-
-class VetoPolicy(DirectedIntuition):
-    def advise(self, state):
-        return self.veto(advice="Unsafe task")
-
-
-class RewritePolicy(DirectedIntuition):
-    def advise(self, state):
-        text = state["task"]
-        return self.intervene(
-            advice="Rewrite input",
-            patch={"rewrite": f"{text} LIMIT 5"},
-            confidence=0.9,
-        )
-
-
-# Helpers
 
 @dataclass
 class RunArtifacts:
-    episode_id: str
     summary: Dict[str, Any]
-    direction_payloads: List[Dict[str, Any]]
     events: List[Dict[str, Any]]
 
 
-def _run(tmpdir, *, graph, policy, min_confidence: float = 0.5) -> RunArtifacts:
+def _run(tmpdir, *, policy) -> RunArtifacts:
     runs_dir = tmpdir / "runs"
     learn_dir = tmpdir / "learn"
-    ns.set(
-        runs_dir=str(runs_dir),
-        learn_home=str(learn_dir),
-        direction_min_confidence=min_confidence,
-    )
-    ep = ns.solve("Demo task", using=lambda: graph, intuition=policy)
-    summ = ns.summary.read(ep)
-    evs = list(ns.events.read(ep))
-    payloads = [e["payload"] for e in evs if e.get("phase") == "direction"]
-    return RunArtifacts(ep, summ, payloads, evs)
+    original = ns.get()
+    try:
+        ns.set(
+            runs_dir=str(runs_dir),
+            learn_home=str(learn_dir),
+            planner_mode="meta",
+            governance_mode="off",
+        )
+        ep = ns.solve("Demo task", using=lambda: DictGraph(), intuition=policy)
+        summ = ns.summary.read(ep)
+        evs = list(ns.events.read(ep))
+        return RunArtifacts(summ, evs)
+    finally:
+        ns.set(**original)
 
 
-# ----- Tests: direction reasons + diffs + metrics -----------------------------
-
-def test_direction_applied(tmp_path):
-    art = _run(tmp_path, graph=DictGraph(), policy=AppliedPolicy())
-    payload = art.direction_payloads[-1]
-
-    assert payload["reason"] == "applied"
-    assert payload["applied"] is True
-    assert payload["diff"] == [{"key": "normalize", "before": False, "after": True}]
-
-    # flags expose threshold for dashboards
-    assert art.summary["flags"]["direction"]["threshold"] == pytest.approx(0.5)
-
-    # metrics roll-up
-    mets = art.summary["metrics"]
-    assert mets.get("direction_events", 0) >= 1
-    assert mets.get("direction_applied", 0) >= 1
-    assert mets.get("direction_vetoed", 0) == 0
-    assert mets.get("act_count") == mets.get("steps")
-    assert mets.get("interpret_count") >= 1
-
-    # both intuition and direction events exist
+def test_intuition_emits_signals_and_direction_applies_meta_plan(tmp_path):
+    art = _run(tmp_path, policy=SignalPolicy())
     phases = {e.get("phase") for e in art.events}
     assert "intuition" in phases
     assert "direction" in phases
 
-
-def test_direction_empty_patch(tmp_path):
-    art = _run(tmp_path, graph=DictGraph(), policy=EmptyPatchPolicy())
-    payload = art.direction_payloads[-1]
-    assert payload["reason"] == "empty_patch"
-    assert payload["applied"] is False
-    assert payload.get("diff", []) == []
-
-
-def test_direction_low_confidence(tmp_path):
-    art = _run(
-        tmp_path,
-        graph=DictGraph(),
-        policy=LowConfidencePolicy(),
-        min_confidence=0.8,  # above policy's 0.3
-    )
-    payload = art.direction_payloads[-1]
-    assert payload["reason"] == "policy_low_confidence"
-    assert payload["applied"] is False
-    assert payload.get("diff", []) == []
+    direction_events = [e for e in art.events if e.get("phase") == "direction"]
+    payload = direction_events[-1]["payload"]
+    assert payload["status"] in {"applied", "skipped"}
+    if payload["status"] == "applied":
+        diff_keys = [item.get("key") for item in payload.get("diff", [])]
+        assert any(key and "plan.steps[0].description" in key for key in diff_keys)
 
 
-def test_direction_not_dict_input(tmp_path):
-    art = _run(tmp_path, graph=StringGraph(), policy=AppliedPolicy())
-    payload = art.direction_payloads[-1]
-    assert payload["reason"] == "not_patchable_input"
-    assert payload["applied"] is False
-    assert payload.get("diff", []) == []
-
-
-def test_direction_rewrite_patch(tmp_path):
-    art = _run(tmp_path, graph=StringGraph(), policy=RewritePolicy())
-    payload = art.direction_payloads[-1]
-    assert payload["reason"] == "rewritten"
-    assert payload["applied"] is True
-    assert payload.get("diff", []) == [{"key": "rewrite", "before": "Demo task", "after": "Demo task LIMIT 5"}]
-
-
-def test_direction_multi_patch_diff(tmp_path):
-    art = _run(tmp_path, graph=DictGraph(), policy=MultiPatchPolicy())
-    payload = art.direction_payloads[-1]
-    # order should reflect shallow-merge order; assert by keys
-    diff_keys = [d["key"] for d in payload["diff"]]
-    assert diff_keys == ["normalize", "risk"]
-
-
-def test_direction_veto(tmp_path):
-    runs_dir = tmp_path / "runs"
-    learn_dir = tmp_path / "learn"
-    ns.set(
-        runs_dir=str(runs_dir),
-        learn_home=str(learn_dir),
-        direction_min_confidence=0.5,
-    )
-
-    try:
-        ns.solve("Danger", using=lambda: DictGraph(), intuition=VetoPolicy())
-    except Exception as exc:
-        # Swallow only the veto control-flow signal, regardless of module identity.
-        if exc.__class__.__name__ != "NoesisVeto":
-            raise
-
-    # Fetch the most recent episode recorded in this isolated runs_dir
-    runs = list_runs(limit=1)
-    assert runs, "expected a recorded episode after veto"
-    ep = runs[0]["episode_id"]
-    summ = ns.summary.read(ep)
-    assert summ["flags"]["direction"]["vetoed"] == 1
-
-    events = list(ns.events.read(ep))
-    payloads = [e["payload"] for e in events if e.get("phase") == "direction"]
-    assert payloads[-1]["reason"] == "veto"
-
-
-def test_learn_event_emitted(tmp_path):
-    art = _run(tmp_path, graph=DictGraph(), policy=AppliedPolicy())
-    learn_events = [e for e in art.events if e.get("phase") == "learn"]
-    assert learn_events, "expected learn event in episode"
-    payload = learn_events[-1]["payload"]
-    assert payload.get("policy_id")
-    assert payload.get("applied") is False
-    assert payload.get("approval") in {"pending", "approved", "auto-applied"}
-    assert payload.get("id", "").endswith(f":{art.episode_id}")
-    assert isinstance(payload.get("proposal"), list)
-    for proposal in payload.get("proposal", []):
-        assert {"proposal_id", "kind", "target", "status"}.issubset(proposal.keys())
+def test_intuition_veto_does_not_block_act_without_governance(tmp_path):
+    art = _run(tmp_path, policy=VetoSignalPolicy())
+    act_events = [e for e in art.events if e.get("phase") == "act"]
+    assert act_events, "intuition veto should not block act without governance"

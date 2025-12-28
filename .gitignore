@@ -54,3 +54,6 @@ docs/rules.md
 noesis/.env
 AGENTS.md
 
+
+# local runs
+/tmp-run/

@@ -1,0 +1,13 @@
+[project]
+name = "noesis-quickstart"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=1.0.5",
+    "noesis",
+]
+
+[tool.uv.sources]
+noesis = { path = "../..", editable = true }

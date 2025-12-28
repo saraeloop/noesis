@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
@@ -80,16 +80,28 @@ class RuntimeEventBus(EventBus):
     ) -> UUID:
         payload = directive.to_mapping()
         payload["policy"] = directive.policy_id
-        event_id = _direction_event(
+        return self.emit_direction_payload(
+            payload=payload,
+            agent_id=directive.policy_id,
+            caused_by=caused_by,
+        )
+
+    def emit_direction_payload(
+        self,
+        *,
+        payload: Mapping[str, object],
+        agent_id: str,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        return _direction_event(
             self.context.run_dir,
             self.context.episode_id,
-            payload,
-            agent=directive.policy_id,
+            dict(payload),
+            agent=agent_id,
             caused_by=str(caused_by) if caused_by else None,
             now_fn=lambda: self.now().isoformat(),
             id_factory=self.event_id_factory,
         )
-        return event_id
 
     def emit_governance(
         self,

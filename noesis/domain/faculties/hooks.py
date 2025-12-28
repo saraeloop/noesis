@@ -6,16 +6,23 @@ from typing import Sequence, Tuple
 
 FACULTY_HOOK_ORDER: Tuple[str, ...] = (
     "observe",
+    "intuition",
     "interpret",
     "plan",
     "direction",
-    "governance.pre_act",
+    "governance",
     "act",
     "reflect",
-    "finalize",
+    "learn",
+    "terminate",
+    "insight",
 )
 
 _ORDER_INDEX = {phase: index for index, phase in enumerate(FACULTY_HOOK_ORDER)}
+_ALIASES = {
+    "governance.pre_act": "governance",
+    "finalize": "insight",
+}
 
 
 def validate_hook_sequence(phases: Sequence[str]) -> None:
@@ -23,14 +30,14 @@ def validate_hook_sequence(phases: Sequence[str]) -> None:
     Ensure that observed phases respect the canonical hook order.
 
     Extra phases are ignored, but any canonical phase that appears must respect
-    the monotonic ordering with the optional `governance.pre_act` occurring
-    before the first `act`.
+    the monotonic ordering with the optional `governance` occurring before `act`.
     """
     last_position = -1
     first_occurrence: dict[str, int] = {}
     for idx, phase in enumerate(phases):
-        if phase in _ORDER_INDEX and phase not in first_occurrence:
-            first_occurrence[phase] = idx
+        normalized = _ALIASES.get(phase, phase)
+        if normalized in _ORDER_INDEX and normalized not in first_occurrence:
+            first_occurrence[normalized] = idx
 
     last_position = -1
     for canonical in FACULTY_HOOK_ORDER:
@@ -41,10 +48,10 @@ def validate_hook_sequence(phases: Sequence[str]) -> None:
             raise ValueError(f"Phase '{canonical}' occurred out of order.")
         last_position = position
 
-    pre_act = first_occurrence.get("governance.pre_act")
+    pre_act = first_occurrence.get("governance")
     act = first_occurrence.get("act")
     if pre_act is not None and act is not None and pre_act > act:
-        raise ValueError("governance.pre_act must precede act in the hook sequence.")
+        raise ValueError("governance must precede act in the hook sequence.")
 
 
 __all__ = ["FACULTY_HOOK_ORDER", "validate_hook_sequence"]

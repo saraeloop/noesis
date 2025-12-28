@@ -8,6 +8,7 @@
     "reflect": 200
   },
   "veto_count": 1,
+  "would_veto_count": 0,
   "branching_factor": 1.5,
   "plan_adherence": 0.8,
   "success": true,
