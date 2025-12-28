@@ -25,6 +25,7 @@ class InsightMetrics:
     schema_version: ClassVar[str] = current_version("insight")
     phase_ms: Mapping[str, Optional[int]] = field(default_factory=dict)
     veto_count: int = 0
+    would_veto_count: int = 0
     branching_factor: float = 0.0
     plan_adherence: float = 0.0
     success: bool = False
@@ -35,6 +36,7 @@ class InsightMetrics:
         payload: Dict[str, Any] = {
             "schema_version": self.schema_version,
             "veto_count": self.veto_count,
+            "would_veto_count": self.would_veto_count,
             "branching_factor": round(self.branching_factor, 4),
             "plan_adherence": round(self.plan_adherence, 4),
             "success": self.success,
@@ -60,6 +62,7 @@ class InsightMetrics:
         return cls(
             phase_ms=phase_ms,
             veto_count=int(payload.get("veto_count", 0)),
+            would_veto_count=int(payload.get("would_veto_count", 0)),
             branching_factor=float(payload.get("branching_factor", 0.0)),
             plan_adherence=float(payload.get("plan_adherence", 0.0)),
             success=bool(payload.get("success", False)),
@@ -125,9 +128,29 @@ def _success_from_events(events: List[Dict[str, Any]]) -> int:
     return 0
 
 
+def _is_governance_enforce_veto(payload: Mapping[str, Any]) -> bool:
+    if payload.get("decision") != "veto":
+        return False
+    if payload.get("error"):
+        return False
+    mode = payload.get("mode")
+    enforced = payload.get("enforced")
+    if isinstance(mode, str) and mode.lower() == "enforce":
+        return bool(enforced) if enforced is not None else True
+    return enforced is True
+
+
+def _is_governance_audit_veto(payload: Mapping[str, Any]) -> bool:
+    if payload.get("decision") != "veto":
+        return False
+    mode = payload.get("mode")
+    return isinstance(mode, str) and mode.lower() == "audit"
+
+
 def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute roll-up metrics from an episode summary + event stream."""
     direction_events = [event for event in events if event.get("phase") == "direction"]
+    governance_events = [event for event in events if event.get("phase") == "governance"]
     plan_events = [
         event
         for event in events
@@ -162,6 +185,16 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         if event.get("payload", {}).get("status") == "blocked"
         or event.get("payload", {}).get("reason") == "veto"
     ]
+    governance_vetoed = [
+        event
+        for event in governance_events
+        if _is_governance_enforce_veto(event.get("payload") or {})
+    ]
+    governance_would_veto = [
+        event
+        for event in governance_events
+        if _is_governance_audit_veto(event.get("payload") or {})
+    ]
 
     total_dir = max(len(direction_events), 1)
     direction_applied_rate = len(applied) / total_dir
@@ -176,7 +209,7 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
     t_first_act = _first_event_time(act_events, "act")
     first_action_latency_ms = _ms_between(t_start, t_first_act)
 
-    t_veto = _first_event_time(vetoed, "direction")
+    t_veto = _first_event_time(governance_vetoed, "governance")
     time_to_veto_ms = _ms_between(t_start, t_veto)
 
     conf_applied = [float(event["payload"].get("confidence", 0.0)) for event in applied]
@@ -206,6 +239,8 @@ def compute_metrics(summary: Dict[str, Any], events: List[Dict[str, Any]]) -> Di
         "direction_events": len(direction_events),
         "direction_applied": len(applied),
         "direction_vetoed": len(vetoed),
+        "governance_vetoed": len(governance_vetoed),
+        "governance_would_vetoed": len(governance_would_veto),
         "direction_applied_rate": direction_applied_rate,
         "top_reasons": top_reasons,
         "plan_total": planned_steps,
@@ -242,6 +277,7 @@ def build_insight_metrics(
     summary_metrics = summary_metrics or {}
     phase_ms: Dict[str, Optional[int]] = {}
     direction_events = [event for event in events if event.get("phase") == "direction"]
+    governance_events = [event for event in events if event.get("phase") == "governance"]
     plan_events = [
         event
         for event in events
@@ -268,8 +304,13 @@ def build_insight_metrics(
 
     veto_count = sum(
         1
-        for event in direction_events
-        if (event.get("payload") or {}).get("status") == "blocked"
+        for event in governance_events
+        if _is_governance_enforce_veto(event.get("payload") or {})
+    )
+    would_veto_count = sum(
+        1
+        for event in governance_events
+        if _is_governance_audit_veto(event.get("payload") or {})
     )
     plan_revisions = sum(
         1
@@ -317,6 +358,7 @@ def build_insight_metrics(
     return InsightMetrics(
         phase_ms=phase_ms,
         veto_count=veto_count,
+        would_veto_count=would_veto_count,
         branching_factor=branching_factor,
         plan_adherence=plan_adherence,
         success=success_flag,
@@ -353,7 +395,8 @@ def _finalize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
     metrics.setdefault("schema_version", InsightMetrics.schema_version)
     metrics.setdefault("phase_ms", {})
-    metrics.setdefault("veto_count", metrics.get("direction_vetoed", 0))
+    metrics.setdefault("veto_count", metrics.get("governance_vetoed", 0))
+    metrics.setdefault("would_veto_count", metrics.get("governance_would_vetoed", 0))
     metrics.setdefault("branching_factor", 0.0)
     metrics.setdefault("plan_adherence", 0.0)
     metrics.setdefault("success", metrics.get("success", 0))

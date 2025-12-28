@@ -54,7 +54,6 @@ def _run_episode(tmp_path: Path, goal: str) -> Tuple[list[dict], dict, dict]:
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
 
     event_facade.start(ctx.run_dir, ctx.episode_id, {"task": ctx.task, "seed": ctx.seed})
-    event_facade.observe(ctx.run_dir, ctx.episode_id, task=ctx.task, tags=ctx.tags, snapshot=None)
 
     request = EpisodeRequest(goal=ctx.task, beliefs=(), context=ctx)
     runner.run(request)
@@ -84,7 +83,6 @@ def _run_minimal_episode(tmp_path: Path, goal: str) -> Tuple[list[dict], dict, d
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
 
     event_facade.start(ctx.run_dir, ctx.episode_id, {"task": ctx.task, "seed": ctx.seed})
-    event_facade.observe(ctx.run_dir, ctx.episode_id, task=ctx.task, tags=ctx.tags, snapshot=None)
 
     request = EpisodeRequest(goal=ctx.task, beliefs=(), context=ctx)
     runner.run(request)
@@ -104,6 +102,7 @@ def test_success_episode_metrics(tmp_path) -> None:
 
     assert insight["success"] is True
     assert insight["veto_count"] == 0
+    assert insight["would_veto_count"] == 0
     assert insight["plan_adherence"] == 1.0
     assert insight["tool_coverage"] == 1.0
     assert insight["plan_revisions"] >= 0  # meta planner may adjust directives
@@ -132,6 +131,7 @@ def test_veto_episode_metrics_and_causality(tmp_path) -> None:
 
     assert insight["success"] is False
     assert insight["veto_count"] >= 1
+    assert insight["would_veto_count"] == 0
     assert insight["plan_adherence"] == 0.0
     assert insight["tool_coverage"] == 0.0
 
@@ -147,16 +147,17 @@ def test_veto_episode_metrics_and_causality(tmp_path) -> None:
     assert plan_events
     plan_id = plan_events[-1]["id"]
 
-    governance_events = _phase(events, "governance")
-    assert governance_events and governance_events[-1]["payload"]["decision"] == "veto"
-    governance_id = governance_events[-1]["id"]
-    assert governance_events[-1]["caused_by"] in {plan_id, *[ev.get("id") for ev in _phase(events, "direction")]}
-
     blocked_directions = [
         ev for ev in _phase(events, "direction") if (ev.get("payload") or {}).get("status") == "blocked"
     ]
     assert blocked_directions, "expected a blocked direction after governance veto"
-    assert blocked_directions[-1]["caused_by"] == governance_id
+    blocked_id = blocked_directions[-1]["id"]
+    assert blocked_directions[-1]["caused_by"] in {plan_id, *[ev.get("id") for ev in _phase(events, "direction")]}
+
+    governance_events = _phase(events, "governance")
+    assert governance_events and governance_events[-1]["payload"]["decision"] == "veto"
+    governance_id = governance_events[-1]["id"]
+    assert governance_events[-1]["caused_by"] == blocked_id
 
     act_events = _phase(events, "act")
     assert act_events == []
@@ -172,4 +173,5 @@ def test_minimal_mode_emits_no_direction_or_governance(tmp_path) -> None:
     assert _phase(events, "governance") == []
     assert insight["plan_adherence"] == 1.0
     assert insight["veto_count"] == 0
+    assert insight["would_veto_count"] == 0
     assert insight["tool_coverage"] == 1.0

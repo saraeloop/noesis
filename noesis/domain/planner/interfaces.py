@@ -8,7 +8,7 @@ concrete implementations or frameworks.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 from uuid import UUID
 
 from ..state import ActionRecord, NoesisState, PlanStep, CognitiveMetrics, CognitiveEvent
@@ -71,6 +71,15 @@ class EventBus(Protocol):
         self,
         *,
         directive: PlannerDirective,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        ...
+
+    def emit_direction_payload(
+        self,
+        *,
+        payload: Mapping[str, object],
+        agent_id: str,
         caused_by: UUID | None = None,
     ) -> UUID:
         ...

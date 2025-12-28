@@ -49,7 +49,6 @@ def test_episode_runner_emits_metrics_and_lineage(tmp_path) -> None:
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
 
     events.start(ctx.run_dir, ctx.episode_id, {"task": ctx.task, "seed": ctx.seed})
-    events.observe(ctx.run_dir, ctx.episode_id, task=ctx.task, tags=ctx.tags, snapshot=None)
 
     request = EpisodeRequest(goal=ctx.task, beliefs=(), context=ctx)
     runner.run(request)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Mapping
 from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
@@ -27,6 +28,15 @@ class DummyEventBus(EventBus):
         )
 
     def emit_direction(self, *, directive, caused_by=None) -> UUID:  # type: ignore[override]
+        return uuid4()
+
+    def emit_direction_payload(  # type: ignore[override]
+        self,
+        *,
+        payload: Mapping[str, object],
+        agent_id: str,
+        caused_by=None,
+    ) -> UUID:
         return uuid4()
 
     def emit_governance(self, *, result, caused_by=None) -> UUID:  # type: ignore[override]

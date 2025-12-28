@@ -3,10 +3,12 @@ title: "Faculties"
 description: "Understanding the four cognitive faculties: Intuition, Direction, Governance, and Insight."
 ---
 
-Noēsis separates **faculties** (domain modules that run at specific hooks) from **phases** (the cognitive loop).
+Noēsis separates **faculties** (capabilities/subsystems in the runtime) from **phases** (observable events emitted into the episode trace).
 
-- **Faculties** describe *what* kind of cognition runs: **Intuition**, **Direction**, **Governance**, **Insight**
-- **Phases** describe *when* something happens: `observe → interpret → plan → act → reflect → finalize`
+- **Faculties** describe *what* kind of cognition runs: **Intuition**, **Direction**, **Governance**, **Insight** (other runtime faculties like **Memory** can participate too).
+- **Phases** describe *what* gets recorded: `observe → intuition → interpret → plan → direction → governance → act → reflect → learn → terminate → insight → memory`
+
+Faculties exist even when they emit nothing; a faculty can be active and still produce no events for a given episode.
 
 <Info>
 Most users configure faculties via `noesis.set()` and `noesis.run()`, then observe results in artifacts (`events.jsonl`, `summary.json`). Python imports are only needed for writing custom policies—see [Advanced: Writing policies](#advanced-writing-policies).
@@ -14,10 +16,10 @@ Most users configure faculties via `noesis.set()` and `noesis.run()`, then obser
 
 ## Cognitive loop hook order
 
-The runtime executes hooks in a canonical order:
+The runtime emits phases in a canonical order:
 
 ```
-observe → interpret → plan → direction → governance.pre_act → act → reflect → finalize
+observe → intuition → interpret → plan → direction → governance → act → reflect → learn → terminate → insight → memory
 ```
 
 <Info>
@@ -62,12 +64,12 @@ flowchart LR
     Governance --> Insight
 ```
 
-| Faculty | Role | Hook(s) | Artifact keys |
+| Faculty | Role | Phase(s) | Artifact keys |
 | --- | --- | --- | --- |
-| **Intuition** | Policy guidance | interpret | `phase="intuition"` events |
+| **Intuition** | Policy guidance | intuition | `phase="intuition"` events |
 | **Direction** | Plan mutations | direction | `phase="direction"` events |
-| **Governance** | Pre-act audit | governance.pre_act | `phase="governance"` events |
-| **Insight** | Metrics computation | finalize | `summary.json` metrics |
+| **Governance** | Pre-act audit | governance | `phase="governance"` events |
+| **Insight** | Metrics computation | insight | `summary.json` metrics |
 
 ---
 
@@ -129,7 +131,7 @@ Intuition events appear in `events.jsonl` with `phase="intuition"`:
 
 ## Direction
 
-**Direction** handles plan mutations through versioned directives. It runs in the `direction` hook (after `plan`, before `governance.pre_act`) and does not perform vetoes—fail-closed gates live in Governance.
+**Direction** handles plan mutations through versioned directives. It runs after `plan`, before `governance`, and does not perform vetoes—fail-closed gates live in Governance.
 
 ### PlannerDirective (artifact schema)
 
@@ -176,7 +178,7 @@ Directive IDs are computed from content for reproducible lineage.
 
 ## Governance
 
-**Governance** is the pre-action audit layer that evaluates proposed actions before execution. It operates in the `governance.pre_act` hook.
+**Governance** is the pre-action audit layer that evaluates proposed actions before execution. It operates in the `governance` phase.
 
 ### Configuration
 
@@ -247,7 +249,7 @@ _See `events.v1` for the canonical terminate payload._
 
 ## Insight
 
-**Insight** computes metrics from episode traces during the finalize phase.
+**Insight** computes metrics from episode traces during the insight emission.
 
 ### InsightMetrics (artifact schema)
 

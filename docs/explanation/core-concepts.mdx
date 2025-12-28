@@ -55,36 +55,39 @@ ep2 = ns.run("task")
 
 ## The cognitive loop
 
-Every episode flows through a sequence of **nine phases** that make reasoning explicit:
+Every episode emits a sequence of **phases** that make reasoning explicit:
 
 ```
-Observe → Interpret → Plan → Direction → Governance → Act → Reflect → Learn → Insight
+observe → intuition → interpret → plan → direction → governance → act → reflect → learn → terminate → insight → memory
 ```
 
 <Info>
-In **meta mode** (default), all nine phases execute. In **minimal mode**, Direction, Governance, and Insight are skipped for faster execution.
+In **meta mode** (default), all faculties are active and may emit phases. In **minimal mode**, Direction, Governance, and Insight still exist but may emit no events for faster execution.
 </Info>
 
 | Phase | Purpose | What gets recorded |
 | --- | --- | --- |
-| **Observe** | Capture raw task and context | Task text, tags, timestamp |
-| **Interpret** | Extract signals and intent | Signals, risks, constraints |
-| **Plan** | Decide what to do | Steps, tools to use |
-| **Direction** | Apply policy mutations | Directives, diffs |
-| **Governance** | Pre-action audit | Allow/audit/veto decisions |
-| **Act** | Execute the plan | Tool calls, adapter results |
-| **Reflect** | Evaluate outcomes | Success/failure, reasons |
-| **Learn** | Update for future runs | Proposals, adaptations |
-| **Insight** | Compute KPIs | Metrics, plan adherence |
+| **observe** | Capture raw task and context | Task text, tags, timestamp |
+| **intuition** | Policy guidance | Hints, interventions, veto signals |
+| **interpret** | Extract signals and intent | Signals, risks, constraints |
+| **plan** | Decide what to do | Steps, tools to use |
+| **direction** | Apply policy mutations | Directives, diffs |
+| **governance** | Pre-action audit | Allow/audit/veto decisions |
+| **act** | Execute the plan | Tool calls, adapter results |
+| **reflect** | Evaluate outcomes | Success/failure, reasons |
+| **learn** | Update for future runs | Proposals, adaptations |
+| **terminate** | Close the episode | Final status and message |
+| **insight** | Compute KPIs | Metrics, plan adherence |
+| **memory** | Persist context | Memory updates/port status |
 
 See the [cognitive loop explanation](/explanation/cognitive-loop) for a deeper dive.
 
 ## Faculties
 
-Noēsis organizes capabilities into four **faculties** that execute in a canonical order. Each faculty emits events so you can audit (or veto) what happened.
+Noēsis organizes capabilities into four **faculties** that execute in a canonical order. Faculties exist even when they emit nothing.
 
 ```
-observe → interpret → plan → direction → governance.pre_act → act → reflect → finalize
+Intuition → Direction → Governance → Insight
 ```
 
 ### Intuition

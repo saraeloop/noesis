@@ -78,7 +78,6 @@ def test_episode_runner_records_governance_veto(tmp_path) -> None:
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
 
     runtime_events.start(run_dir, context.episode_id, {"task": context.task, "seed": context.seed})
-    runtime_events.observe(run_dir, context.episode_id, task=context.task, tags=context.tags, snapshot=None)
     request = EpisodeRequest(goal=context.task, beliefs=(), context=context)
     result = runner.run(request)
 
@@ -88,6 +87,9 @@ def test_episode_runner_records_governance_veto(tmp_path) -> None:
     assert decisions and decisions[-1]["payload"]["decision"] == "veto"
     direction = [evt for evt in recorded if evt.get("phase") == "direction"]
     assert any(evt["payload"].get("status") == "blocked" for evt in direction)
+    phases = [evt.get("phase") for evt in recorded]
+    assert "direction" in phases and "governance" in phases
+    assert phases.index("direction") < phases.index("governance")
     act_events = [evt for evt in recorded if evt.get("phase") == "act"]
     assert act_events == []
 
@@ -132,22 +134,21 @@ def test_governance_failure_fallback_uses_allowed_policy_kind(tmp_path) -> None:
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
 
     runtime_events.start(run_dir, context.episode_id, {"task": context.task, "seed": context.seed})
-    runtime_events.observe(run_dir, context.episode_id, task=context.task, tags=context.tags, snapshot=None)
     request = EpisodeRequest(goal=context.task, beliefs=(), context=context)
     result = runner.run(request)
 
-    assert result.outcome.status == "vetoed"
+    assert result.outcome.status == "error"
     recorded = read_events(run_dir)
     governance_events = [evt for evt in recorded if evt.get("phase") == "governance"]
     assert governance_events
     payload = governance_events[-1]["payload"]
-    assert payload["decision"] == "veto"
+    assert payload["decision"] == "audit"
     assert payload["policy_kind"] in {"rules", "llm", "hybrid"}
     assert payload.get("mode") == "enforce"
-    assert payload.get("enforced") is True
+    assert payload.get("enforced") is False
     terminate_events = [evt for evt in recorded if evt.get("phase") == "terminate"]
     assert terminate_events
-    assert terminate_events[-1]["payload"]["status"] == "vetoed"
+    assert terminate_events[-1]["payload"]["status"] == "error"
     act_events = [evt for evt in recorded if evt.get("phase") == "act"]
     assert act_events == []
 
@@ -162,3 +163,59 @@ def test_minimal_planner_emits_no_governance(tmp_path) -> None:
         assert "governance" not in phases
     finally:
         ns.set(runs_dir=original["runs_dir"], planner_mode=original.get("planner_mode", "meta"))
+
+
+def test_governance_timeout_fail_open_allows_act(tmp_path) -> None:
+    import time
+
+    class SlowGovernor:
+        def evaluate(self, *, goal: str, plan):
+            time.sleep(0.02)
+            return PreActGovernor().evaluate(goal=goal, plan=plan)
+
+    run_dir = tmp_path / "run-timeout"
+    run_dir.mkdir()
+    context = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="gov-ep-timeout",
+        seed=0,
+        task="Safe task",
+        tags={},
+        adapter_label="adapter:core.minimal",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    state_repo = RuntimeStateRepository(context=context)
+    lineage = LineageTracker()
+    clock = RuntimeClock()
+    emitter = CognitiveEventEmitter(run_dir=context.run_dir)
+    event_bus = RuntimeEventBus(
+        context=context,
+        emitter=emitter,
+        lineage=lineage,
+        clock=clock,
+    )
+    deps = EpisodeDependencies(
+        planner=MinimalPlanner(),
+        actuator=MinimalActuator(tool_label=context.adapter_label),
+        event_bus=event_bus,
+        state_repository=state_repo,
+        direction_planner=MetaPlanner(),
+        governance_policy=SlowGovernor(),
+        governance_mode=GovernanceMode.AUDIT,
+        governance_timeout_ms=1,
+    )
+    instrumentation = EpisodeInstrumentation(clock=clock, emitter=emitter, lineage=lineage, hooks=())
+    runner = EpisodeRunner(deps, instrumentation=instrumentation)
+
+    runtime_events.start(run_dir, context.episode_id, {"task": context.task, "seed": context.seed})
+    request = EpisodeRequest(goal=context.task, beliefs=(), context=context)
+    runner.run(request)
+
+    recorded = read_events(run_dir)
+    governance_events = [evt for evt in recorded if evt.get("phase") == "governance"]
+    assert governance_events
+    payload = governance_events[-1]["payload"]
+    assert payload.get("decision") == "audit"
+    assert payload.get("error", {}).get("timeout") is True
+    act_events = [evt for evt in recorded if evt.get("phase") == "act"]
+    assert act_events, "audit mode should proceed despite timeout"

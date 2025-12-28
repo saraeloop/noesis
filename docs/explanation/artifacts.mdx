@@ -269,9 +269,12 @@ Event metrics always include `started_at`, `completed_at`, and `duration_ms`, wh
 
 ### Event phases
 
+The `phase` field stores the phase emitted into the trace.
+
 | Phase | Purpose |
 | --- | --- |
 | `observe` | Capture raw input |
+| `intuition` | Policy guidance |
 | `interpret` | Extract signals |
 | `plan` | Decide actions |
 | `direction` | Policy directives |
@@ -280,6 +283,8 @@ Event metrics always include `started_at`, `completed_at`, and `duration_ms`, wh
 | `reflect` | Evaluate outcomes |
 | `learn` | Propose updates |
 | `terminate` | Episode end |
+| `insight` | Metrics and KPIs |
+| `memory` | Persistence status |
 
 ### Reading events
 

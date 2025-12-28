@@ -5,9 +5,7 @@ from pathlib import Path
 
 import noesis as ns
 from noesis.trace.events import read_events, write_event
-from noesis.direction import DirectedIntuition
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
-from noesis.io import list_runs
 
 
 def _iso_now() -> str:
@@ -172,43 +170,39 @@ def test_insight_phase_validates(tmp_path: Path):
 def test_latency_metrics_positive(tmp_path: Path):
     runs_dir = tmp_path / "runs-latency"
     learn_dir = tmp_path / "learn-latency"
-    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_dir))  # default planner: meta
-
-    class VetoImmediately(DirectedIntuition):
-        def advise(self, state):
-            return self.veto(advice="Stop immediately.")
+    original = ns.get()
+    ns.set(
+        runs_dir=str(runs_dir),
+        learn_home=str(learn_dir),
+        governance_mode="enforce",
+    )  # default planner: meta
 
     class NoopGraph:
         def invoke(self, payload):
             return payload
 
-    # A vetoing intuition in meta mode raises NoesisVeto by design.
-    # Catch it so we can assert latency/insight metrics written by the summary.
     try:
-        ns.solve(
-            "Latency check",
+        episode_id = ns.solve(
+            task="Danger operation: delete production database",
             using=lambda: NoopGraph(),
-            intuition=VetoImmediately(),
+            intuition=False,
         )
-    except Exception as exc:
-        if exc.__class__.__name__ != "NoesisVeto":
-            raise
 
-    # Grab the latest episode written under this runs_dir
-    episode_id = list_runs(limit=1)[0]["episode_id"]
+        summary = ns.summary.read(episode_id)
+        metrics = summary["metrics"]
+        latencies = metrics.get("latencies", {})
 
-    summary = ns.summary.read(episode_id)
-    metrics = summary["metrics"]
-    latencies = metrics.get("latencies", {})
+        # time to veto must be recorded and positive
+        assert latencies.get("time_to_veto_ms") is not None
+        assert latencies["time_to_veto_ms"] >= 1
 
-    # time to veto must be recorded and positive
-    assert latencies.get("time_to_veto_ms") is not None
-    assert latencies["time_to_veto_ms"] >= 1
+        # if a first action latency exists (some adapters may emit), it must be sane
+        first_action = latencies.get("first_action_ms")
+        if first_action is not None:
+            assert first_action >= 1
 
-    # if a first action latency exists (some adapters may emit), it must be sane
-    first_action = latencies.get("first_action_ms")
-    if first_action is not None:
-        assert first_action >= 1
-
-    insight = summary["insight"]["metrics"]
-    assert insight["veto_count"] >= 1
+        insight = summary["insight"]["metrics"]
+        assert insight["veto_count"] >= 1
+        assert insight["would_veto_count"] == 0
+    finally:
+        ns.set(**original)

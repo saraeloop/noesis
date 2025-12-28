@@ -23,6 +23,10 @@
       "type": "integer",
       "minimum": 0
     },
+    "would_veto_count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "branching_factor": {
       "type": "number"
     },

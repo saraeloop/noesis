@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 
 from .langgraph import LangGraphAdapter
-from .protocols import AdapterPath, DEFAULT_MIN_CONFIDENCE
+from .protocols import AdapterPath
 
 __all__ = ["CrewAIAdapter"]
 
@@ -35,20 +35,18 @@ class _CrewGraph:
 
 
 class CrewAIAdapter(LangGraphAdapter):
-    """CrewAI integration that reuses the LangGraph instrumentation."""
+    """CrewAI integration that reuses the LangGraph invocation wrapper."""
 
     def __init__(
         self,
         crew: Any,
         *,
         input_mapper: Optional[Callable[[str], Any]] = None,
-        min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     ) -> None:
         mapper = input_mapper or getattr(crew, "__noesis_input_mapper__", None) or (lambda task: {"task": task})
         super().__init__(
             _CrewGraph(crew),
             input_mapper=mapper,
-            min_confidence=min_confidence,
         )
         self._crew = crew
 
