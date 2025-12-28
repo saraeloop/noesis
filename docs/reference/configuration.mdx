@@ -25,7 +25,7 @@ Directory where artifacts are stored.
 | Python | `ns.set(runs_dir="./my-runs")` |
 | Environment | `NOESIS_RUNS_DIR=./my-runs` |
 | TOML | `runs_dir = "./my-runs"` |
-| Default | `"./runs"` |
+| Default | `"runs"` |
 
 ### planner_mode
 
@@ -51,7 +51,7 @@ Controls planning strategy and direction behavior.
 
 ### agents
 
-Path to the agents registry file. Used by the CLI to resolve named agents from a registry file. If unset, Noēsis looks for `agents.yaml` in the working directory.
+Reserved/unused in v1.0.0. Parsed into the runtime config but not read by the CLI/runtime execution paths in this release.
 
 | Source | Setting |
 | --- | --- |
@@ -62,7 +62,7 @@ Path to the agents registry file. Used by the CLI to resolve named agents from a
 
 ### tasks
 
-Path to the tasks registry file. Used by the CLI to resolve named tasks from a registry file. If unset, Noēsis looks for `tasks.yaml` in the working directory.
+Reserved/unused in v1.0.0. Parsed into the runtime config but not read by the CLI/runtime execution paths in this release.
 
 | Source | Setting |
 | --- | --- |
@@ -190,6 +190,27 @@ How to handle governance errors/timeouts.
 | `fail_open` | On error, allow action to proceed |
 | `fail_closed` | On error, treat as veto |
 
+### governance_timeout_ms
+
+Reserved/unused in v1.0.0. Parsed into the runtime config but not enforced during episode execution in this release.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(governance_timeout_ms=250)` |
+| Environment | `NOESIS_GOVERNANCE_TIMEOUT_MS=250` |
+| TOML | `governance_timeout_ms = 250` |
+| Default | `None` |
+
+### policy_aliases
+
+Mapping of policy alias → import spec. Used by the CLI `--policy` flag to resolve short names.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(policy_aliases={"safe": "my.module:SafetyPolicy"})` |
+| TOML | `policy_aliases = { safe = "my.module:SafetyPolicy" }` |
+| Default | `{}` |
+
 ### learn_home
 
 Directory for learning data storage.
@@ -237,7 +258,9 @@ Mode for prompt provenance storage.
 
 ## Configuration file
 
-Create a `noesis.toml` in your project root. Noēsis reads configuration from the `[noesis]` table:
+Noēsis searches for a config file by walking upward from the current working directory. Supported filenames are `noesis.toml` and `.noesis.toml`.
+
+The recommended form is a `[noesis]` table (if the table is missing, Noēsis falls back to treating the full TOML file as the config mapping):
 
 ```toml noesis.toml
 [noesis]
@@ -259,7 +282,7 @@ prompt_provenance_mode = "hash_only"
 
 ## Environment variables
 
-All configuration options have environment variable equivalents:
+The following runtime configuration options have environment variable equivalents:
 
 | Option | Environment variable |
 | --- | --- |
@@ -274,10 +297,17 @@ All configuration options have environment variable equivalents:
 | `direction_min_confidence` | `NOESIS_DIRECTION_MIN_CONFIDENCE` |
 | `governance_mode` | `NOESIS_GOVERNANCE_MODE` |
 | `governance_failure_policy` | `NOESIS_GOVERNANCE_FAILURE_POLICY` |
+| `governance_timeout_ms` | `NOESIS_GOVERNANCE_TIMEOUT_MS` |
 | `learn_auto_apply_min_confidence` | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` |
 | `learn_auto_apply_min_successes` | `NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES` |
 | `prompt_provenance_enabled` | `NOESIS_PROMPT_PROVENANCE_ENABLED` |
 | `prompt_provenance_mode` | `NOESIS_PROMPT_PROVENANCE_MODE` |
+
+<Note>
+`policy_aliases` has no environment variable form in v1.0.0 (configure it via `ns.set()` or `noesis.toml`).
+
+`NOESIS_DIR_MIN_CONFIDENCE` is a deprecated alias for `NOESIS_DIRECTION_MIN_CONFIDENCE` (if set, Noēsis warns and uses it).
+</Note>
 
 **Example**:
 
