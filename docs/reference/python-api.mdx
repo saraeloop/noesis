@@ -51,7 +51,7 @@ Metadata tags attached to the episode.
 Optional runtime context. If provided, execution bypasses the default session.
 </ParamField>
 
-**Returns**: Episode ID (e.g., `"ep_2024_abc123_s0"`)
+**Returns**: Episode ID (e.g., `"ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"`)
 
 **Example**:
 
@@ -62,16 +62,18 @@ episode_id = ns.run("Draft release notes")
 episode_id = ns.run("Draft release notes", intuition=False, tags={"env": "staging"})
 ```
 
-**Context example**:
+**Runtime context example**:
 
 ```python
-ctx = {"tenant": "acme", "user_id": "u_123"}
+import noesis as ns
+from noesis.context import create_runtime_context
 
-episode_id = ns.run("Summarize this incident", context=ctx)
-summary = ns.summary.read(episode_id, context=ctx)
+runtime = create_runtime_context()
+episode_id = ns.run("Summarize this incident", context=runtime)
+summary = ns.summary.read(episode_id, context=runtime)
 ```
 
-The structure of `context` is integration-specific; it is passed through to the runtime and ports.
+`context` is a `RuntimeContext` (a ports container). For metadata, prefer `tags={...}`.
 
 ### ns.solve()
 
@@ -131,12 +133,14 @@ events = ns.events.read(
 
 Set `stream=True` to iterate lazily.
 
-### ns.list_runs()
+### noesis.io.list_runs()
 
 List recent episodes (newest first).
 
 ```python
-episodes = ns.list_runs(
+from noesis.io import list_runs
+
+episodes = list_runs(
     limit: int = 50,
     since: str | None = None,
     *,
@@ -147,12 +151,18 @@ episodes = ns.list_runs(
 
 Each row includes `episode_id`, `task`, `started_at`, `flags`, `success`, `manifest`, and `manifest_status` (when `strict_manifest=True`).
 
-### ns.last()
+<Note>
+In v1.0.0, `ns.list_runs()` exists as a deprecated legacy alias. Prefer `noesis.io.list_runs()`.
+</Note>
+
+### noesis.io.last()
 
 Get the most recent episode ID.
 
 ```python
-episode_id = ns.last(*, context: Any | None = None) -> str | None
+from noesis.io import last, list_runs
+
+episode_id = last(*, context: Any | None = None) -> str | None
 ```
 
 ### ns.set() / ns.get()
@@ -160,23 +170,23 @@ episode_id = ns.last(*, context: Any | None = None) -> str | None
 Update or read the current configuration snapshot.
 
 ```python
-ns.set(runs_dir="./runs/demo", planner_mode="minimal", direction_min_confidence=0.7)
+ns.set(runs_dir="runs", planner_mode="minimal", direction_min_confidence=0.7)
 config = ns.get()  # returns a mapping of current config values
 ```
 
-Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `governance_mode` (`off`/`audit`/`enforce`), `governance_failure_policy`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents`, `tasks`.
+Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `governance_mode` (`off`/`audit`/`enforce`), `governance_failure_policy`, `governance_timeout_ms` (reserved/unused), `policy_aliases`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents` (reserved/unused), `tasks` (reserved/unused).
 
 ## Intuition and policies
 
-### ns.DirectedIntuition
+### DirectedIntuition
 
 Base class for policies that can emit hints, interventions, or vetoes.
 
 ```python
-import noesis as ns
+from noesis.direction import DirectedIntuition
 from noesis.domain.faculties.intuition import IntuitionEvent
 
-class SafetyPolicy(ns.DirectedIntuition):
+class SafetyPolicy(DirectedIntuition):
     __version__ = "1.0"
 
     def advise(self, state: dict) -> IntuitionEvent | None:
@@ -204,7 +214,7 @@ Fields include `kind`, `advice`, `confidence`, `policy_id`, `policy_version`, `p
 Raised when a policy vetoes an episode.
 
 ```python
-from noesis import NoesisVeto
+from noesis.exceptions import NoesisVeto
 
 try:
     ns.run("DELETE * FROM users", intuition=True)
@@ -260,32 +270,9 @@ from noesis.governance import GovernanceResult
 
 ### Custom governors
 
-```python
-from noesis.governance import PreActGovernor, GovernanceResult, GovernanceDecision
-
-class MyGovernor(PreActGovernor):
-    def evaluate(self, *, goal: str, plan) -> GovernanceResult:
-        if "dangerous" in goal.lower():
-            return GovernanceResult(
-                decision=GovernanceDecision.VETO,
-                rule_id="custom.veto.dangerous",
-                score=0.95,
-                message="Blocked by custom policy",
-                policy_id="my_governor",
-                policy_version="1.0.0",
-            )
-        return GovernanceResult(
-            decision=GovernanceDecision.ALLOW,
-            rule_id="custom.allow.default",
-            score=0.1,
-            message="",
-            policy_id="my_governor",
-            policy_version="1.0.0",
-        )
-
-# Pass to ns.run()
-ns.run(task="...", governance_policy=MyGovernor())
-```
+<Note>
+Custom governor injection is not part of the v1.0.0 runtime/CLI execution surface. Governance is configured via `ns.set(governance_mode=..., governance_failure_policy=...)` and uses the built-in pre-act governor.
+</Note>
 
 ## Session management
 
@@ -295,9 +282,11 @@ Use sessions when you need isolated configuration, explicit lifecycle control, o
 from noesis import SessionBuilder
 
 session = SessionBuilder.from_env().build()
-with session:
-    ep = session.run("Process customer request")
-    summary = session.summary.read(ep)
+ep = session.run("Process customer request")
+
+# Read artifacts using the session's RuntimeContext
+import noesis as ns
+summary = ns.summary.read(ep, context=session.context)
 ```
 
 `SessionBuilder` reads config from env/TOML; you can also inject ports before building. Within a session, `run`/`solve` behave like the module-level helpers but share the session’s config and runtime context.
@@ -340,20 +329,9 @@ LearnStatus.APPLIED   # Already applied
 
 Dataclass for learning signals. Contains `kind`, `payload`, `confidence`, `status`, and metadata.
 
-### ns.learn.emit()
-
-Emit a learning signal for an episode:
-
-```python
-import noesis as ns
-
-ns.learn.emit(
-    episode_id=ep,
-    kind="policy_update",
-    payload={"rule": "block_dangerous", "confidence": 0.9},
-    run_dir=ns.get()["runs_dir"],
-)
-```
+<Note>
+In v1.0.0, learning proposals are emitted automatically during summary finalization when `learn_mode` is enabled. When proposals are generated, they are written to `learn.jsonl` for the episode and tracked under `learn_home`.
+</Note>
 
 ### Helper functions
 
@@ -402,15 +380,16 @@ Returned by policy methods. See schema above for fields.
 For reproducible testing and replay, Noesis exports deterministic clock and RNG utilities:
 
 ```python
+from datetime import datetime, timezone
 from noesis import DeterministicClock, DeterministicRNG
 
 # Fixed-time clock for testing
-clock = DeterministicClock(start_iso="2025-01-01T00:00:00Z")
+clock = DeterministicClock(start_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
 now = clock.now()  # Always returns the same timestamp
 
 # Seeded RNG for reproducibility
 rng = DeterministicRNG(seed=42)
-value = rng.random()  # Deterministic random values
+value = rng.bytes(8)  # Deterministic bytes
 ```
 
 These are used internally by the replay gate to ensure artifact determinism. Exposed for custom test harnesses and advanced integrations.
@@ -424,6 +403,7 @@ These are used internally by the replay gate to ensure artifact determinism. Exp
 | `NOESIS_DIRECTION_MIN_CONFIDENCE` | Direction minimum confidence |
 | `NOESIS_GOVERNANCE_MODE` | Governance mode (`off`/`audit`/`enforce`) |
 | `NOESIS_GOVERNANCE_FAILURE_POLICY` | Failure policy (`fail_open`/`fail_closed`) |
+| `NOESIS_GOVERNANCE_TIMEOUT_MS` | Reserved/unused in v1.0.0 (parsed into config) |
 | `NOESIS_INTUITION_MODE` | Intuition mode |
 | `NOESIS_TIMEOUT_SEC` | Default timeout (seconds) |
 | `NOESIS_LEARN_HOME` | Learning artifacts directory |
@@ -432,8 +412,8 @@ These are used internally by the replay gate to ensure artifact determinism. Exp
 | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` | Confidence threshold for auto-apply |
 | `NOESIS_PROMPT_PROVENANCE_ENABLED` | Enable prompt provenance (`true`/`false`) |
 | `NOESIS_PROMPT_PROVENANCE_MODE` | Prompt provenance mode |
-| `NOESIS_AGENTS` | Agent registry override |
-| `NOESIS_TASKS` | Tasks registry override |
+| `NOESIS_AGENTS` | Reserved/unused in v1.0.0 (parsed into config) |
+| `NOESIS_TASKS` | Reserved/unused in v1.0.0 (parsed into config) |
 
 ## Next steps
 

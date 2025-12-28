@@ -24,7 +24,7 @@ When PyPI is live, use `uv add noesis` or `pip install noesis`.
 
 ## Commands
 
-Available for now: `run`, `solve`, `list`, `show`, `view`, `events`, `insight`, `artifacts`, `diagnostics`, `version`, `validate-ports`, `migrate`, `new`.
+Available commands (in `noesis --help` order): `run`, `solve`, `list`, `show`, `events`, `insight`, `version`, `new`, `validate-ports`, `diagnostics`, `migrate`, `view`, `artifacts`.
 
 ### noesis run
 
@@ -145,17 +145,18 @@ noesis list -j | jq '.[0].episode_id'
 
 | Column | Description |
 | --- | --- |
-| Started | Start timestamp |
-| ID | Episode identifier |
-| Task | Truncated task description |
-| Manifest | Status note (only when `--strict-manifest` is used) |
+| `STARTED_AT` | Start timestamp (ISO-ish string, truncated) |
+| `EPISODE_ID` | Episode identifier (`ep_<ULID>`) |
+| `TASK` | Truncated task description (may include a manifest drift note) |
+
+When `--strict-manifest` is used and drift is detected, Noēsis appends a suffix like ` [manifest:mismatch]` to the task line.
 
 **Example output**:
 
 ```
-Started              ID                      Task
-2024-12-27 10:15:32  ep_2024_abc123_s0       Draft release notes
-2024-12-27 09:45:11  ep_2024_def456_s0       Analyze logs
+STARTED_AT                  EPISODE_ID                     TASK
+2024-12-27T10:15:32  ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C  Draft release notes
+2024-12-27T09:45:11  ep_01JH6Z1S9WZJ2K1ZB2R7C2JX0T  Analyze logs
 ```
 
 ### noesis show
@@ -183,20 +184,20 @@ noesis show EPISODE_ID [options]
 
 ```bash
 # Friendly output
-noesis show ep_2024_abc123_s0
+noesis show ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 
 # Raw JSON
-noesis show ep_2024_abc123_s0 -j
+noesis show ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j
 ```
 
 **Example output**:
 
 ```
-Episode: ep_2024_abc123_s0
-Task: Draft release notes
-Status: success
-Started: 2024-12-27T10:15:32Z
-Duration: 1.23s
+Episode
+  id      : ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+  task    : Draft release notes
+  started : 2024-12-27T10:15:32Z
+  duration: 1.23s
 ```
 
 ### noesis view
@@ -221,7 +222,7 @@ noesis view TARGET [options]
 | `-j, --json` | Emit JSON view | False |
 | `--events` | Stream raw `events.jsonl` | False |
 | `--grep SUBSTR` | Filter timeline rows by substring | None |
-| `--schema VERSION` | Validate against specific summary schema | `latest` (auto) |
+| `--schema VERSION` | Summary schema to validate against | `auto` |
 | `--fail-on-invalid` | Exit 1 if validation errors are detected | False |
 | `--open` | Print artifact paths | False |
 
@@ -229,22 +230,22 @@ noesis view TARGET [options]
 
 ```bash
 # Pretty viewer
-noesis view ep_2024_abc123_s0
+noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 
 # JSON
-noesis view ep_2024_abc123_s0 -j | jq '.summary.metrics.success'
+noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j | jq '.summary.metrics.success'
 
 # Show artifact paths
-noesis view ep_2024_abc123_s0 --open
+noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --open
 ```
 
 **Example output** (with `--open`):
 
 ```
 === artifacts ===
-dir: runs/ep_2024_abc123_s0
-summary: runs/ep_2024_abc123_s0/summary.json
-events: runs/ep_2024_abc123_s0/events.jsonl
+dir: runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+summary: runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
+events: runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/events.jsonl
 
 === timeline ===
 [start] 2024-12-27T10:15:32.000Z
@@ -273,20 +274,20 @@ noesis events EPISODE_ID [options]
 | Option | Description | Default |
 | --- | --- | --- |
 | `--phase PHASE` | Filter by phase | None |
-| `-j, --json` | Output events as JSONL | False |
+| `-j, --json` | Emit JSON (one object per event) | False |
 | `-q, --quiet` | Suppress banner | False |
 
 **Examples**:
 
 ```bash
 # All events
-noesis events ep_2024_abc123_s0
+noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 
 # Filter by phase
-noesis events ep_2024_abc123_s0 --phase act
+noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --phase act
 
-# JSON for piping
-noesis events ep_2024_abc123_s0 -j | jq '.phase'
+# JSON for piping (Noēsis prints one JSON object per event; use `jq -c` for compact one-line output)
+noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j | jq -c '.phase'
 
 # Latest episode
 noesis events $(noesis list -j | jq -r '.[0].episode_id')
@@ -306,24 +307,26 @@ noesis events $(noesis list -j | jq -r '.[0].episode_id')
 | `intuition` | Policy intuition |
 | `insight` | Insight metrics |
 | `reason` | Reasoning traces |
-| `governance` | Audit decisions |
 | `act` | Tool execution |
 | `reflect` | Outcome evaluation |
 | `learn` | Learning signals |
 | `terminate` | End state |
 | `error` | Error events |
 
+<Note>
+Governance events may appear in `events.jsonl` (phase `governance`) when governance is enabled, even though `noesis events --help` does not list `governance` in its phase hint.
+</Note>
+
 **Example output**:
 
 ```
-Episode: ep_2024_abc123_s0
-[start] 2024-12-27T10:15:32.000Z
-[observe] input captured
-[interpret] signals extracted
-[plan] 3 steps planned
-[act] step 1 executed
-[reflect] success
-[terminate] episode complete
+Episode: ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+[2024-12-27T10:15:32.000Z] start
+[2024-12-27T10:15:32.001Z] observe
+[2024-12-27T10:15:32.002Z] plan
+[2024-12-27T10:15:32.003Z] act        status=ok
+[2024-12-27T10:15:32.004Z] reflect    status=success
+[2024-12-27T10:15:32.005Z] terminate  status=success
 ```
 
 ### noesis insight
@@ -344,17 +347,17 @@ noesis insight EPISODE_ID [options]
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `-j, --json` | Output events as JSONL | False |
+| `-j, --json` | Emit JSON (one object per event) | False |
 | `-q, --quiet` | Suppress banner | False |
 
 **Examples**:
 
 ```bash
 # Get metrics
-noesis insight ep_2024_abc123_s0
+noesis insight ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 
 # Parse with jq
-noesis insight ep_2024_abc123_s0 -j | jq '.metrics.success'
+noesis insight ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j | jq -c '.payload.success'
 ```
 
 ### noesis artifacts
@@ -395,14 +398,14 @@ Unlike most commands, `artifacts verify` uses `--json` without a `-j` short form
 **Example**:
 
 ```bash
-noesis artifacts verify ep_2024_abc123_s0 --strict
+noesis artifacts verify ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --strict
 ```
 
 **Example output**:
 
 ```
-=== Artifact verification ===
-manifest : runs/ep_2024_abc123_s0/manifest.json
+Artifact verification
+manifest : runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
 status   : ok
 files    : 4
 duration : 12.34 ms
@@ -477,7 +480,7 @@ Replay exits `1` on drift, `0` otherwise. Default mode exits `1` on errors (or w
 ```
 === Noēsis diagnostics ===
 timestamp             : 1735312532
-version               : 1.0.0
+version               : v1.0.0
 summary_schema_version: 1.1.0
 state_version         : 1 (schema 1.0)
 selected_checks       : all
@@ -489,8 +492,8 @@ checks:
   [ok] learn_auto_apply_min_successes - 3
   [ok] ports - config=config/1.0-rc1
   [ok] config_snapshot - in sync
-  [ok] latest_summary - runs/ep_2024_abc123_s0/summary.json
-  [ok] artifact_manifest - runs/ep_2024_abc123_s0/manifest.json
+  [ok] latest_summary - runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
+  [ok] artifact_manifest - runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
 overall status        : ok
 ```
 
@@ -511,7 +514,7 @@ noesis version [-j]
 **Example output**:
 
 ```
-Noesis 1.0.0 (core 1.0.0, adapters: langgraph@on, crewai@missing, assistants@missing)
+Noesis v1.0.0 (core v1.0.0, adapters: langgraph@on, crewai@missing, assistants@missing)
 ```
 
 ### noesis validate-ports
@@ -579,6 +582,10 @@ These options work with all commands:
 
 | Variable | Description |
 | --- | --- |
+| `NOESIS_COMPACT` | Compact output (`true`/`false`, CLI output control) |
+| `NOESIS_VERBOSE` | Verbose output (`true`/`false`, CLI output control) |
+| `NOESIS_DEBUG` | Debug output (`true`/`false`, implies verbose; CLI output control) |
+| `NO_COLOR` | Disable rich formatting when set (standard) |
 | `NOESIS_RUNS_DIR` | Default runs directory |
 | `NOESIS_PLANNER` | Default planner mode (`meta`/`minimal`) |
 | `NOESIS_DIRECTION_MIN_CONFIDENCE` | Default `direction_min_confidence` |
@@ -593,8 +600,8 @@ These options work with all commands:
 | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` | Confidence threshold for auto-apply |
 | `NOESIS_PROMPT_PROVENANCE_ENABLED` | Enable prompt provenance (`true`/`false`) |
 | `NOESIS_PROMPT_PROVENANCE_MODE` | Provenance mode |
-| `NOESIS_AGENTS` | Agent registry path override |
-| `NOESIS_TASKS` | Tasks registry path override |
+| `NOESIS_AGENTS` | Reserved/unused in v1.0.0 (parsed into config) |
+| `NOESIS_TASKS` | Reserved/unused in v1.0.0 (parsed into config) |
 
 **Example**:
 
