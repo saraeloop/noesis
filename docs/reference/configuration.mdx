@@ -29,7 +29,7 @@ Directory where artifacts are stored.
 
 ### planner_mode
 
-Controls the level of governance and observability.
+Controls planning strategy and direction behavior.
 
 | Source | Setting |
 | --- | --- |
@@ -42,8 +42,34 @@ Controls the level of governance and observability.
 
 | Value | Description |
 | --- | --- |
-| `meta` | Full governance with MetaPlanner and PreActGovernor |
-| `minimal` | Skip governance, use legacy stepwise planner |
+| `meta` | MetaPlanner-enabled planning (direction search / directives) |
+| `minimal` | Minimal planning; skips direction search and runs a simple planner |
+
+<Info>
+`planner_mode` controls planning strategy. Governance is controlled separately via `governance_mode` and `governance_failure_policy`.
+</Info>
+
+### agents
+
+Path to the agents registry file. Used by the CLI to resolve named agents from a registry file. If unset, Noēsis looks for `agents.yaml` in the working directory.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(agents="agents.yaml")` |
+| Environment | `NOESIS_AGENTS=agents.yaml` |
+| TOML | `agents = "agents.yaml"` |
+| Default | `"agents.yaml"` |
+
+### tasks
+
+Path to the tasks registry file. Used by the CLI to resolve named tasks from a registry file. If unset, Noēsis looks for `tasks.yaml` in the working directory.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(tasks="tasks.yaml")` |
+| Environment | `NOESIS_TASKS=tasks.yaml` |
+| TOML | `tasks = "tasks.yaml"` |
+| Default | `"tasks.yaml"` |
 
 ### timeout_sec
 
@@ -127,6 +153,43 @@ Minimum confidence threshold for applying plan directives.
 | TOML | `direction_min_confidence = 0.8` |
 | Default | `0.5` |
 
+### governance_mode
+
+Controls pre-act governance behavior.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(governance_mode="enforce")` |
+| Environment | `NOESIS_GOVERNANCE_MODE=enforce` |
+| TOML | `governance_mode = "enforce"` |
+| Default | `"off"` |
+
+**Values**:
+
+| Value | Description |
+| --- | --- |
+| `off` | Governance disabled |
+| `audit` | Record decisions; never blocks execution |
+| `enforce` | Veto terminates the episode before Act |
+
+### governance_failure_policy
+
+How to handle governance errors/timeouts.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(governance_failure_policy="fail_closed")` |
+| Environment | `NOESIS_GOVERNANCE_FAILURE_POLICY=fail_closed` |
+| TOML | `governance_failure_policy = "fail_closed"` |
+| Default | Depends on mode (audit→fail_open, enforce→fail_closed) |
+
+**Values**:
+
+| Value | Description |
+| --- | --- |
+| `fail_open` | On error, allow action to proceed |
+| `fail_closed` | On error, treat as veto |
+
 ### learn_home
 
 Directory for learning data storage.
@@ -138,9 +201,9 @@ Directory for learning data storage.
 | TOML | `learn_home = "./learn"` |
 | Default | `~/.noesis/state` |
 
-### prompt_provenance
+### prompt_provenance_enabled
 
-Control prompt provenance logging.
+Enable prompt provenance logging.
 
 | Source | Setting |
 | --- | --- |
@@ -148,6 +211,8 @@ Control prompt provenance logging.
 | Environment | `NOESIS_PROMPT_PROVENANCE_ENABLED=true` |
 | TOML | `prompt_provenance_enabled = true` |
 | Default | `false` |
+
+### prompt_provenance_mode
 
 Mode for prompt provenance storage.
 
@@ -158,18 +223,34 @@ Mode for prompt provenance storage.
 | TOML | `prompt_provenance_mode = "hash_only"` |
 | Default | `"hash_only"` |
 
+**Values**:
+
+| Value | Description |
+| --- | --- |
+| `full` | Store full prompt content |
+| `hash_only` | Store only content hashes (default) |
+| `redacted` | Store redacted content |
+
+<Warning>
+`prompt_provenance_mode="full"` may record prompt content. Use `hash_only` or `redacted` for sensitive environments.
+</Warning>
+
 ## Configuration file
 
-Create a `noesis.toml` in your project root:
+Create a `noesis.toml` in your project root. Noēsis reads configuration from the `[noesis]` table:
 
 ```toml noesis.toml
 [noesis]
 runs_dir = "./runs"
+agents = "agents.yaml"
+tasks = "tasks.yaml"
 planner_mode = "meta"
 learn_mode = "record"
 learn_home = "./learn"
 intuition_mode = "advisory"
 direction_min_confidence = 0.7
+governance_mode = "off"
+governance_failure_policy = "fail_open"
 learn_auto_apply_min_confidence = 0.85
 learn_auto_apply_min_successes = 3
 prompt_provenance_enabled = false
@@ -191,6 +272,8 @@ All configuration options have environment variable equivalents:
 | `learn_home` | `NOESIS_LEARN_HOME` |
 | `intuition_mode` | `NOESIS_INTUITION_MODE` |
 | `direction_min_confidence` | `NOESIS_DIRECTION_MIN_CONFIDENCE` |
+| `governance_mode` | `NOESIS_GOVERNANCE_MODE` |
+| `governance_failure_policy` | `NOESIS_GOVERNANCE_FAILURE_POLICY` |
 | `learn_auto_apply_min_confidence` | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` |
 | `learn_auto_apply_min_successes` | `NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES` |
 | `prompt_provenance_enabled` | `NOESIS_PROMPT_PROVENANCE_ENABLED` |
@@ -203,6 +286,8 @@ All configuration options have environment variable equivalents:
 export NOESIS_PLANNER=meta
 export NOESIS_RUNS_DIR=./artifacts
 export NOESIS_DIRECTION_MIN_CONFIDENCE=0.8
+export NOESIS_AGENTS=agents.yaml
+export NOESIS_TASKS=tasks.yaml
 
 # Or inline
 NOESIS_PLANNER=minimal NOESIS_RUNS_DIR=./artifacts noesis run "quick test"
@@ -251,6 +336,7 @@ ns.set(
     runs_dir="./runs",
     planner_mode="meta",
     direction_min_confidence=0.5,
+    governance_mode="off",
     learn_mode="record",
     learn_auto_apply_min_confidence=0.75,
     learn_auto_apply_min_successes=3,
@@ -259,9 +345,9 @@ ns.set(
 )
 ```
 
-## Per-episode overrides
+## Per-episode parameters
 
-Some options can be overridden per episode:
+Some parameters can be set per episode at call time:
 
 ```python
 import noesis as ns
@@ -269,17 +355,22 @@ import noesis as ns
 # Global config
 ns.set(planner_mode="meta")
 
-# Override for specific episode
+# Per-episode parameters
 episode_id = ns.run(
     "quick test",
-    tags={"override": "true"},
-    seed=42,  # per-call seed for reproducibility
+    seed=42,                        # reproducibility seed
+    tags={"env": "staging"},        # metadata tags
+    intuition=True,                 # enable/disable intuition
 )
 ```
 
+<Info>
+Global configuration (via `ns.set()`) applies to all episodes. Per-call parameters like `seed`, `tags`, and `intuition` are set at run time.
+</Info>
+
 ## CLI configuration
 
-Configure the CLI via environment variables (the CLI does not expose `--runs-dir` or `--planner` flags):
+Most CLI configuration is done via environment variables:
 
 ```bash
 NOESIS_RUNS_DIR=./artifacts noesis run "task"
@@ -324,6 +415,7 @@ except ValueError as e:
 runs_dir = "./runs"
 planner_mode = "minimal"
 direction_min_confidence = 0.5
+governance_mode = "off"
 prompt_provenance_enabled = false
 ```
 
@@ -335,6 +427,7 @@ runs_dir = "./runs"
 planner_mode = "meta"
 learn_mode = "record"
 direction_min_confidence = 0.5
+governance_mode = "audit"
 prompt_provenance_enabled = false
 ```
 
@@ -345,6 +438,8 @@ prompt_provenance_enabled = false
 runs_dir = "/var/noesis/runs"
 planner_mode = "meta"
 learn_mode = "record"
+governance_mode = "enforce"
+governance_failure_policy = "fail_closed"
 learn_auto_apply_min_confidence = 0.95
 learn_auto_apply_min_successes = 5
 prompt_provenance_enabled = true
