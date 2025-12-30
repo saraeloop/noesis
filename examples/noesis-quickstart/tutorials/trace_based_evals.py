@@ -299,7 +299,8 @@ def assert_not_core_minimal(episode_id: str) -> None:
     This prevents "passing" evals with fake trajectories.
     """
     summary = ns.summary.read(episode_id)
-    using = summary.get("using")
+    flags = summary.get("flags", {}) if isinstance(summary.get("flags"), dict) else {}
+    using = flags.get("using")
     if using == "core.minimal":
         raise AssertionError(
             "This episode ran with using='core.minimal'. "

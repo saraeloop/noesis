@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from common.console import headline, info, success, warn
+from common.episode_io import read_events_jsonl, read_summary_json, summarize_timeline
 
 
 def print_intro_trace_evals() -> None:
@@ -106,7 +107,6 @@ def print_next_steps(results: dict[str, str | None]) -> None:
 def print_completion(message: str) -> None:
     """Print a final success message for a tutorial run."""
     success(message)
-from common.episode_io import read_events_jsonl, read_summary_json, summarize_timeline
 
 
 def print_results_header_guarded() -> None:
