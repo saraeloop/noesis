@@ -55,6 +55,7 @@ class ViewCommand:
             ns=ctx.ns,
             runtime_context=ctx.runtime_context,
             schema_override=schema_override,
+            debug=ctx.options.debug or ctx.options.verbose,
         )
 
         if args.open and view.paths:
