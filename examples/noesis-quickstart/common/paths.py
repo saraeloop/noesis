@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from common.errors import ConfigError
+
 
 @dataclass(frozen=True)
 class QuickstartPaths:
@@ -37,3 +39,15 @@ def tutorial_sandbox_dir(tutorial_slug: str) -> Path:
     p = get_paths().sandbox / tutorial_slug
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def ensure_under_root(root: Path, target: Path) -> None:
+    """
+    Enforce sandbox-only operations: target must be within root.
+    """
+    root = root.resolve()
+    target = target.resolve()
+    try:
+        target.relative_to(root)
+    except Exception:
+        raise ConfigError(f"Unsafe path: {target} is not under sandbox root {root}")

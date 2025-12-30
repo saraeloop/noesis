@@ -1,18 +1,10 @@
 """
-Governance Tutorial: Pre-Act Veto of Dangerous Operations
+Governance Tutorial: Pre-Act Veto of Dangerous Operations (LangGraph + OpenAI)
 
 Goal
-- Demonstrate the Governance faculty vetoing dangerous operations
+- Demonstrate Noēsis Governance vetoing dangerous operations in a LangGraph agent
 - See governance events with decision="veto" in the trace
 - See the episode terminate with status="vetoed" and no act events
-
-The Governance faculty runs AFTER planning, BEFORE acting:
-  observe → intuition → interpret → plan → direction → governance → act
-
-When governance vetoes:
-- Emits governance event with decision="veto"
-- Emits terminate event with status="vetoed"  
-- No act events are emitted
 
 Run:
   uv run python -m tutorials.guarded_langgraph
@@ -20,40 +12,168 @@ Run:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
 import os
+from pathlib import Path
 from typing import Any
 
-from common.console import headline, info, success, warn, error
-from common.config import load_dotenv_if_present, require_openai_key, import_noesis
-from common.episode_io import episode_dir, read_events_jsonl, read_summary_json, summarize_timeline
+import noesis as ns
+from langgraph.graph import StateGraph
+from noesis.adapters import LangGraphAdapter
+
+from common.reporting import (
+    print_case_intro,
+    print_case_result,
+    print_completion,
+    print_intro_guarded_langgraph,
+    print_next_steps,
+    print_guarded_episode_results,
+    print_results_summary_episode,
+    print_results_summary_header,
+)
+from common.config import load_dotenv_if_present, require_openai_key
+from common.console import error
 from common.errors import QuickstartError
+from common.openai_client import OpenAIChatClient
+from common.policies import PathRiskSignals
 
 
 # -----------------------------
-# Run cases and display results
+# Domain: plan/act outputs
 # -----------------------------
 
-def run_case(ns: Any, task: str, label: str) -> str | None:
+@dataclass(frozen=True)
+class PlanOutput:
+    plan: list[str]
+    risk_notes: list[str]
+    raw_text: str | None = None
+
+
+def _safe_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return []
+
+
+def parse_plan_output(payload: dict[str, Any]) -> PlanOutput:
+    plan_items = _safe_list(payload.get("plan"))
+    risk_items = _safe_list(payload.get("risk_notes"))
+    raw_text = payload.get("raw_text")
+
+    if not plan_items:
+        plan_items = ["(plan unavailable: see raw_text)"]
+
+    return PlanOutput(
+        plan=plan_items,
+        risk_notes=risk_items,
+        raw_text=raw_text if isinstance(raw_text, str) else None,
+    )
+
+
+# -----------------------------
+# Domain: LangGraph agent (LLM-backed)
+# -----------------------------
+
+class PlanActAgent:
+    """A minimal LangGraph agent: plan -> act, both powered by OpenAI."""
+
+    def __init__(self, client: OpenAIChatClient, workspace: Path) -> None:
+        self._client = client
+        self._workspace = workspace
+
+    def _list_files(self) -> list[Path]:
+        if not self._workspace.exists():
+            return []
+        return [p for p in self._workspace.iterdir() if p.is_file()]
+
+    def _read_excerpt(self, path: Path, max_bytes: int = 800) -> str:
+        try:
+            data = path.read_bytes()[:max_bytes]
+            return data.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    def plan(self, task: str) -> PlanOutput:
+        system = (
+            "You are a cautious planner.\n"
+            "Return valid JSON ONLY with keys:\n"
+            '  - "plan": list of short steps\n'
+            '  - "risk_notes": list of risks\n'
+            '  - "raw_text": optional string\n'
+            "Keep steps read-only. If task implies deletion/destruction, propose an audit plan (no execution)."
+        )
+        user = f"Task: {task}\nWorkspace: {self._workspace}\n"
+        payload = self._client.chat_json(system, user)
+        return parse_plan_output(payload)
+
+    def act(self, task: str, plan: list[str]) -> str:
+        files = self._list_files()
+        file_payload = [{"path": str(p), "excerpt": self._read_excerpt(p)} for p in files]
+
+        system = (
+            "You are a careful assistant.\n"
+            "Given task + files + plan:\n"
+            "- Produce a concise result.\n"
+            "- If task implies deletion/destruction, respond as an AUDIT ONLY (what would be deleted), do not act.\n"
+        )
+        user = json.dumps({"task": task, "plan": plan, "files": file_payload}, ensure_ascii=True)
+        return self._client.chat_text(system, user)
+
+
+# -----------------------------
+# Application: build LangGraph + adapter
+# -----------------------------
+
+def build_langgraph_app(agent: PlanActAgent) -> Any:
+    graph = StateGraph(dict)
+
+    def plan_node(state: dict[str, Any]) -> dict[str, Any]:
+        task = str(state.get("task", ""))
+        out = agent.plan(task)
+        return {"plan": out.plan, "risk_notes": out.risk_notes, "raw_plan": out.raw_text}
+
+    def act_node(state: dict[str, Any]) -> dict[str, Any]:
+        task = str(state.get("task", ""))
+        plan = state.get("plan") if isinstance(state.get("plan"), list) else []
+        result = agent.act(task, plan=[str(x) for x in plan])
+        return {"result": result}
+
+    graph.add_node("plan", plan_node)
+    graph.add_node("act", act_node)
+    graph.set_entry_point("plan")
+    graph.add_edge("plan", "act")
+    graph.set_finish_point("act")
+    return graph.compile()
+
+
+def build_langgraph_adapter(agent: PlanActAgent) -> LangGraphAdapter:
+    app = build_langgraph_app(agent)
+
+    def input_mapper(task: str) -> dict[str, Any]:
+        return {"task": task}
+
+    return LangGraphAdapter(app, input_mapper=input_mapper)
+
+
+# -----------------------------
+# I/O: run cases and display results
+# -----------------------------
+
+def run_case(task: str, label: str, intuition: Any, using: Any) -> str | None:
     """
-    Run a single episode using ns.run() which goes through EpisodeRunner
-    and evaluates the built-in PreActGovernor.
-    
-    Built-in PreActGovernor rules:
-    - VETO: "danger", "veto", "destroy", "shutdown", "wipe"
-    - AUDIT: "write", "delete", "drop"
-    - ALLOW: everything else
+    Correct: do NOT assert summary["using"].
+    summary.json is not the episode header/manifest; it may not contain `using`.
     """
-    headline(f"Case: {label}")
-    info(f"Task: {task}")
-    
+    print_case_intro(label, task)
     try:
-        # Use ns.run() which goes through EpisodeRunner with governance
-        episode_id = ns.run(
+        episode_id = ns.solve(
             task,
-            intuition=True,
+            using=using,
+            intuition=intuition,
             tags={"tutorial": "governance", "case": label},
         )
-        success(f"Episode ID: {episode_id}")
+        print_case_result(episode_id)
         return episode_id
     except Exception as e:
         error(f"Failed: {e}")
@@ -63,62 +183,7 @@ def run_case(ns: Any, task: str, label: str) -> str | None:
 
 
 def show_episode_results(episode_id: str, runs_dir: str = "runs") -> None:
-    """Display results for an episode, focusing on governance events."""
-    try:
-        events = read_events_jsonl(runs_dir=runs_dir, episode_id=episode_id, limit=50)
-        summary = read_summary_json(runs_dir=runs_dir, episode_id=episode_id)
-    except FileNotFoundError:
-        warn(f"Artifacts not found for {episode_id}")
-        return
-    
-    # Timeline summary
-    print("\n  Timeline:")
-    for verb, status in summarize_timeline(events, limit=15):
-        print(f"    [{verb:<12}] {status}")
-    
-    # Governance events (the key output)
-    gov_events = [e for e in events if e.get("phase") == "governance"]
-    if gov_events:
-        print("\n  Governance Events:")
-        for gov in gov_events:
-            payload = gov.get("payload", {})
-            decision = payload.get("decision", "unknown")
-            rule_id = payload.get("rule_id", "unknown")
-            message = payload.get("message", "")
-            enforced = payload.get("enforced", False)
-            mode = payload.get("mode", "unknown")
-            
-            if decision == "veto":
-                print(f"    ⛔ VETO")
-            elif decision == "audit":
-                print(f"    ⚠️  AUDIT")
-            else:
-                print(f"    ✅ ALLOW")
-            
-            print(f"       rule_id: {rule_id}")
-            print(f"       mode: {mode}")
-            print(f"       enforced: {enforced}")
-            if message:
-                print(f"       message: {message}")
-    else:
-        print("\n  Governance: (no governance events)")
-    
-    # Check for act events (should be absent on veto)
-    act_events = [e for e in events if e.get("phase") == "act"]
-    print(f"\n  Act events: {len(act_events)}")
-    
-    # Check for terminate event
-    terminate_events = [e for e in events if e.get("phase") == "terminate"]
-    for t in terminate_events:
-        payload = t.get("payload", {})
-        status = payload.get("status", "unknown")
-        print(f"  Terminate status: {status}")
-    
-    # Summary metrics
-    metrics = summary.get("metrics", {})
-    print(f"\n  Metrics:")
-    print(f"    success: {metrics.get('success', '?')}")
-    print(f"    veto_count: {metrics.get('veto_count', 0)}")
+    print_guarded_episode_results(episode_id, runs_dir=runs_dir)
 
 
 # -----------------------------
@@ -126,100 +191,55 @@ def show_episode_results(episode_id: str, runs_dir: str = "runs") -> None:
 # -----------------------------
 
 def main() -> int:
-    headline("Governance Tutorial: Pre-Act Veto")
-    
-    print("""
-This tutorial demonstrates the Governance faculty:
+    print_intro_guarded_langgraph()
 
-  observe → intuition → interpret → plan → direction → governance → act
-                                              ↑
-                                        We are here
-                              
-The built-in PreActGovernor evaluates goal + plan against rules:
-
-  VETO:  "danger", "veto", "destroy", "shutdown", "wipe"
-  AUDIT: "write", "delete", "drop"
-  ALLOW: everything else
-
-When governance mode is "enforce" and decision is "veto":
-  - Governance event emitted with decision="veto", enforced=true
-  - Episode terminates with status="vetoed"
-  - NO act events are emitted (execution blocked)
-""")
-    
     try:
         load_dotenv_if_present()
         require_openai_key()
-        
-        ns = import_noesis()
-        
-        # Configure governance
-        # - planner_mode="meta" enables Direction + Governance phases
-        # - governance_mode="enforce" means VETO blocks execution
-        ns.set(planner_mode="meta", governance_mode="enforce")
-        
-        results = {}
-        
-        # --- Case 1: ALLOW (no trigger words) ---
+
+        ns.set(planner_mode="meta", governance_mode="enforce", intuition_mode="advisory")
+
+        model = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
+        workspace = Path("/tmp/noesis-demo")
+        client = OpenAIChatClient(model=model)
+        agent = PlanActAgent(client=client, workspace=workspace)
+
+        intuition = PathRiskSignals()
+        adapter = build_langgraph_adapter(agent)
+
+        results: dict[str, str | None] = {}
+
         results["allow"] = run_case(
-            ns,
-            task="List all available resources in the system",
+            task="List files under /tmp/noesis-demo and summarize what you find.",
             label="allow",
+            intuition=intuition,
+            using=adapter,
         )
-        
-        # --- Case 2: AUDIT (contains "delete" - triggers audit) ---
+
         results["audit"] = run_case(
-            ns,
-            task="Delete the temporary cache files",
+            task="Delete the temporary cache files in /tmp/noesis-demo.",
             label="audit",
+            intuition=intuition,
+            using=adapter,
         )
-        
-        # --- Case 3: VETO (contains "destroy" - triggers veto) ---
+
         results["veto"] = run_case(
-            ns,
-            task="Destroy all data in the production database",
+            task="Destroy all data in the production database.",
             label="veto",
+            intuition=intuition,
+            using=adapter,
         )
-        
-        # Show results
-        headline("Results Summary")
-        
+
+        print_results_summary_header()
         for label, episode_id in results.items():
             if episode_id:
-                print(f"\n{'='*60}")
-                print(f"Episode: {label} ({episode_id})")
-                print(f"{'='*60}")
+                print_results_summary_episode(label, episode_id)
                 show_episode_results(episode_id)
-        
-        # Final tips
-        headline("Next Steps")
-        for label, episode_id in results.items():
-            if episode_id:
-                info(f"View {label}: noesis view {episode_id}")
-        
-        print("""
-What to look for in the artifacts:
 
-ALLOW case:
-  - governance event with decision="allow"
-  - act events present
-  - terminate with status="ok" or similar
-
-AUDIT case:
-  - governance event with decision="audit"
-  - act events present (audit doesn't block)
-  - reasons may include the audit rule
-
-VETO case:
-  - governance event with decision="veto", enforced=true
-  - NO act events (execution blocked)
-  - terminate with status="vetoed"
-  - veto_count > 0 in metrics
-""")
-        
-        success("Governance tutorial completed.")
+        print_next_steps(results)
+        print_completion("Governance tutorial completed.")
         return 0
-        
+
     except QuickstartError as e:
         error(str(e))
         return 2
@@ -232,3 +252,4 @@ VETO case:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+    
