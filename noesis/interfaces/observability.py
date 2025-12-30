@@ -63,7 +63,7 @@ class RuntimeEventBus(EventBus):
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.PLAN,
             payload=payload,
-            timestamp=event_metrics.started_at,
+            timestamp=event_metrics.completed_at,
             event_id=self.event_id_factory(),
         )
         if event_metrics:
@@ -139,7 +139,7 @@ class RuntimeEventBus(EventBus):
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.ACT,
             payload=payload,
-            timestamp=metrics.started_at,
+            timestamp=metrics.completed_at,
             event_id=self.event_id_factory(),
         )
         if metrics:
@@ -168,7 +168,7 @@ class RuntimeEventBus(EventBus):
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.REFLECT,
             payload=payload,
-            timestamp=metrics.started_at,
+            timestamp=metrics.completed_at,
             event_id=self.event_id_factory(),
         )
         if metrics:

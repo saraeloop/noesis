@@ -292,7 +292,6 @@ _PHASE_PAYLOAD_KEYS: Dict[str, Tuple[str, ...]] = {
     "plan": ("steps",),
     "act": ("outcome",),
     "reflect": ("success",),
-    "learn": ("policy_id", "basis", "proposal", "applied", "scope"),
     "governance": ("decision", "rule_id"),
     "direction": ("status",),
 }
@@ -334,6 +333,18 @@ def validate_events(events: Sequence[Dict[str, Any]], *, schema: str, file_label
                 issue = _require(key in payload, file=file_label, schema=schema, pointer=f"payload.{key}", message="missing", line=index)
                 if issue:
                     issues.append(issue)
+            if phase == "learn":
+                has_ref = any(key in payload for key in ("learn_path", "learn_schema"))
+                if has_ref:
+                    for key in ("learn_path", "learn_schema", "proposal_count", "proposal_ids"):
+                        issue = _require(key in payload, file=file_label, schema=schema, pointer=f"payload.{key}", message="missing", line=index)
+                        if issue:
+                            issues.append(issue)
+                else:
+                    for key in ("policy_id", "basis", "proposal", "scope"):
+                        issue = _require(key in payload, file=file_label, schema=schema, pointer=f"payload.{key}", message="missing", line=index)
+                        if issue:
+                            issues.append(issue)
             if phase == "act":
                 has_tool = any(k in payload for k in ("tool", "adapter"))
                 issue = _require(has_tool, file=file_label, schema=schema, pointer="payload.tool", message="requires 'tool' or 'adapter'", line=index)

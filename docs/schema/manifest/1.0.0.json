@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "manifest",
+  "$schema_version": "1.0.0",
+  "title": "Noesis manifest artifact",
+  "description": "Schema for manifest.json artifacts.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "episode_id", "files"],
+  "properties": {
+    "schema_version": { "const": "manifest/1.0" },
+    "episode_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "sha256", "size_bytes", "kind"],
+        "properties": {
+          "name": { "type": "string" },
+          "sha256": { "type": "string" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "kind": { "type": "string" }
+        }
+      }
+    }
+  }
+}

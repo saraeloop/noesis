@@ -14,12 +14,12 @@ from noesis.state.episode import EpisodeSummary
 from noesis.trace.events import read_events, write_event, canonical_dumps
 from noesis.trace.summary import write_summary
 from noesis.domain.faculties import validate_hook_sequence
-from noesis.domain.faculties.insight import compute_metrics, build_insight_metrics
 from noesis.intuition import Intuition, IntuitionMode
 from noesis.interfaces.config import ConfigSnapshot
 
 from .learning import maybe_emit_learn_event
-from .utils import compute_duration, format_diff_item, now
+from .normalization import compute_summary_metrics_from_events, normalize_using
+from .utils import compute_duration, format_diff_item, now, parse_iso8601
 
 __all__ = ["finalize_summary"]
 
@@ -74,10 +74,11 @@ def finalize_summary(
         failure_policy = failure_policy.value
     if failure_policy is not None:
         flags["governance_failure_policy"] = str(failure_policy)
-    if using_label is not None:
-        flags["using"] = using_label
+    using_norm = normalize_using(using_label)
+    if using_norm is not None:
+        flags["using"] = using_norm.display
 
-    summary_metrics = compute_metrics({}, events)
+    summary_metrics, insight_metrics = compute_summary_metrics_from_events(events)
 
     summary = EpisodeSummary(
         schema_version=schema_version,
@@ -95,7 +96,6 @@ def finalize_summary(
     ).__dict__
 
     metrics_bucket = summary.setdefault("metrics", {})
-    insight_metrics = build_insight_metrics(events, summary_metrics)
     summary.setdefault("insight", {})["metrics"] = insight_metrics.to_mapping()
     metrics_bucket["intuition_events"] = sum(1 for e in events if e.get("phase") == "intuition")
 
@@ -140,14 +140,31 @@ def finalize_summary(
         except Exception:
             continue
 
+    insight_payload: dict[str, object] = {
+        "summary_path": "summary.json",
+        "metrics": {
+            "plan_adherence": metrics_bucket.get("plan_adherence"),
+            "tool_coverage": metrics_bucket.get("tool_coverage"),
+            "veto_count": metrics_bucket.get("veto_count"),
+            "success": metrics_bucket.get("success"),
+            "act_count": metrics_bucket.get("act_count"),
+        },
+    }
+    insight_timestamp = now()
+    latest_ts = _latest_event_timestamp(events)
+    if latest_ts:
+        latest_dt = parse_iso8601(latest_ts)
+        current_dt = parse_iso8601(insight_timestamp)
+        if latest_dt and current_dt and current_dt < latest_dt:
+            insight_timestamp = latest_ts
     write_event(
         run_dir,
         {
-            "timestamp": now(),
+            "timestamp": insight_timestamp,
             "episode_id": episode_id,
             "agent_id": "system",
             "phase": "insight",
-            "payload": summary.get("metrics", {}),
+            "payload": insight_payload,
             "evidence_ids": [],
         },
     )
@@ -166,3 +183,19 @@ def finalize_summary(
     manifest_meta.setdefault("path", "manifest.json")
 
     write_summary(run_dir, summary)
+
+
+def _latest_event_timestamp(events: List[Dict[str, Any]]) -> Optional[str]:
+    latest_dt = None
+    latest_ts = None
+    for event in events:
+        ts = event.get("timestamp")
+        if not isinstance(ts, str):
+            continue
+        parsed = parse_iso8601(ts)
+        if parsed is None:
+            continue
+        if latest_dt is None or parsed > latest_dt:
+            latest_dt = parsed
+            latest_ts = ts
+    return latest_ts

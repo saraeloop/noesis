@@ -26,7 +26,7 @@ def test_state_artifact_written(tmp_path) -> None:
         assert payload["outcomes"]["status"] == "ok"
         actions = payload["outcomes"]["actions"]
         assert actions and {"id", "kind", "tool", "result_status"}.issubset(actions[0].keys())
-        assert payload["episode"]["using"] in {"adapter:core.minimal", "adapter:core.null"}
+        assert payload["episode"]["using"] in {"core.minimal", "core.null"}
         assert payload["version"] == "1.0"
         assert payload["state_schema_version"] == "1.0.0"
         assert payload["links"]["events"] == "events.jsonl"

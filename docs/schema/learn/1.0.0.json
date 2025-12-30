@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "learn",
+  "$schema_version": "1.0.0",
+  "title": "Noesis learn record",
+  "description": "Schema for a single line in learn.jsonl.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "id",
+    "episode_id",
+    "agent_id",
+    "timestamp",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": "learn/1.0" },
+    "id": { "type": "string" },
+    "episode_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  }
+}

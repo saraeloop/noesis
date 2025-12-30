@@ -46,11 +46,12 @@ class DeterministicClock:
 
     def stop(self, token: int) -> CognitiveMetrics:
         start = self.start_at + timedelta(milliseconds=token * self.tick_ms)
-        end = start + timedelta(milliseconds=self.tick_ms)
+        end_tick = max(token + 1, self._ticks)
+        end = self.start_at + timedelta(milliseconds=end_tick * self.tick_ms)
         return CognitiveMetrics(
             started_at=start,
             completed_at=end,
-            duration_ms=round(self.tick_ms, 3),
+            duration_ms=round((end - start).total_seconds() * 1000, 3),
         )
 
 

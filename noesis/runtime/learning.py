@@ -30,6 +30,7 @@ __all__ = [
     "LearnStatus",
     "LearnProposal",
     "build_learn_payload",
+    "ensure_learn_file",
     "persist_episode_learning",
     "load_policy_snapshot",
     "update_policy_snapshot",
@@ -45,6 +46,15 @@ def _now() -> str:
 
 def _sanitize_policy_id(policy_id: str) -> str:
     return policy_id.replace("/", "_").replace(" ", "_")
+
+
+def ensure_learn_file(run_dir: Path) -> Path:
+    """Create learn.jsonl if it is missing (empty file is valid)."""
+    path = run_dir / "learn.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.touch()
+    return path
 
 
 def build_learn_payload(
@@ -78,10 +88,24 @@ def build_learn_payload(
     }
 
 
-def persist_episode_learning(run_dir: Path, payload: Dict[str, Any]) -> None:
+def persist_episode_learning(
+    run_dir: Path,
+    *,
+    episode_id: str,
+    agent_id: str,
+    payload: Dict[str, Any],
+) -> None:
     path = run_dir / "learn.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
-    record = {"timestamp": _now(), "payload": payload}
+    record_id = payload.get("id") or f"episode:{episode_id}"
+    record = {
+        "schema_version": "learn/1.0",
+        "id": record_id,
+        "episode_id": episode_id,
+        "agent_id": agent_id,
+        "timestamp": _now(),
+        "payload": payload,
+    }
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -295,6 +319,15 @@ def maybe_emit_learn_event(
         ),
     )
 
+    learn_event_payload: Dict[str, Any] = {
+        "learn_path": "learn.jsonl",
+        "learn_schema": "learn/1.0",
+        "proposal_ids": [learn_id] if proposal_dicts else [],
+        "proposal_count": len(proposals),
+        "applied": applied_any,
+    }
+
+    ensure_learn_file(run_dir)
     write_event(
         run_dir,
         {
@@ -302,13 +335,18 @@ def maybe_emit_learn_event(
             "episode_id": episode_id,
             "agent_id": "system",
             "phase": "learn",
-            "payload": payload,
+            "payload": learn_event_payload,
             "evidence_ids": [],
         },
     )
 
     if proposal_dicts:
-        persist_episode_learning(run_dir, payload)
+        persist_episode_learning(
+            run_dir,
+            episode_id=episode_id,
+            agent_id=policy_id or "system",
+            payload=payload,
+        )
         learn_home.mkdir(parents=True, exist_ok=True)
         update_policy_snapshot(learn_home, policy_id, proposal_dicts, gate_updates=gate_updates)
 

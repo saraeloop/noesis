@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, Protocol, TYPE_CHECKING
 
 from noesis.runtime.serialization import atomic_write_json
+from noesis.runtime.normalization import normalize_using
 from noesis.domain.state import NoesisState, create_state
 
 if TYPE_CHECKING:
@@ -76,4 +77,9 @@ class RuntimeStateRepository(StateRepository):
 
 def _write_state(path: Path, state: NoesisState) -> None:
     payload = state.to_dict()
+    episode = payload.get("episode")
+    if isinstance(episode, dict):
+        normalized = normalize_using(episode.get("using"))
+        if normalized:
+            episode["using"] = normalized.display
     atomic_write_json(path, payload)
