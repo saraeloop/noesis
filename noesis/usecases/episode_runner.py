@@ -39,6 +39,7 @@ from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
 from noesis.runtime.artifacts.ids import directive_uuid, governance_uuid
 from noesis.trace.events import read_events
+from noesis.runtime.normalization import normalize_using
 from .hooks.meta_phase import CompositeMetaPhaseHook, MetaPhaseHook, NullMetaPhaseHook
 from .ports import (
     ClockPort,
@@ -330,7 +331,7 @@ class EpisodeRunner:
             episode_id=context.episode_id,
             verb=verb,
             payload=payload,
-            timestamp=metrics.started_at or self._now(),
+            timestamp=metrics.completed_at or self._now(),
             event_id=event_id,
         ).with_metrics(metrics)
         linked = self._lineage.register(event, cause=cause)
@@ -600,11 +601,11 @@ class EpisodeRunner:
         token = self._clock.start(verb)
         metrics = self._clock.stop(token)
         payload: Dict[str, object] = {
-            "policy_id": "policy:core.minimal",
-            "basis": actuation.reasons,
-            "proposal": [],
+            "learn_path": "learn.jsonl",
+            "learn_schema": "learn/1.0",
+            "proposal_ids": [],
+            "proposal_count": 0,
             "applied": False,
-            "scope": "episode",
         }
         return self._emit_event(
             verb=verb,
@@ -682,6 +683,12 @@ class EpisodeRunner:
 
     def _build_snapshot(self, request: EpisodeRequest, state: NoesisState) -> Dict[str, object]:
         using_label = request.using_label or request.context.adapter_label
+        normalized = normalize_using(using_label)
+        display_label = normalized.display if normalized else using_label
+        snapshot_state = state.to_dict()
+        episode_block = snapshot_state.get("episode")
+        if isinstance(episode_block, dict):
+            episode_block["using"] = display_label
         return {
             "task": request.goal,
             "seed": request.context.seed,
@@ -689,8 +696,8 @@ class EpisodeRunner:
             "tools_seen": [],
             "tags": request.context.tags,
             "state_path": "state.json",
-            "state": state.to_dict(),
-            "using": using_label,
+            "state": snapshot_state,
+            "using": display_label,
         }
 
 

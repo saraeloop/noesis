@@ -46,7 +46,9 @@ from .runtime.clock import RuntimeClock
 from .runtime.events_emitter import CognitiveEventEmitter
 from .runtime.prompt_recorder import PromptRecorder
 from .runtime.events import start_event as _start_event, terminate_event as _terminate_event
+from .runtime.normalization import normalize_using
 from .runtime.summary import finalize_summary as _finalize_summary
+from .runtime.learning import ensure_learn_file
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .runtime.artifacts.ids import EpisodeIds
 from .runtime.artifacts.writer import ManifestWriter
@@ -335,7 +337,8 @@ def _bootstrap_episode(
     state_path = ctx.run_dir / "state.json"
 
     event_id_factory = determinism.rng.event_id_factory(ids.directive_namespace) if determinism else None
-    start_payload = {"task": task, "seed": seed, "using": raw_using_label}
+    using_norm = normalize_using(raw_using_label)
+    start_payload = {"task": task, "seed": seed, "using": using_norm.display if using_norm else raw_using_label}
     _start_event(
         ctx.run_dir,
         ctx.episode_id,
@@ -404,11 +407,13 @@ def _run_episode(
         intuition_enabled=setup.intuition_enabled,
     )
     runner = EpisodeRunner(deps, instrumentation=instrumentation)
+    using_norm = normalize_using(setup.raw_using_label)
+    using_label = using_norm.display if using_norm else setup.raw_using_label
     episode_request = EpisodeRequest(
         goal=task,
         beliefs=tuple(),
         context=setup.episode_ctx,
-        using_label=setup.raw_using_label,
+        using_label=using_label,
     )
     result = runner.run(episode_request)
 
@@ -434,6 +439,7 @@ def _run_episode(
         )
 
     state = result.state
+    ensure_learn_file(setup.ctx.run_dir)
     state.set_links(
         events="events.jsonl",
         summary="summary.json",

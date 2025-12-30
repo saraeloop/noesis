@@ -86,9 +86,6 @@ def main() -> int:
     headline("Hello Episode — See Your Agent Think")
 
     try:
-        load_dotenv_if_present()
-        require_openai_key()
-
         ns = import_noesis()
 
         demo_files = write_demo_files(DEMO_ROOT)

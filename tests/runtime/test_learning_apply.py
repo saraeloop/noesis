@@ -77,7 +77,9 @@ def test_learn_auto_apply_gate(tmp_path):
 
         learn_log = list((runs_dir / "ep_1" / "learn.jsonl").read_text(encoding="utf-8").splitlines())
         assert learn_log, "expected learn log for applied proposal"
-        payload = json.loads(learn_log[-1])["payload"]
+        record = json.loads(learn_log[-1])
+        assert record["schema_version"] == "learn/1.0"
+        payload = record["payload"]
         proposal = payload["proposal"][0]
         assert proposal["status"] == "applied"
         assert proposal["revert_handle"]["previous"] == 0.3

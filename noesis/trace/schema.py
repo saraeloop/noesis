@@ -41,6 +41,7 @@ class EventRecord(TypedDict, total=False):
     phase: str
     payload: Dict[str, Any]
     evidence_ids: List[str]
+    faculty: NotRequired[str]
     caused_by: NotRequired[str]
     metrics: NotRequired[EventMetrics]
 
