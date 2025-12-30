@@ -29,10 +29,17 @@ _OBJECT_NAMES = ("graph", "flow", "app")
 def _is_executor_like(obj: Any) -> bool:
     """
     Heuristic: treat as an executor if it:
-      - exposes execute()/invoke(), OR
+      - is an instance (not a class) that exposes execute()/invoke(), OR
       - is callable but requires at least one argument (e.g., __call__(task))
     This prevents calling adapter instances as zero-arg factories.
+    
+    Note: Classes are NOT treated as executor-like, even if they have invoke/execute
+    methods, because calling invoke() on a class would fail (self not bound).
     """
+    # Do not treat classes as executor-like instances
+    if inspect.isclass(obj):
+        return False
+    
     if hasattr(obj, "execute") or hasattr(obj, "invoke"):
         return True
 
