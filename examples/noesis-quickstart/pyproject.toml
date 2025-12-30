@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "langgraph>=1.0.5",
     "noesis",
+    "openai>=2.14.0",
 ]
 
 [tool.uv.sources]

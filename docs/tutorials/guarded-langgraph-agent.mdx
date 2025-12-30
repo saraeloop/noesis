@@ -28,10 +28,20 @@ When governance vetoes:
 - Emits terminate event with `status="vetoed"`
 - NO act events are emitted (execution blocked)
 
+## Two policy levers
+
+Noēsis gives you two complementary levers:
+
+- **Built-in Governance (PreActGovernor)** → enforcement + canonical veto artifacts.
+- **Custom Intuition policy** → advisory, context-aware signals (paths/resources/state), no veto.
+
+In this tutorial we keep governance in `enforce` mode and add an Intuition policy that emits advice about risky paths. Governance remains the only enforcement mechanism.
+
 ## Prerequisites
 
 - Python with `noesis` installed
-- OpenAI API key (for the planner)
+- LangGraph installed (`uv add langgraph` or `pip install langgraph`)
+- OpenAI API key (for the planner/actor)
 
 ## 1) Configure governance mode
 
@@ -41,33 +51,204 @@ import noesis as ns
 # Configure governance
 # - planner_mode="meta" enables Direction + Governance phases
 # - governance_mode="enforce" means VETO blocks execution
-ns.set(planner_mode="meta", governance_mode="enforce")
+ns.set(planner_mode="meta", governance_mode="enforce", intuition_mode="advisory")
 ```
 
-## 2) Built-in PreActGovernor rules
+## 2) Governance rules (policy-driven)
 
-The built-in `PreActGovernor` evaluates the goal + plan against these rules:
+Governance decides whether to allow, audit, or veto based on the active policy configuration. For exact criteria, consult the policy implementation you are running (built-in or custom), rather than relying on fixed trigger words in the tutorial.
 
-| Decision | Trigger Words |
-|----------|---------------|
-| **VETO** | "danger", "veto", "destroy", "shutdown", "wipe" |
-| **AUDIT** | "write", "delete", "drop" |
-| **ALLOW** | everything else |
-
-## 3) Run three scenarios
+## 3) Add advisory intuition signals
 
 ```python run_governance.py
 import noesis as ns
+from typing import Any
 
 
-def run_case(task: str, label: str) -> str:
+class PathRiskSignals(ns.DirectedIntuition):
+    """Advisory-only intuition signals for protected paths/resources."""
+
+    __version__ = "0.1"
+
+    def advise(self, state: dict[str, Any]) -> ns.IntuitionEvent | None:
+        task = (state.get("task") or "").lower()
+        signals = []
+
+        if "/prod-data" in task:
+            signals.append("/prod-data")
+        if "/etc" in task:
+            signals.append("/etc")
+        if "~/.ssh" in task:
+            signals.append("~/.ssh")
+        if "prod database" in task or "production database" in task:
+            signals.append("prod database")
+
+        if not signals:
+            return None
+
+        return self.hint(
+            advice="Potentially protected resource mentioned: " + ", ".join(signals),
+            target="plan",
+            rationale="Advisory-only signal for high-risk paths. Governance remains enforcement.",
+        )
+```
+
+## 4) Build a LangGraph plan/act agent
+
+```python run_governance.py
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from langgraph.graph import StateGraph
+
+
+@dataclass(frozen=True)
+class PlanOutput:
+    plan: list[str]
+    risk_notes: list[str]
+    raw_text: str | None = None
+
+
+def _safe_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return []
+
+
+def parse_plan_output(payload: dict[str, Any]) -> PlanOutput:
+    plan_items = _safe_list(payload.get("plan"))
+    risk_items = _safe_list(payload.get("risk_notes"))
+    raw_text = payload.get("raw_text")
+
+    if not plan_items:
+        plan_items = ["(plan unavailable: see raw_text)"]
+
+    return PlanOutput(
+        plan=plan_items,
+        risk_notes=risk_items,
+        raw_text=raw_text if isinstance(raw_text, str) else None,
+    )
+
+
+class OpenAIChatClient:
+    """Small OpenAI wrapper used by the LangGraph agent."""
+
+    def __init__(self, model: str) -> None:
+        from openai import OpenAI
+
+        self._client = OpenAI()
+        self._model = model
+
+    def chat_text(self, system: str, user: str) -> str:
+        resp = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0,
+        )
+        return (resp.choices[0].message.content or "").strip()
+
+    def chat_json(self, system: str, user: str) -> dict[str, Any]:
+        text = self.chat_text(system, user)
+        try:
+            return json.loads(text)
+        except Exception:
+            return {"raw_text": text}
+
+
+class PlanActAgent:
+    """A minimal LangGraph agent: plan -> act, both powered by OpenAI."""
+
+    def __init__(self, client: OpenAIChatClient, workspace: Path) -> None:
+        self._client = client
+        self._workspace = workspace
+
+    def _list_files(self) -> list[Path]:
+        if not self._workspace.exists():
+            return []
+        return [p for p in self._workspace.iterdir() if p.is_file()]
+
+    def _read_excerpt(self, path: Path, max_bytes: int = 800) -> str:
+        try:
+            data = path.read_bytes()[:max_bytes]
+            return data.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    def plan(self, task: str) -> PlanOutput:
+        system = (
+            "You are a cautious planner.\n"
+            "Return valid JSON ONLY with keys:\n"
+            '  - "plan": list of short steps\n'
+            '  - "risk_notes": list of risks\n'
+            '  - "raw_text": optional string\n'
+            "Keep steps read-only. If task implies deletion/destruction, propose an audit plan (no execution)."
+        )
+        user = f"Task: {task}\nWorkspace: {self._workspace}\n"
+        payload = self._client.chat_json(system, user)
+        return parse_plan_output(payload)
+
+    def act(self, task: str, plan: list[str]) -> str:
+        files = self._list_files()
+        file_payload = [{"path": str(p), "excerpt": self._read_excerpt(p)} for p in files]
+
+        system = (
+            "You are a careful assistant.\n"
+            "Given task + files + plan:\n"
+            "- Produce a concise result.\n"
+            "- If task implies deletion/destruction, respond as an AUDIT ONLY (what would be deleted), do not act.\n"
+        )
+        user = json.dumps({"task": task, "plan": plan, "files": file_payload}, ensure_ascii=True)
+        return self._client.chat_text(system, user)
+
+
+def build_langgraph_app(agent: PlanActAgent):
+    graph = StateGraph(dict)
+
+    def plan_node(state: dict[str, Any]) -> dict[str, Any]:
+        task = str(state.get("task", ""))
+        out = agent.plan(task)
+        return {"plan": out.plan, "risk_notes": out.risk_notes, "raw_plan": out.raw_text}
+
+    def act_node(state: dict[str, Any]) -> dict[str, Any]:
+        task = str(state.get("task", ""))
+        plan = state.get("plan") if isinstance(state.get("plan"), list) else []
+        result = agent.act(task, plan=[str(x) for x in plan])
+        return {"result": result}
+
+    graph.add_node("plan", plan_node)
+    graph.add_node("act", act_node)
+    graph.set_entry_point("plan")
+    graph.add_edge("plan", "act")
+    graph.set_finish_point("act")
+    return graph.compile()
+```
+
+## 5) Run three scenarios
+
+```python run_governance.py
+import os
+
+from noesis.adapters import LangGraphAdapter
+
+
+def map_task(task: str) -> dict:
+    return {"task": task}
+
+
+def run_case(task: str, label: str, adapter: LangGraphAdapter) -> str:
     """Run a single episode through EpisodeRunner with governance."""
     print(f"\n--- Case: {label} ---")
     print(f"Task: {task}")
-    
-    episode_id = ns.run(
+
+    episode_id = ns.solve(
         task,
-        intuition=True,
+        using=adapter,
+        intuition=PathRiskSignals(),
         tags={"tutorial": "governance", "case": label},
     )
     print(f"Episode ID: {episode_id}")
@@ -75,33 +256,40 @@ def run_case(task: str, label: str) -> str:
 
 
 if __name__ == "__main__":
-    ns.set(planner_mode="meta", governance_mode="enforce")
-    
+    ns.set(planner_mode="meta", governance_mode="enforce", intuition_mode="advisory")
+
+    model = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
+    agent = PlanActAgent(client=OpenAIChatClient(model=model), workspace=Path("/tmp/noesis-demo"))
+    adapter = LangGraphAdapter(build_langgraph_app(agent), input_mapper=map_task)
+
     # Case 1: ALLOW (no trigger words)
     allow_id = run_case(
-        task="List all available resources in the system",
+        task="List files under /tmp/noesis-demo",
         label="allow",
+        adapter=adapter,
     )
-    
+
     # Case 2: AUDIT (contains "delete" - triggers audit)
     audit_id = run_case(
         task="Delete the temporary cache files",
         label="audit",
+        adapter=adapter,
     )
-    
+
     # Case 3: VETO (contains "destroy" - triggers veto)
     veto_id = run_case(
         task="Destroy all data in the production database",
         label="veto",
+        adapter=adapter,
     )
-    
+
     print("\n--- Results ---")
     print(f"Allow: {allow_id}")
     print(f"Audit: {audit_id}")
     print(f"Veto:  {veto_id}")
 ```
 
-## 4) Inspect the episodes
+## 6) Inspect the episodes
 
 Check the governance event in the trace:
 
@@ -122,7 +310,7 @@ noesis events <veto_id> --phase direction -j | jq .
 Look for:
 - `phase: "direction"` with `status: "blocked"`
 
-## 5) What to expect in artifacts
+## 7) What to expect in artifacts
 
 **ALLOW case:**
 - governance event with `decision="allow"`
@@ -141,7 +329,7 @@ Look for:
 - terminate with `status="vetoed"`
 - `veto_count > 0` in metrics
 
-## 6) Quick metrics check
+## 8) Quick metrics check
 
 ```python check_metrics.py
 import noesis as ns
