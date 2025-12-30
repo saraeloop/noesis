@@ -4,12 +4,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+import sys
+import json
+from functools import lru_cache
 
-from noesis.trace.events import PHASES, read_events as read_events_from_dir
+from noesis.trace.events import read_events as read_events_from_dir
 from noesis.trace.summary import read_summary as read_summary_from_dir
 from noesis.trace.summary import SUMMARY_FILE
 from noesis.trace.events import EVENTS_FILE
-from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
+from noesis.trace.schema import SUMMARY_SCHEMA_VERSION, EVENTS_SCHEMA_VERSION, events_schema_path
+from jsonschema import Draft202012Validator
 from .viewer_time import parse_iso
 
 SchemaLabel = str
@@ -286,80 +290,26 @@ def validate_summary(summary: Dict[str, Any], *, schema: str, file_label: str) -
     return issues
 
 
-_PHASE_PAYLOAD_KEYS: Dict[str, Tuple[str, ...]] = {
-    "observe": ("task",),
-    "interpret": ("signals",),
-    "plan": ("steps",),
-    "act": ("outcome",),
-    "reflect": ("success",),
-    "governance": ("decision", "rule_id"),
-    "direction": ("status",),
-}
-
-
-def validate_events(events: Sequence[Dict[str, Any]], *, schema: str, file_label: str) -> List[ValidationIssue]:
+def validate_events(
+    events: Sequence[Dict[str, Any]],
+    *,
+    schema: str,
+    file_label: str,
+    schema_payload: Dict[str, Any],
+) -> List[ValidationIssue]:
     issues: List[ValidationIssue] = []
+    validator = Draft202012Validator(schema_payload)
     for index, event in enumerate(events, start=1):
-        pointer_base = "$"
-        issue = _require(isinstance(event, dict), file=file_label, schema=schema, pointer=pointer_base, message="expected object", line=index)
-        if issue:
-            issues.append(issue)
-            continue
-        required_keys = ("timestamp", "episode_id", "phase", "payload", "evidence_ids")
-        for key in required_keys:
-            issue = _require(key in event, file=file_label, schema=schema, pointer=key, message="missing", line=index)
-            if issue:
-                issues.append(issue)
-        timestamp = event.get("timestamp")
-        if timestamp is not None:
-            issue = _require(isinstance(timestamp, str), file=file_label, schema=schema, pointer="timestamp", message="must be string", line=index)
-            if issue:
-                issues.append(issue)
-        phase = event.get("phase")
-        if phase is not None:
-            issue = _require(isinstance(phase, str), file=file_label, schema=schema, pointer="phase", message="must be string", line=index)
-            if issue:
-                issues.append(issue)
-            elif phase not in PHASES:
-                issues.append(ValidationIssue(file=file_label, schema=schema, pointer="phase", message=f"unknown phase '{phase}'", line=index))
-        payload = event.get("payload")
-        issue = _require(isinstance(payload, dict), file=file_label, schema=schema, pointer="payload", message="expected object", line=index)
-        if issue:
-            issues.append(issue)
-            continue
-        if isinstance(phase, str):
-            required = _PHASE_PAYLOAD_KEYS.get(phase, ())
-            for key in required:
-                issue = _require(key in payload, file=file_label, schema=schema, pointer=f"payload.{key}", message="missing", line=index)
-                if issue:
-                    issues.append(issue)
-            if phase == "learn":
-                has_ref = any(key in payload for key in ("learn_path", "learn_schema"))
-                if has_ref:
-                    for key in ("learn_path", "learn_schema", "proposal_count", "proposal_ids"):
-                        issue = _require(key in payload, file=file_label, schema=schema, pointer=f"payload.{key}", message="missing", line=index)
-                        if issue:
-                            issues.append(issue)
-                else:
-                    for key in ("policy_id", "basis", "proposal", "scope"):
-                        issue = _require(key in payload, file=file_label, schema=schema, pointer=f"payload.{key}", message="missing", line=index)
-                        if issue:
-                            issues.append(issue)
-            if phase == "act":
-                has_tool = any(k in payload for k in ("tool", "adapter"))
-                issue = _require(has_tool, file=file_label, schema=schema, pointer="payload.tool", message="requires 'tool' or 'adapter'", line=index)
-                if issue:
-                    issues.append(issue)
-        metrics = event.get("metrics")
-        if metrics is not None:
-            issue = _require(isinstance(metrics, dict), file=file_label, schema=schema, pointer="metrics", message="expected object", line=index)
-            if issue:
-                issues.append(issue)
-            else:
-                for key in ("started_at", "completed_at", "duration_ms"):
-                    issue = _require(key in metrics, file=file_label, schema=schema, pointer=f"metrics.{key}", message="missing", line=index)
-                    if issue:
-                        issues.append(issue)
+        for error in validator.iter_errors(event):
+            issues.append(
+                ValidationIssue(
+                    file=file_label,
+                    schema=schema,
+                    pointer=_jsonschema_pointer(error),
+                    message=error.message,
+                    line=index,
+                )
+            )
     return issues
 
 
@@ -384,12 +334,30 @@ def _load_from_episode_id(ns: Any, runtime_context: Any, episode_id: str) -> Tup
     return summary, events, paths
 
 
+def _jsonschema_pointer(error: Exception) -> str:
+    path = getattr(error, "absolute_path", ())
+    pointer = "$"
+    for item in path:
+        if isinstance(item, int):
+            pointer += f"[{item}]"
+        else:
+            pointer += f".{item}"
+    return pointer
+
+
+@lru_cache(maxsize=1)
+def _events_schema() -> Dict[str, Any]:
+    path = Path(events_schema_path())
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def load_episode_view(
     target: str,
     *,
     ns: Any,
     runtime_context: Any,
     schema_override: Optional[str] = None,
+    debug: bool = False,
 ) -> EpisodeView:
     candidate = Path(target).expanduser()
     if candidate.exists():
@@ -404,14 +372,24 @@ def load_episode_view(
     if schema_override:
         schema_version = schema_override
     summary_schema_label = f"summary/{schema_version}"
-    event_schema_label = "events/1.2"
+    event_schema_label = f"events/{EVENTS_SCHEMA_VERSION}"
 
     summary_file_label = Path(paths.get("summary") or "summary.json").name
     events_file_label = Path(paths.get("events") or "events.jsonl").name
 
     validation: List[ValidationIssue] = []
+    events_schema_file = Path(events_schema_path())
+    if debug:
+        print(f"[debug] events schema: {events_schema_file}", file=sys.stderr)
     validation.extend(validate_summary(summary, schema=summary_schema_label, file_label=summary_file_label))
-    validation.extend(validate_events(events, schema=event_schema_label, file_label=events_file_label))
+    validation.extend(
+        validate_events(
+            events,
+            schema=event_schema_label,
+            file_label=events_file_label,
+            schema_payload=_events_schema(),
+        )
+    )
 
     episode_id = summary.get("episode_id") or target
     header = _header(summary, events)

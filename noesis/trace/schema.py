@@ -14,6 +14,7 @@ from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Public schema version exported to runtime/core.
 SUMMARY_SCHEMA_VERSION = "1.2.0"
+EVENTS_SCHEMA_VERSION = "1.2.0"
 
 _FACULTY_SCHEMA_FILES: Dict[str, str] = {
     "intuition": "intuition.schema.json",
@@ -81,11 +82,21 @@ def schema_path(name: str) -> str:
     return str(files("noesis.trace.schemas") / filename)
 
 
+def events_schema_path(version: str = EVENTS_SCHEMA_VERSION) -> str:
+    """Return the filesystem path for the events JSON schema."""
+    normalized = version
+    if normalized.count(".") == 1:
+        normalized = f"{normalized}.0"
+    return str(files("noesis.trace.schemas") / "events" / f"{normalized}.json")
+
+
 __all__ = [
     "SUMMARY_SCHEMA_VERSION",
+    "EVENTS_SCHEMA_VERSION",
     "EventRecord",
     "SummaryFlags",
     "SummarySnapshot",
     "EventMetrics",
     "schema_path",
+    "events_schema_path",
 ]

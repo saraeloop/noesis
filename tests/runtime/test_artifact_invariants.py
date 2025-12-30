@@ -9,12 +9,18 @@ from pathlib import Path
 import pytest
 from jsonschema import validate
 
+import noesis as ns
+from noesis.cli.viewer import load_episode_view
 from noesis.runtime.artifacts.manifest import compute_sha256
 from noesis.runtime.normalization import normalize_using
+from noesis.trace.schema import events_schema_path
 
 
 def _load_schema(name: str, version: str) -> dict:
-    path = Path(__file__).resolve().parents[2] / "docs" / "schema" / name / f"{version}.json"
+    if name == "event":
+        path = Path(events_schema_path(version))
+    else:
+        path = Path(__file__).resolve().parents[2] / "docs" / "schema" / name / f"{version}.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -192,7 +198,14 @@ def test_artifact_invariants_hello_and_veto(tmp_path: Path) -> None:
         assert hello_episode.main() == 0
         episodes = [p for p in runs_dir.iterdir() if p.is_dir() and p.name != "_episodes"]
         assert episodes, "hello_episode did not emit an episode"
-        _validate_run(max(episodes, key=lambda p: p.stat().st_mtime))
+        latest_run = max(episodes, key=lambda p: p.stat().st_mtime)
+        _validate_run(latest_run)
+        view = load_episode_view(
+            str(latest_run),
+            ns=ns,
+            runtime_context=None,
+        )
+        assert not view.validation, "noesis view reported validation issues"
 
     if find_spec("langgraph") is None or find_spec("openai") is None:
         pytest.skip("guarded_langgraph dependencies missing")
