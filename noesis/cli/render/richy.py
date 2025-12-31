@@ -3,13 +3,33 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Iterable
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.syntax import Syntax
 
-from ..viewer import EpisodeView, TimelineRow, ValidationIssue
+from .. import formatters
+from ..view_models import EpisodeDashboardVM, TimelineRowVM
+
+_TIMELINE_COLS = {
+    "dt": 8,
+    "phase": 12,
+    "agent": 16,
+    "status": 10,
+    "summary": 50,
+}
+
+_KPI_COLS = {
+    "label": 16,
+    "value": 16,
+}
+
+_PHASE_COLS = {
+    "phase": 12,
+    "duration": 10,
+}
 
 
 class RichRenderer:
@@ -49,6 +69,38 @@ class RichRenderer:
                 (row.get("started_at", "")[:25]),
                 (row.get("episode_id", "")[:28]),
                 row.get("task", ""),
+            )
+        self.console.print(table)
+
+    def print_ps(self, rows: Iterable[Dict[str, str]], *, quiet: bool = False) -> None:
+        if quiet or self.quiet:
+            for row in rows:
+                eid = row.get("episode_id")
+                if eid:
+                    self.console.print(eid)
+            return
+
+        table = Table(
+            show_header=True,
+            header_style="bold magenta",
+            box=None,
+            expand=True,
+            pad_edge=False,
+        )
+        table.add_column("STARTED_AT", style="muted", no_wrap=True, max_width=20)
+        table.add_column("EPISODE", style="bright_cyan", no_wrap=True, max_width=12)
+        table.add_column("STATUS", style="val", no_wrap=True, max_width=8)
+        table.add_column("USING", style="muted", no_wrap=True, max_width=14)
+        table.add_column("DURATION", style="val", no_wrap=True, max_width=10)
+        for row in rows:
+            status = row.get("status", "")
+            style = _status_style(status)
+            table.add_row(
+                row.get("started_at", "")[:20],
+                (row.get("episode_short") or row.get("episode_id") or "")[:10],
+                Text(status, style=style),
+                row.get("using", ""),
+                row.get("duration", ""),
             )
         self.console.print(table)
 
@@ -125,84 +177,94 @@ class RichRenderer:
         src = json.dumps(data, indent=2, ensure_ascii=False)
         self.console.print(Syntax(src, "json", word_wrap=True))
 
-    def _filter_timeline(self, rows: Iterable[TimelineRow], grep: str | None) -> list[TimelineRow]:
+    def _filter_timeline(self, rows: Iterable[TimelineRowVM], grep: str | None) -> list[TimelineRowVM]:
         if not grep:
             return list(rows)
         terms = [term.strip().lower() for term in grep.split() if term.strip()]
         filtered: list[TimelineRow] = []
         for row in rows:
-            haystack = f"phase={row.phase} agent={row.agent} note={row.note}".lower()
+            haystack = f"phase={row.phase} agent={row.agent} summary={row.summary}".lower()
             if all(term in haystack for term in terms):
                 filtered.append(row)
         return filtered
 
-    def _render_validation(self, issues: Iterable[ValidationIssue]) -> None:
-        issues = list(issues)
-        if not issues:
-            return
-        body = "\n".join(f"[err]•[/] {issue.format()}" for issue in issues)
-        self.console.print(Panel(body, title="[title]Validation[/]", border_style="red"))
+    def render_episode_dashboard(self, vm: EpisodeDashboardVM, *, grep: str | None = None, debug: bool = False) -> None:
+        header = vm.header
+        chips = vm.chips
 
-    def print_viewer(self, view: EpisodeView, *, grep: str | None = None) -> None:
-        header = view.header
-        header_table = Table.grid(padding=(0, 1))
-        header_table.add_row(Text("episode_id", style="key"), Text(str(header.get("episode_id")), style="val"))
-        header_table.add_row(Text("started_at", style="key"), Text(str(header.get("started_at")), style="val"))
-        header_table.add_row(Text("planner_mode", style="key"), Text(str(header.get("planner_mode")), style="val"))
-        intuition = "on" if header.get("intuition_enabled") else "off"
-        header_table.add_row(Text("intuition", style="key"), Text(intuition, style="val"))
-        if header.get("using"):
-            header_table.add_row(Text("using", style="key"), Text(str(header.get("using")), style="val"))
-        policies = header.get("policies") or []
-        if policies:
-            header_table.add_row(Text("policies", style="key"), Text(", ".join(str(p) for p in policies), style="val"))
-        ports = header.get("ports")
-        if isinstance(ports, dict) and ports:
-            ports_text = ", ".join(f"{k}={v}" for k, v in ports.items())
-            header_table.add_row(Text("ports", style="key"), Text(ports_text, style="muted"))
-        self.console.print(Panel(header_table, title="[title]Episode[/]"))
+        title = Text(f"Episode {header.episode_id}", style="title")
+        badge = Text(f" {header.status_label} ", style=_status_style(header.status_label))
+        header_grid = Table.grid(expand=True)
+        header_grid.add_column(ratio=1)
+        header_grid.add_column(justify="right", no_wrap=True)
+        header_grid.add_row(title, badge)
 
-        kpis = view.kpis
-        kpi_table = Table.grid(padding=(0, 1))
-        kpi_table.add_row(Text("success", style="key"), Text(str(kpis.get("success")), style="ok" if kpis.get("success") else "err"))
-        kpi_table.add_row(Text("plan_adherence", style="key"), Text(str(kpis.get("plan_adherence")), style="val"))
-        kpi_table.add_row(Text("veto_count", style="key"), Text(str(kpis.get("veto_count")), style="val"))
-        kpi_table.add_row(Text("tool_coverage", style="key"), Text(str(kpis.get("tool_coverage")), style="val"))
-        phase_ms = kpis.get("phase_ms") or {}
-        if phase_ms:
-            phase_table = Table.grid(padding=(0, 1))
-            for phase, value in phase_ms.items():
-                phase_table.add_row(Text(phase, style="key"), Text(f"{value} ms", style="val"))
-            kpi_table.add_row(Text("phase_ms", style="key"), phase_table)
-        self.console.print(Panel(kpi_table, title="[title]KPIs[/]"))
+        chip_text = Text("  ".join(_format_chip(label, value) for label, value in (
+            ("using", chips.using),
+            ("planner", chips.planner_mode),
+            ("duration", chips.duration_str),
+            ("schema", chips.schema_str),
+        ) if value))
+        header_body = Table.grid()
+        header_body.add_row(header_grid)
+        if chip_text.plain:
+            header_body.add_row(Text(chip_text.plain, style="muted"))
+        self.console.print(Panel(header_body, border_style="title"))
 
-        if view.governance:
-            gov = view.governance
-            gov_table = Table.grid(padding=(0, 1))
-            gov_table.add_row(Text("decision", style="key"), Text(str(gov.get("decision")), style="val"))
-            gov_table.add_row(Text("rule_id", style="key"), Text(str(gov.get("rule_id")), style="val"))
-            if gov.get("policy_id"):
-                policy = f"{gov.get('policy_id')}@{gov.get('policy_version')}" if gov.get("policy_version") else gov.get("policy_id")
-                gov_table.add_row(Text("policy", style="key"), Text(str(policy), style="val"))
-            if gov.get("message"):
-                gov_table.add_row(Text("message", style="key"), Text(str(gov.get("message")), style="val"))
-            if gov.get("time_to_veto_ms") is not None:
-                gov_table.add_row(Text("time_to_veto_ms", style="key"), Text(str(gov.get("time_to_veto_ms")), style="val"))
-            self.console.print(Panel(gov_table, title="[title]Governance[/]", border_style="yellow"))
-
-        rows = self._filter_timeline(view.timeline, grep)
-        timeline_table = Table(
+        kpis = vm.kpis
+        kpi_table = Table(
+            title="[title]KPIs[/]",
+            box=box.SQUARE,
             show_header=True,
             header_style="title",
-            box=None,
             expand=True,
-            pad_edge=False,
         )
-        timeline_table.add_column("TS", style="muted", no_wrap=True)
-        timeline_table.add_column("Δ", style="muted", no_wrap=True)
-        timeline_table.add_column("PHASE", style="val", no_wrap=True)
-        timeline_table.add_column("AGENT", style="muted", no_wrap=True)
-        timeline_table.add_column("NOTE", style="val")
+        kpi_table.add_column("KPI", style="key", no_wrap=True, width=_KPI_COLS["label"])
+        kpi_table.add_column("VALUE", style="val", justify="right", width=_KPI_COLS["value"])
+        kpi_table.add_row("success%", _format_percent_value(kpis.success_pct))
+        kpi_table.add_row("plan_adherence", _format_ratio(kpis.plan_adherence))
+        kpi_table.add_row("veto_count", str(kpis.veto_count) if kpis.veto_count is not None else "—")
+        kpi_table.add_row("tool_coverage", _format_ratio(kpis.tool_coverage))
+        kpi_table.add_row("first_action", kpis.first_action or "—")
+
+        phase_panel = None
+        if vm.phase_breakdown:
+            phase_table = Table(
+                title="[title]Phase Breakdown[/]",
+                show_header=True,
+                header_style="title",
+                box=box.SQUARE,
+                expand=True,
+            )
+            phase_table.add_column("PHASE", style="val", no_wrap=True, width=_PHASE_COLS["phase"])
+            phase_table.add_column("DURATION", style="muted", justify="right", no_wrap=True, width=_PHASE_COLS["duration"])
+            for item in vm.phase_breakdown:
+                phase_style = f"phase.{item.phase}" if f"phase.{item.phase}" in self.console.theme.styles else "val"
+                phase_table.add_row(Text(item.phase, style=phase_style), f"{item.ms} ms")
+            phase_panel = phase_table
+
+        if phase_panel and self.console.size.width >= 100:
+            from rich.columns import Columns
+
+            self.console.print(Columns([kpi_table, phase_panel], expand=True))
+        else:
+            self.console.print(kpi_table)
+            if phase_panel:
+                self.console.print(phase_panel)
+
+        rows = self._filter_timeline(vm.timeline_rows, grep)
+        timeline_table = Table(
+            title="[title]Timeline[/]",
+            show_header=True,
+            header_style="title",
+            box=box.SQUARE,
+            expand=True,
+        )
+        timeline_table.add_column("Δt", style="muted", no_wrap=True, justify="right", width=_TIMELINE_COLS["dt"])
+        timeline_table.add_column("PHASE", style="val", no_wrap=True, width=_TIMELINE_COLS["phase"])
+        timeline_table.add_column("AGENT", style="muted", no_wrap=True, width=_TIMELINE_COLS["agent"])
+        timeline_table.add_column("STATUS", style="val", no_wrap=True, width=_TIMELINE_COLS["status"])
+        timeline_table.add_column("SUMMARY", style="val", no_wrap=True, width=_TIMELINE_COLS["summary"])
 
         if not rows:
             timeline_table.add_row("-", "-", "-", "-", "no events matched")
@@ -210,12 +272,47 @@ class RichRenderer:
             for row in rows:
                 phase_style = f"phase.{row.phase}" if f"phase.{row.phase}" in self.console.theme.styles else "val"
                 timeline_table.add_row(
-                    row.timestamp or "",
-                    row.delta_label(),
-                    Text(row.phase, style=phase_style),
-                    Text(row.agent, style="muted"),
-                    Text(row.note or "", style="val"),
+                    formatters.truncate(row.dt_str, max_width=_TIMELINE_COLS["dt"]),
+                    Text(formatters.truncate(row.phase, max_width=_TIMELINE_COLS["phase"]), style=phase_style),
+                    Text(formatters.truncate(row.agent, max_width=_TIMELINE_COLS["agent"]), style="muted"),
+                    Text(
+                        formatters.truncate(row.status or "—", max_width=_TIMELINE_COLS["status"]),
+                        style=_status_style(row.status),
+                    ),
+                    Text(formatters.truncate(row.summary or "", max_width=_TIMELINE_COLS["summary"]), style="val"),
                 )
         self.console.print(timeline_table)
 
-        self._render_validation(view.validation)
+        if vm.suggestions:
+            suggestions = "\n".join(f"[muted]$[/] {item}" for item in vm.suggestions)
+            self.console.print(Panel(suggestions, title="[title]Next[/]"))
+
+    def print_viewer(self, view: EpisodeDashboardVM, *, grep: str | None = None) -> None:
+        self.render_episode_dashboard(view, grep=grep)
+
+
+def _status_style(label: str) -> str:
+    normalized = label.lower()
+    if normalized in {"success", "ok"}:
+        return "ok"
+    if normalized == "audit":
+        return "warn"
+    if normalized in {"vetoed", "error"}:
+        return "err"
+    return "muted"
+
+
+def _format_chip(label: str, value: str | None) -> str:
+    return f"{label}:{value}" if value else ""
+
+
+def _format_percent_value(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.2f}%"
+
+
+def _format_ratio(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:.2f}"

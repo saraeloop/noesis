@@ -101,6 +101,9 @@ def list_runs(
             "started_at": s.get("started_at"),
             "flags": s.get("flags", {}),
             "success": s.get("metrics", {}).get("success"),
+            "veto_count": s.get("metrics", {}).get("veto_count"),
+            "duration_sec": s.get("duration_sec"),
+            "status": s.get("status"),
             "manifest": manifest_meta,
             "manifest_status": manifest_status,
         })

@@ -19,6 +19,7 @@ class GlobalOptions:
     debug: bool = False
     json: bool = False
     quiet: bool = False
+    force_rich: bool = False
 
     def normalize(self) -> None:
         if self.debug:

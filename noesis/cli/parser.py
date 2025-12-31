@@ -12,6 +12,12 @@ def _build_global_parser() -> argparse.ArgumentParser:
     global_parser.add_argument("--verbose", action="store_true", default=None, help="Verbose output (detailed reasoning)")
     global_parser.add_argument("--debug", action="store_true", default=None, help="Debug mode (trace internals)")
     global_parser.add_argument(
+        "--force-rich",
+        action="store_true",
+        default=None,
+        help="Force Rich output even when stdout is not a TTY",
+    )
+    global_parser.add_argument(
         "--port",
         action="append",
         default=[],
@@ -29,6 +35,7 @@ def build_parser(formatter_class: type[argparse.HelpFormatter]) -> tuple[argpars
         "  run       baseline episode\n"
         "  solve     adapter episode\n"
         "  list      recent runs\n"
+        "  ps        compact runs table\n"
         "  show      episode summary\n"
         "  view      timeline + governance report\n"
         "  events    stream events\n"

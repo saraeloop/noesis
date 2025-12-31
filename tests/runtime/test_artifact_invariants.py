@@ -11,6 +11,7 @@ from jsonschema import validate
 
 import noesis as ns
 from noesis.cli.viewer import load_episode_view
+from noesis.cli.view_models import build_episode_dashboard
 from noesis.runtime.artifacts.manifest import compute_sha256
 from noesis.runtime.normalization import normalize_using
 from noesis.trace.schema import events_schema_path
@@ -206,6 +207,8 @@ def test_artifact_invariants_hello_and_veto(tmp_path: Path) -> None:
             runtime_context=None,
         )
         assert not view.validation, "noesis view reported validation issues"
+        dashboard = build_episode_dashboard(latest_run, validate=True)
+        assert not dashboard.validation_issues, "noesis view dashboard reported validation issues"
 
     if find_spec("langgraph") is None or find_spec("openai") is None:
         pytest.skip("guarded_langgraph dependencies missing")

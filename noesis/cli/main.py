@@ -46,7 +46,11 @@ def _choose_formatter():
 
 
 def _select_renderer(ctx, options: GlobalOptions):
-    if options.json or options.quiet or not ctx.isatty or not _HAS_RICH or os.environ.get("NO_COLOR"):
+    if options.json or options.quiet or os.environ.get("NO_COLOR"):
+        return PlainRenderer(quiet=options.quiet)
+    if not _HAS_RICH:
+        return PlainRenderer(quiet=options.quiet)
+    if not ctx.isatty and not options.force_rich:
         return PlainRenderer(quiet=options.quiet)
     console = Console(
         theme=Theme(
@@ -73,6 +77,7 @@ def _select_renderer(ctx, options: GlobalOptions):
                 "phase.error": "bold red",
             }
         ),
+        force_terminal=options.force_rich,
         soft_wrap=True,
     )
     return RichRenderer(console, quiet=options.quiet)
@@ -93,10 +98,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     env_compact = _env_bool("NOESIS_COMPACT")
     env_verbose = _env_bool("NOESIS_VERBOSE")
     env_debug = _env_bool("NOESIS_DEBUG")
+    env_force_rich = _env_bool("NOESIS_FORCE_RICH")
 
     compact_arg = getattr(args, "compact", None)
     verbose_arg = getattr(args, "verbose", None)
     debug_arg = getattr(args, "debug", None)
+    force_rich_arg = getattr(args, "force_rich", None)
 
     options = GlobalOptions(
         compact=compact_arg if compact_arg is not None else env_compact,
@@ -104,6 +111,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         debug=bool(debug_arg) or bool(env_debug),
         json=bool(getattr(args, "json", False)),
         quiet=bool(getattr(args, "quiet", False)),
+        force_rich=bool(force_rich_arg) if force_rich_arg is not None else bool(env_force_rich),
     )
     options.normalize()
     if options.compact is None:
