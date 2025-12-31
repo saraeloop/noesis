@@ -130,7 +130,7 @@ def main() -> int:
         if any(e.get("phase") == "memory" for e in events):
             info("Memory is optional in this tutorial; missing ports are not errors.")
 
-        info(f"Tip: run `noesis view {episode_id}` for the full humanized timeline.")
+        info(f"Tip: run `uv run noesis view {episode_id}` for the full humanized timeline.")
         success("Hello Episode completed.")
         return 0
 

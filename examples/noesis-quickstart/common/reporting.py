@@ -101,7 +101,7 @@ def print_next_steps(results: dict[str, str | None]) -> None:
     headline("Next Steps")
     for label, episode_id in results.items():
         if episode_id:
-            info(f"View {label}: noesis view {episode_id}")
+            info(f"View {label}: uv run noesis view {episode_id}")
 
 
 def print_completion(message: str) -> None:

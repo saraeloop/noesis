@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Protocol
 
-from ..viewer import EpisodeView
+from ..view_models import EpisodeDashboardVM
 
 
 class OutputRenderer(Protocol):
@@ -18,4 +18,6 @@ class OutputRenderer(Protocol):
 
     def json(self, data: Any) -> None: ...
 
-    def print_viewer(self, view: EpisodeView, *, grep: str | None = None) -> None: ...
+    def print_viewer(self, view: EpisodeDashboardVM, *, grep: str | None = None) -> None: ...
+
+    def print_ps(self, rows: Iterable[Dict[str, str]], *, quiet: bool = False) -> None: ...
