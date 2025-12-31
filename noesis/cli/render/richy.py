@@ -239,7 +239,7 @@ class RichRenderer:
             phase_table.add_column("PHASE", style="val", no_wrap=True, width=_PHASE_COLS["phase"])
             phase_table.add_column("DURATION", style="muted", justify="right", no_wrap=True, width=_PHASE_COLS["duration"])
             for item in vm.phase_breakdown:
-                phase_style = f"phase.{item.phase}" if f"phase.{item.phase}" in self.console.theme.styles else "val"
+                phase_style = _phase_style(self.console, item.phase)
                 phase_table.add_row(Text(item.phase, style=phase_style), f"{item.ms} ms")
             phase_panel = phase_table
 
@@ -270,7 +270,7 @@ class RichRenderer:
             timeline_table.add_row("-", "-", "-", "-", "no events matched")
         else:
             for row in rows:
-                phase_style = f"phase.{row.phase}" if f"phase.{row.phase}" in self.console.theme.styles else "val"
+                phase_style = _phase_style(self.console, row.phase)
                 timeline_table.add_row(
                     formatters.truncate(row.dt_str, max_width=_TIMELINE_COLS["dt"]),
                     Text(formatters.truncate(row.phase, max_width=_TIMELINE_COLS["phase"]), style=phase_style),
@@ -316,3 +316,12 @@ def _format_ratio(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.2f}"
+
+
+def _phase_style(console: Console, phase: str) -> str:
+    style_name = f"phase.{phase}"
+    try:
+        console.get_style(style_name)
+    except Exception:  # noqa: BLE001 - rich raises errors for missing styles
+        return "val"
+    return style_name

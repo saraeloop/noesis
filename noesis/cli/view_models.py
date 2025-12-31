@@ -183,6 +183,77 @@ def build_episode_dashboard(
     )
 
 
+def build_episode_dashboard_from_payloads(
+    *,
+    summary: Dict[str, Any] | None,
+    events: Sequence[Dict[str, Any]] | None,
+    state: Dict[str, Any] | None = None,
+    episode_id: Optional[str] = None,
+    limit_timeline: int = 50,
+    validate: bool = False,
+    schema_override: Optional[str] = None,
+) -> EpisodeDashboardVM:
+    """Build a dashboard view model from in-memory summary/events payloads."""
+    summary_payload = summary if isinstance(summary, dict) else {}
+    events_payload = list(events or [])
+
+    resolved_id = (
+        summary_payload.get("episode_id")
+        or _episode_id_from_events(events_payload)
+        or episode_id
+        or "unknown"
+    )
+
+    status = episode_status(summary_payload, state, events_payload)
+    flags = summary_payload.get("flags", {}) if isinstance(summary_payload, dict) else {}
+    status_text = status_label(status, governance_mode=flags.get("governance_mode"))
+    started_at = summary_payload.get("started_at") if isinstance(summary_payload, dict) else None
+    duration = duration_seconds(summary_payload, events_payload)
+    duration_str = formatters.format_duration(duration)
+
+    chips = EpisodeChipsVM(
+        using=flags.get("using"),
+        planner_mode=flags.get("mode"),
+        duration_str=duration_str,
+        schema_str=schema_label(summary_payload),
+    )
+
+    metrics = summary_payload.get("metrics", {}) if isinstance(summary_payload, dict) else {}
+    success_pct = _success_pct(metrics.get("success"))
+    kpis = EpisodeKpisVM(
+        success_pct=success_pct,
+        plan_adherence=_coerce_float(metrics.get("plan_adherence")),
+        veto_count=_coerce_int(metrics.get("veto_count")),
+        tool_coverage=_coerce_float(metrics.get("tool_coverage")),
+        first_action=_first_action(events_payload),
+    )
+
+    phase_breakdown = _phase_breakdown(summary_payload, events_payload)
+    timeline_rows = _build_timeline(events_payload, limit_timeline=limit_timeline)
+    validation_issues = _validate_payloads(
+        summary_payload,
+        events_payload,
+        validate=validate,
+        schema_override=schema_override,
+    )
+    suggestions = _suggestions(resolved_id)
+
+    return EpisodeDashboardVM(
+        header=EpisodeHeaderVM(
+            episode_id=resolved_id,
+            status_label=status_text,
+            started_at=started_at,
+            duration=duration,
+        ),
+        chips=chips,
+        kpis=kpis,
+        phase_breakdown=phase_breakdown,
+        timeline_rows=timeline_rows,
+        validation_issues=validation_issues,
+        suggestions=suggestions,
+    )
+
+
 def _phase_breakdown(summary: Dict[str, Any], events: Sequence[Dict[str, Any]]) -> List[PhaseLatencyVM]:
     phase_ms = phase_latencies_ms(summary, events)
     items = [
@@ -192,6 +263,14 @@ def _phase_breakdown(summary: Dict[str, Any], events: Sequence[Dict[str, Any]]) 
     ]
     items.sort(key=lambda item: item.phase)
     return items
+
+
+def _episode_id_from_events(events: Sequence[Dict[str, Any]]) -> Optional[str]:
+    for event in events:
+        episode_id = event.get("episode_id")
+        if isinstance(episode_id, str) and episode_id:
+            return episode_id
+    return None
 
 
 def _build_timeline(events: Sequence[Dict[str, Any]], *, limit_timeline: int) -> List[TimelineRowVM]:
@@ -386,6 +465,38 @@ def _validate_artifacts(
                 issues.append(_format_issue(summary_path.name, summary_label, f"$.metrics.{key}", "missing"))
 
     issues.extend(_validate_events(events, events_path.name))
+    return issues
+
+
+def _validate_payloads(
+    summary: Dict[str, Any],
+    events: Sequence[Dict[str, Any]],
+    *,
+    validate: bool,
+    schema_override: Optional[str],
+) -> List[str]:
+    if not validate:
+        return []
+
+    issues: List[str] = []
+    summary_version = summary.get("schema_version") or SUMMARY_SCHEMA_VERSION
+    if schema_override:
+        summary_version = schema_override
+    summary_label = f"summary/{summary_version}"
+
+    for field in ("schema_version", "episode_id", "started_at", "metrics"):
+        if field not in summary:
+            issues.append(_format_issue("summary.json", summary_label, f"$.{field}", "missing"))
+
+    metrics = summary.get("metrics")
+    if not isinstance(metrics, dict):
+        issues.append(_format_issue("summary.json", summary_label, "$.metrics", "expected object"))
+    else:
+        for key in ("plan_adherence", "veto_count", "tool_coverage", "success"):
+            if key not in metrics:
+                issues.append(_format_issue("summary.json", summary_label, f"$.metrics.{key}", "missing"))
+
+    issues.extend(_validate_events(events, "events.jsonl"))
     return issues
 
 
