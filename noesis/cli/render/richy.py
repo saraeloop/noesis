@@ -61,7 +61,7 @@ class RichRenderer:
             pad_edge=False,
             row_styles=None,
         )
-        table.add_column("STARTED_AT", style="muted", no_wrap=True, justify="right", max_width=25)
+        table.add_column("STARTED_AT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, justify="right", max_width=25)
         table.add_column("EPISODE_ID", style="bright_cyan", no_wrap=True, max_width=28)
         table.add_column("TASK", style=_safe_style(self.console, "val", "white"))
         for row in rows:
@@ -87,10 +87,10 @@ class RichRenderer:
             expand=True,
             pad_edge=False,
         )
-        table.add_column("STARTED_AT", style="muted", no_wrap=True, max_width=20)
+        table.add_column("STARTED_AT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=20)
         table.add_column("EPISODE", style="bright_cyan", no_wrap=True, max_width=12)
         table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=8)
-        table.add_column("USING", style="muted", no_wrap=True, max_width=14)
+        table.add_column("USING", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=14)
         table.add_column("DURATION", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
         for row in rows:
             status = row.get("status", "")
@@ -237,7 +237,7 @@ class RichRenderer:
                 expand=True,
             )
             phase_table.add_column("PHASE", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_PHASE_COLS["phase"])
-            phase_table.add_column("DURATION", style="muted", justify="right", no_wrap=True, width=_PHASE_COLS["duration"])
+            phase_table.add_column("DURATION", style=_safe_style(self.console, "muted", "dim"), justify="right", no_wrap=True, width=_PHASE_COLS["duration"])
             for item in vm.phase_breakdown:
                 phase_style = _phase_style(self.console, item.phase)
                 phase_table.add_row(Text(item.phase, style=phase_style), f"{item.ms} ms")
@@ -260,9 +260,9 @@ class RichRenderer:
             box=box.SQUARE,
             expand=True,
         )
-        timeline_table.add_column("Δt", style="muted", no_wrap=True, justify="right", width=_TIMELINE_COLS["dt"])
+        timeline_table.add_column("Δt", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, justify="right", width=_TIMELINE_COLS["dt"])
         timeline_table.add_column("PHASE", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_TIMELINE_COLS["phase"])
-        timeline_table.add_column("AGENT", style="muted", no_wrap=True, width=_TIMELINE_COLS["agent"])
+        timeline_table.add_column("AGENT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, width=_TIMELINE_COLS["agent"])
         timeline_table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_TIMELINE_COLS["status"])
         timeline_table.add_column("SUMMARY", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_TIMELINE_COLS["summary"])
 
