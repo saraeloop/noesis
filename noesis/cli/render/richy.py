@@ -63,7 +63,7 @@ class RichRenderer:
         )
         table.add_column("STARTED_AT", style="muted", no_wrap=True, justify="right", max_width=25)
         table.add_column("EPISODE_ID", style="bright_cyan", no_wrap=True, max_width=28)
-        table.add_column("TASK", style="val")
+        table.add_column("TASK", style=_safe_style(self.console, "val", "white"))
         for row in rows:
             table.add_row(
                 (row.get("started_at", "")[:25]),
@@ -89,9 +89,9 @@ class RichRenderer:
         )
         table.add_column("STARTED_AT", style="muted", no_wrap=True, max_width=20)
         table.add_column("EPISODE", style="bright_cyan", no_wrap=True, max_width=12)
-        table.add_column("STATUS", style="val", no_wrap=True, max_width=8)
+        table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=8)
         table.add_column("USING", style="muted", no_wrap=True, max_width=14)
-        table.add_column("DURATION", style="val", no_wrap=True, max_width=10)
+        table.add_column("DURATION", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
         for row in rows:
             status = row.get("status", "")
             style = _status_style(status)
@@ -219,8 +219,8 @@ class RichRenderer:
             header_style="title",
             expand=True,
         )
-        kpi_table.add_column("KPI", style="key", no_wrap=True, width=_KPI_COLS["label"])
-        kpi_table.add_column("VALUE", style="val", justify="right", width=_KPI_COLS["value"])
+        kpi_table.add_column("KPI", style=_safe_style(self.console, "key", "cyan"), no_wrap=True, width=_KPI_COLS["label"])
+        kpi_table.add_column("VALUE", style=_safe_style(self.console, "val", "white"), justify="right", width=_KPI_COLS["value"])
         kpi_table.add_row("success%", _format_percent_value(kpis.success_pct))
         kpi_table.add_row("plan_adherence", _format_ratio(kpis.plan_adherence))
         kpi_table.add_row("veto_count", str(kpis.veto_count) if kpis.veto_count is not None else "—")
@@ -236,7 +236,7 @@ class RichRenderer:
                 box=box.SQUARE,
                 expand=True,
             )
-            phase_table.add_column("PHASE", style="val", no_wrap=True, width=_PHASE_COLS["phase"])
+            phase_table.add_column("PHASE", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_PHASE_COLS["phase"])
             phase_table.add_column("DURATION", style="muted", justify="right", no_wrap=True, width=_PHASE_COLS["duration"])
             for item in vm.phase_breakdown:
                 phase_style = _phase_style(self.console, item.phase)
@@ -261,10 +261,10 @@ class RichRenderer:
             expand=True,
         )
         timeline_table.add_column("Δt", style="muted", no_wrap=True, justify="right", width=_TIMELINE_COLS["dt"])
-        timeline_table.add_column("PHASE", style="val", no_wrap=True, width=_TIMELINE_COLS["phase"])
+        timeline_table.add_column("PHASE", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_TIMELINE_COLS["phase"])
         timeline_table.add_column("AGENT", style="muted", no_wrap=True, width=_TIMELINE_COLS["agent"])
-        timeline_table.add_column("STATUS", style="val", no_wrap=True, width=_TIMELINE_COLS["status"])
-        timeline_table.add_column("SUMMARY", style="val", no_wrap=True, width=_TIMELINE_COLS["summary"])
+        timeline_table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_TIMELINE_COLS["status"])
+        timeline_table.add_column("SUMMARY", style=_safe_style(self.console, "val", "white"), no_wrap=True, width=_TIMELINE_COLS["summary"])
 
         if not rows:
             timeline_table.add_row("-", "-", "-", "-", "no events matched")
@@ -316,6 +316,15 @@ def _format_ratio(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.2f}"
+
+
+def _safe_style(console: Console, style_name: str, fallback: str = "white") -> str:
+    """Get a style name if it exists in the theme, otherwise return fallback."""
+    try:
+        console.get_style(style_name)
+        return style_name
+    except Exception:  # noqa: BLE001 - rich raises errors for missing styles
+        return fallback
 
 
 def _phase_style(console: Console, phase: str) -> str:
