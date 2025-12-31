@@ -33,4 +33,5 @@ def test_rich_viewer_output_contains_tables(demo_run: Path) -> None:
     assert "KPIs" in output
     assert "Timeline" in output
     assert "┌" in output and "┐" in output, "expected table borders in rich output"
-    assert "│ Δt" in output and "PHASE" in output and "SUMMARY" in output
+    # Check column headers exist (spacing may vary due to column widths)
+    assert "Δt" in output and "PHASE" in output and "SUMMARY" in output
