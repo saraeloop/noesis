@@ -11,8 +11,10 @@ import noesis as ns
 from .context import GlobalOptions, build_context
 from .errors import EXIT_ERROR, EXIT_USAGE, EXIT_VETO
 from .render.plain import PlainRenderer
-from .content.home import build_home_screen
+from .content.home import build_home_screen, RecentEpisode
 from .content.help import build_help_screen
+from .query import episode_status, status_label
+from .formatters import format_duration
 from .theme import build_theme_tokens
 
 
@@ -89,8 +91,57 @@ def _options_from_argv(argv: Sequence[str]) -> GlobalOptions:
     )
 
 
+def _fetch_recent_episodes(ctx, *, limit: int = 5) -> list[RecentEpisode]:
+    """Fetch recent episodes for home screen preview.
+
+    Defensive: never raises, never slows down home. Returns [] on any error.
+    """
+    try:
+        rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    except Exception:  # noqa: BLE001
+        return []
+
+    episodes: list[RecentEpisode] = []
+    for row in rows:
+        try:
+            summary = {
+                "status": row.get("status"),
+                "flags": row.get("flags", {}) or {},
+                "metrics": {
+                    "success": row.get("success"),
+                    "veto_count": row.get("veto_count"),
+                },
+            }
+            status = episode_status(summary, None, None)
+            label = status_label(status, governance_mode=summary["flags"].get("governance_mode"))
+
+            # Parse time from started_at (e.g., "2025-01-15T10:30:00" -> "10:30")
+            started_at = row.get("started_at") or ""
+            time_str = started_at[11:16] if len(started_at) >= 16 else "--:--"
+
+            episode_id = row.get("episode_id", "") or ""
+            task = row.get("task", "") or ""
+
+            episodes.append(
+                RecentEpisode(
+                    time_str=time_str or "--:--",
+                    episode_short=episode_id[:12] if len(episode_id) > 12 else (episode_id or "—"),
+                    status=label or "—",
+                    task=(task[:30] + "…" if len(task) > 30 else task) or "(no task)",
+                    duration=format_duration(row.get("duration_sec")) or "—",
+                )
+            )
+        except Exception:  # noqa: BLE001
+            # Skip malformed row, continue with others
+            continue
+    return episodes
+
+
 def _render_home(renderer, ctx) -> None:
-    renderer.print_home(build_home_screen(ctx.version))
+    recent = _fetch_recent_episodes(ctx)
+    # Dynamic hint: if we have recent episodes, suggest viewing the last one
+    last_episode_id = recent[0].episode_short if recent else None
+    renderer.print_home(build_home_screen(ctx.version, recent_episodes=recent, last_episode_id=last_episode_id))
 
 
 def _render_help(renderer, ctx, *, command_name: str | None = None) -> None:

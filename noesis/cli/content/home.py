@@ -51,6 +51,7 @@ def build_home_screen(
     version: str,
     *,
     recent_episodes: Sequence[RecentEpisode] = (),
+    last_episode_id: str | None = None,
 ) -> HomeScreen:
     """
     Build home screen from registry metadata.
@@ -58,6 +59,7 @@ def build_home_screen(
     Args:
         version: The Noēsis version string.
         recent_episodes: Optional list of recent episodes to display.
+        last_episode_id: Optional last episode ID for dynamic hint.
 
     Returns:
         A HomeScreen instance with all content derived from the registry.
@@ -91,6 +93,12 @@ def build_home_screen(
         if spec.meta.show_on_home
     )
 
+    # Dynamic footer: suggest viewing last episode if available, else help
+    if last_episode_id:
+        footer_hint = f"noesis view {last_episode_id}"
+    else:
+        footer_hint = "noesis help"
+
     return HomeScreen(
         version=version,
         tagline="Observable episodes · Governance · Deterministic replay",
@@ -98,5 +106,5 @@ def build_home_screen(
         recent_episodes=tuple(recent_episodes),
         observe_commands=observe,
         verify_commands=verify,
-        footer_hint="noesis help",
+        footer_hint=footer_hint,
     )

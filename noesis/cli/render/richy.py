@@ -474,6 +474,14 @@ class RichRenderer:
         )
         self.console.print(Panel(qs_body, title="[group.title]Quick Start[/]", box=box_style, border_style=border))
 
+        # Recent Episodes panel (if any) - fixed-width table
+        if screen.recent_episodes:
+            ep_table = Table(box=None, show_header=True, expand=True, padding=(0, 1))
+            ep_table.add_column("TIME", style="muted", width=5, no_wrap=True)
+            ep_table.add_column("EPISODE", style="accent", width=12, no_wrap=True)
+            ep_table.add_column("STATUS", width=8, no_wrap=True)
+            ep_table.add_column("DUR", style="muted", justify="right", width=6, no_wrap=True)
+            ep_table.add_column("TASK", style="val", no_wrap=True, overflow="ellipsis", max_width=35)
         # Recent Episodes panel (if any)
         if screen.recent_episodes:
             ep_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
@@ -488,8 +496,8 @@ class RichRenderer:
                     ep.time_str,
                     ep.episode_short,
                     Text(ep.status, style=_status_style(ep.status)),
-                    formatters.truncate(ep.task, max_width=35),
                     ep.duration,
+                    ep.task,
                 )
             self.console.print(Panel(ep_table, title="[group.title]Recent Episodes[/]", box=box_style, border_style=border))
 
