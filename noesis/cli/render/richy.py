@@ -482,6 +482,14 @@ class RichRenderer:
             ep_table.add_column("STATUS", width=8, no_wrap=True)
             ep_table.add_column("DUR", style="muted", justify="right", width=6, no_wrap=True)
             ep_table.add_column("TASK", style="val", no_wrap=True, overflow="ellipsis", max_width=35)
+        # Recent Episodes panel (if any)
+        if screen.recent_episodes:
+            ep_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
+            ep_table.add_column("time", style="muted", width=5)
+            ep_table.add_column("id", style="accent", width=12)
+            ep_table.add_column("status", width=7)
+            ep_table.add_column("task", style="val")
+            ep_table.add_column("dur", style="muted", justify="right", width=5)
 
             for ep in screen.recent_episodes[:5]:
                 ep_table.add_row(
