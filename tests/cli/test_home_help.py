@@ -267,3 +267,16 @@ class TestHomeRecentEpisodes:
         assert "Quick Start" in out
         # Footer should show help hint when no episodes
         assert "noesis help" in out or "noesis view" in out
+
+    def test_home_flag_exits_zero(
+        self, capsys, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit --home flag always exits 0 (Bug 1 regression test)."""
+        monkeypatch.delenv("NOESIS_FORCE_RICH", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+
+        code = cli.main(["--home"])
+        out = capsys.readouterr().out
+
+        assert code == 0  # Must be 0, not EXIT_USAGE
+        assert "Quick Start" in out
