@@ -166,3 +166,104 @@ class TestHelpScreenStructure:
             assert example in all_registry_examples, (
                 f"Help example '{example}' not found in registry"
             )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Regression Tests: Home screen resilience
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestHomeRecentEpisodes:
+    """Verify home screen handles recent episodes correctly."""
+
+    def test_home_shows_recent_episodes_when_available(
+        self, capsys, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Home uses ctx.ns.list_runs() and shows results when available."""
+        from unittest.mock import MagicMock, patch
+        from noesis.cli.main import _fetch_recent_episodes, _render_home
+        from noesis.cli.content.home import RecentEpisode
+
+        # Create mock context with list_runs returning episodes
+        mock_ctx = MagicMock()
+        mock_ctx.ns.list_runs.return_value = [
+            {
+                "episode_id": "01ABCDEF123456",
+                "started_at": "2025-01-15T10:30:00",
+                "task": "Test task description",
+                "duration_sec": 1.5,
+                "status": "completed",
+                "flags": {},
+                "success": True,
+                "veto_count": 0,
+            }
+        ]
+        mock_ctx.runtime_context = None
+
+        episodes = _fetch_recent_episodes(mock_ctx)
+
+        assert len(episodes) == 1
+        assert episodes[0].episode_short == "01ABCDEF1234"
+        assert episodes[0].time_str == "10:30"
+        assert episodes[0].task == "Test task description"
+        mock_ctx.ns.list_runs.assert_called_once()
+
+    def test_home_failure_is_soft_on_list_runs_error(
+        self, capsys, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Home renders successfully even when list_runs() throws."""
+        from unittest.mock import MagicMock
+        from noesis.cli.main import _fetch_recent_episodes
+
+        # Create mock context where list_runs raises
+        mock_ctx = MagicMock()
+        mock_ctx.ns.list_runs.side_effect = Exception("Database error")
+        mock_ctx.runtime_context = None
+
+        # Should return empty list, not raise
+        episodes = _fetch_recent_episodes(mock_ctx)
+
+        assert episodes == []
+
+    def test_home_failure_is_soft_on_malformed_row(self) -> None:
+        """Home skips malformed rows without crashing."""
+        from unittest.mock import MagicMock
+        from noesis.cli.main import _fetch_recent_episodes
+
+        # Create mock context with malformed data
+        mock_ctx = MagicMock()
+        mock_ctx.ns.list_runs.return_value = [
+            None,  # Completely malformed
+            {"episode_id": "valid123"},  # Missing most fields
+            {
+                "episode_id": "complete456",
+                "started_at": "2025-01-15T10:30:00",
+                "task": "Valid task",
+                "duration_sec": 2.0,
+                "status": "completed",
+                "flags": {},
+            },
+        ]
+        mock_ctx.runtime_context = None
+
+        episodes = _fetch_recent_episodes(mock_ctx)
+
+        # Should have at least the valid row, possibly the partial one
+        assert len(episodes) >= 1
+        # The complete one should be there
+        assert any(ep.episode_short == "complete456" for ep in episodes)
+
+    def test_home_exits_zero_even_with_no_episodes(
+        self, capsys, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Home screen exits 0 even when there are no episodes."""
+        monkeypatch.delenv("NOESIS_FORCE_RICH", raising=False)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+
+        code = cli.main([])
+        out = capsys.readouterr().out
+
+        assert code == 0
+        assert "Quick Start" in out
+        # Footer should show help hint when no episodes
+        assert "noesis help" in out or "noesis view" in out

@@ -221,11 +221,13 @@ class PlainRenderer:
             print(f"  $ {item.command:<40} {item.description}")
         print()
 
-        # Recent Episodes (if any)
+        # Recent Episodes (if any) - fixed-width columns
         if screen.recent_episodes:
             print("Recent Episodes")
+            print(f"  {'TIME':<5}  {'EPISODE':<12}  {'STATUS':<8}  {'DUR':<6}  {'TASK':<30}")
             for ep in screen.recent_episodes[:5]:
-                print(f"  {ep.time_str}  {ep.episode_short:<12} {ep.status:<8} {ep.task[:30]}")
+                task_display = truncate(ep.task, max_width=30)
+                print(f"  {ep.time_str:<5}  {ep.episode_short:<12}  {ep.status:<8}  {ep.duration:<6}  {task_display:<30}")
             print()
 
         # Command groups
