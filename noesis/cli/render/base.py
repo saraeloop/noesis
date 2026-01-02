@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Protocol
 
-from ..view_models import EpisodeDashboardVM
+if TYPE_CHECKING:
+    from ..view_models import EpisodeDashboardVM
+    from ..content.home import HomeScreen
+    from ..content.help import HelpScreen
 
 
 class OutputRenderer(Protocol):
@@ -18,6 +21,12 @@ class OutputRenderer(Protocol):
 
     def json(self, data: Any) -> None: ...
 
-    def print_viewer(self, view: EpisodeDashboardVM, *, grep: str | None = None) -> None: ...
+    def print_viewer(self, view: Any, *, grep: str | None = None) -> None: ...
 
     def print_ps(self, rows: Iterable[Dict[str, str]], *, quiet: bool = False) -> None: ...
+
+    def print_home(self, screen: Any) -> None: ...
+
+    def print_help(self, screen: Any) -> None: ...
+
+    def print_command_help(self, text: str, *, title: str | None = None) -> None: ...

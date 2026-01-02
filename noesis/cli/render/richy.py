@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Dict, Iterable
+import sys
 
 from rich import box
 from rich.console import Console
+from rich.console import Group
+from rich.align import Align
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -14,32 +16,13 @@ from rich.syntax import Syntax
 
 from .. import formatters
 from ..view_models import EpisodeDashboardVM, TimelineRowVM
-
-
-# ---------------------------------------------------------------------------
-# Responsive Breakpoints (inspired by CSS media queries)
-# ---------------------------------------------------------------------------
-
-class Breakpoint(Enum):
-    """Terminal width breakpoints for adaptive layouts."""
-    COMPACT = "compact"    # < 60 cols  (mobile-like, single column)
-    STANDARD = "standard"  # 60-99 cols (typical split terminal)
-    WIDE = "wide"          # >= 100 cols (full-width terminal)
-
-
-# Breakpoint thresholds
-_COMPACT_MAX = 60
-_STANDARD_MAX = 100
+from ..help_content import HelpScreen, HomeScreen
+from ..theme import build_theme_tokens, Breakpoint, detect_breakpoint as _detect_breakpoint, get_box_style
 
 
 def detect_breakpoint(console: Console) -> Breakpoint:
     """Detect the current breakpoint based on console width."""
-    width = console.size.width
-    if width < _COMPACT_MAX:
-        return Breakpoint.COMPACT
-    if width < _STANDARD_MAX:
-        return Breakpoint.STANDARD
-    return Breakpoint.WIDE
+    return _detect_breakpoint(console.size.width)
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +118,7 @@ class RichRenderer:
     def __init__(self, console: Console, *, quiet: bool = False) -> None:
         self.console = console
         self.quiet = quiet
+        self._theme = build_theme_tokens()
 
     def banner(self, text: str) -> None:
         if not self.quiet:
@@ -154,14 +138,14 @@ class RichRenderer:
 
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style="header",
             box=None,
             expand=True,
             pad_edge=False,
             row_styles=None,
         )
         table.add_column("STARTED_AT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, justify="right", max_width=25)
-        table.add_column("EPISODE_ID", style="bright_cyan", no_wrap=True, max_width=28)
+        table.add_column("EPISODE_ID", style=_safe_style(self.console, "accent", "bright_cyan"), no_wrap=True, max_width=28)
         table.add_column("TASK", style=_safe_style(self.console, "val", "white"))
         for row in rows:
             table.add_row(
@@ -181,13 +165,13 @@ class RichRenderer:
 
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style="header",
             box=None,
             expand=True,
             pad_edge=False,
         )
         table.add_column("STARTED_AT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=20)
-        table.add_column("EPISODE", style="bright_cyan", no_wrap=True, max_width=12)
+        table.add_column("EPISODE", style=_safe_style(self.console, "accent", "bright_cyan"), no_wrap=True, max_width=12)
         table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=8)
         table.add_column("USING", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=14)
         table.add_column("DURATION", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
@@ -244,10 +228,11 @@ class RichRenderer:
         ):
             metrics_tbl.add_row(Text(key, style="key"), Text(str(metrics.get(key)), style="val"))
 
-        self.console.print(Panel(body, title=header, border_style="title"))
-        self.console.print(Panel(flags_tbl, title="[title]Flags[/]"))
-        self.console.print(Panel(dir_tbl, title="[title]Direction[/]"))
-        self.console.print(Panel(metrics_tbl, title="[title]Metrics[/]"))
+        border_style = _safe_style(self.console, "panel", "dim")
+        self.console.print(Panel(body, title=header, border_style=border_style))
+        self.console.print(Panel(flags_tbl, title="[title]Flags[/]", border_style=border_style))
+        self.console.print(Panel(dir_tbl, title="[title]Direction[/]", border_style=border_style))
+        self.console.print(Panel(metrics_tbl, title="[title]Metrics[/]", border_style=border_style))
 
     def print_events(self, events: Iterable[Dict[str, Any]]) -> None:
         for event in events:
@@ -318,7 +303,8 @@ class RichRenderer:
         header_body.add_row(header_grid)
         if chip_text.plain:
             header_body.add_row(Text(chip_text.plain, style="muted"))
-        self.console.print(Panel(header_body, border_style="title"))
+        border_style = _safe_style(self.console, "panel", "dim")
+        self.console.print(Panel(header_body, border_style=border_style))
 
     def _render_kpis_and_phases(self, vm: EpisodeDashboardVM, bp: Breakpoint) -> None:
         """Render KPIs and phase breakdown with adaptive layout."""
@@ -455,10 +441,127 @@ class RichRenderer:
         # On compact, show fewer suggestions
         suggestions_to_show = vm.suggestions[:2] if bp == Breakpoint.COMPACT else vm.suggestions
         suggestions = "\n".join(f"[muted]$[/] {item}" for item in suggestions_to_show)
-        self.console.print(Panel(suggestions, title="[title]Next[/]"))
+        border_style = _safe_style(self.console, "panel", "dim")
+        self.console.print(Panel(suggestions, title="[title]Next[/]", border_style=border_style))
 
     def print_viewer(self, view: EpisodeDashboardVM, *, grep: str | None = None) -> None:
         self.render_episode_dashboard(view, grep=grep)
+
+    def print_home(self, screen: HomeScreen) -> None:
+        """Render home screen in Rich mode."""
+        if self.quiet:
+            return
+
+        bp = detect_breakpoint(self.console)
+        box_style = get_box_style() or box.ROUNDED
+        border = _safe_style(self.console, "border", "grey42")
+
+        # Header panel
+        header_grid = Table.grid(expand=True)
+        header_grid.add_column(ratio=1)
+        header_grid.add_column(justify="right")
+        header_grid.add_row(
+            Text(f"Noēsis {screen.version}", style="title"),
+            Text("Cognitive Runtime CLI", style="muted"),
+        )
+        header_grid.add_row(Text(screen.tagline, style="home.tagline"))
+        self.console.print(Panel(header_grid, box=box_style, border_style=border))
+
+        # Quick Start panel
+        qs_body = "\n".join(
+            f"[muted]$[/] [nav.command]{item.command}[/]  [muted]{item.description}[/]"
+            for item in screen.quick_start
+        )
+        self.console.print(Panel(qs_body, title="[group.title]Quick Start[/]", box=box_style, border_style=border))
+
+        # Recent Episodes panel (if any)
+        if screen.recent_episodes:
+            ep_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
+            ep_table.add_column("time", style="muted", width=5)
+            ep_table.add_column("id", style="accent", width=12)
+            ep_table.add_column("status", width=7)
+            ep_table.add_column("task", style="val")
+            ep_table.add_column("dur", style="muted", justify="right", width=5)
+
+            for ep in screen.recent_episodes[:5]:
+                ep_table.add_row(
+                    ep.time_str,
+                    ep.episode_short,
+                    Text(ep.status, style=_status_style(ep.status)),
+                    formatters.truncate(ep.task, max_width=35),
+                    ep.duration,
+                )
+            self.console.print(Panel(ep_table, title="[group.title]Recent Episodes[/]", box=box_style, border_style=border))
+
+        # Command groups
+        observe_body = "\n".join(
+            f"[accent]{cmd.name:<12}[/] [muted]{cmd.one_liner}[/]"
+            for cmd in screen.observe_commands
+        )
+        verify_body = "\n".join(
+            f"[accent]{cmd.name:<14}[/] [muted]{cmd.one_liner}[/]"
+            for cmd in screen.verify_commands
+        )
+
+        observe_panel = Panel(observe_body, title="[group.title]Observe[/]", box=box_style, border_style=border)
+        verify_panel = Panel(verify_body, title="[group.title]Verify[/]", box=box_style, border_style=border)
+
+        if bp == Breakpoint.WIDE:
+            from rich.columns import Columns
+            self.console.print(Columns([observe_panel, verify_panel], expand=True))
+        else:
+            self.console.print(observe_panel)
+            self.console.print(verify_panel)
+
+        # Footer hint
+        self.console.print(Text(f"→ {screen.footer_hint}", style="nav.arrow"))
+
+    def print_help(self, screen: HelpScreen) -> None:
+        """Render help screen in Rich mode."""
+        if self.quiet:
+            return
+
+        box_style = get_box_style() or box.ROUNDED
+        border = _safe_style(self.console, "border", "grey42")
+
+        # Header
+        header_grid = Table.grid(padding=(0, 1))
+        header_grid.add_row(
+            Text(f"Noēsis CLI {screen.version}", style="title"),
+        )
+        header_grid.add_row(Text(screen.tagline, style="accent"))
+        header_grid.add_row(Text(f"Usage: {screen.usage}", style="muted"))
+        self.console.print(Panel(header_grid, box=box_style, border_style=border))
+
+        # Command groups
+        for group in screen.groups:
+            table = Table.grid(padding=(0, 1))
+            for cmd in group.commands:
+                table.add_row(Text(cmd.name, style="accent"), Text(cmd.one_liner, style="val"))
+            self.console.print(Panel(table, title=f"[group.title]{group.title}[/]", box=box_style, border_style=border))
+
+        # Examples
+        examples = "\n".join(f"[muted]$[/] {example}" for example in screen.examples)
+        self.console.print(Panel(examples, title="[group.title]Examples[/]", box=box_style, border_style=border))
+
+        # Footer
+        self.console.print(Text(screen.footer, style="hint"))
+
+    def print_command_help(self, text: str, *, title: str | None = None) -> None:
+        if self.quiet:
+            return
+        layout = self._theme.layout
+        body = Syntax(text.rstrip(), "text", word_wrap=True)
+        border_style = _safe_style(self.console, "panel", "dim")
+        self.console.print(
+            Panel(
+                body,
+                title=f"[title]{title}[/]" if title else None,
+                border_style=border_style,
+                padding=layout.panel_padding,
+                width=layout.panel_width,
+            )
+        )
 
 
 def _status_style(label: str) -> str:
@@ -504,3 +607,21 @@ def _phase_style(console: Console, phase: str) -> str:
     except Exception:  # noqa: BLE001 - rich raises errors for missing styles
         return "val"
     return style_name
+
+
+def _render_command_list(title: str, items: Iterable[str], *, bullet: str = "$", border_style: str = "dim") -> Panel:
+    body = "\n".join(f"[muted]{bullet}[/] {item}" for item in items)
+    return Panel(body, title=f"[title]{title}[/]", border_style=border_style)
+
+
+def _home_art() -> str:
+    return "\n".join(
+        (
+            "##   ##  ####   ######  ######  ##  ####",
+            "###  ## ##  ##  ##      ##      ## ##  ##",
+            "#### ## ##  ##  ####    ####    ## ##     ",
+            "## #### ##  ##  ##      ##      ## ##  ###",
+            "##  ### ##  ##  ##      ##      ## ##  ## ",
+            "##   ##  ####   ######  ######  ##  ####  ",
+        )
+    )
