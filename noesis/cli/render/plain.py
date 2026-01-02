@@ -4,6 +4,7 @@ import json
 from typing import Dict, Iterable, Any, List
 
 from ..view_models import EpisodeDashboardVM, TimelineRowVM
+from ..help_content import HelpScreen, HomeScreen, CommandGroup
 
 from ..formatters import format_ps_rows_for_plain, format_rows_for_plain, format_duration, truncate
 
@@ -204,6 +205,80 @@ class PlainRenderer:
             for suggestion in view.suggestions:
                 print(f"  {suggestion}")
 
+    def print_home(self, screen: HomeScreen) -> None:
+        """Render home screen in plain mode."""
+        if self.quiet:
+            return
+
+        # Header
+        print(f"Noēsis {screen.version} — Cognitive Runtime CLI")
+        print(screen.tagline)
+        print()
+
+        # Quick Start
+        print("Quick Start")
+        for item in screen.quick_start:
+            print(f"  $ {item.command:<40} {item.description}")
+        print()
+
+        # Recent Episodes (if any)
+        if screen.recent_episodes:
+            print("Recent Episodes")
+            for ep in screen.recent_episodes[:5]:
+                print(f"  {ep.time_str}  {ep.episode_short:<12} {ep.status:<8} {ep.task[:30]}")
+            print()
+
+        # Command groups
+        print("Observe                           Verify")
+        max_rows = max(len(screen.observe_commands), len(screen.verify_commands), 1)
+        for i in range(max_rows):
+            obs = screen.observe_commands[i] if i < len(screen.observe_commands) else None
+            ver = screen.verify_commands[i] if i < len(screen.verify_commands) else None
+            obs_str = f"  {obs.name:<12} {obs.one_liner[:18]}" if obs else " " * 32
+            ver_str = f"  {ver.name:<16} {ver.one_liner[:20]}" if ver else ""
+            print(f"{obs_str}    {ver_str}")
+        print()
+
+        # Footer
+        print(f"→ {screen.footer_hint}")
+
+    def print_help(self, screen: HelpScreen) -> None:
+        """Render help screen in plain mode."""
+        if self.quiet:
+            return
+
+        # Header
+        print(f"Noēsis CLI {screen.version}")
+        print(screen.tagline)
+        print()
+        print(f"Usage: {screen.usage}")
+        print()
+
+        # Command groups
+        for group in screen.groups:
+            print(group.title)
+            max_name_len = max((len(cmd.name) for cmd in group.commands), default=0)
+            for cmd in group.commands:
+                print(f"  {cmd.name:<{max_name_len}}  {cmd.one_liner}")
+            print()
+
+        # Examples
+        print("Examples")
+        for example in screen.examples:
+            print(f"  $ {example}")
+        print()
+
+        # Footer
+        print(screen.footer)
+
+    def print_command_help(self, text: str, *, title: str | None = None) -> None:
+        if self.quiet:
+            return
+        if title:
+            print(f"{title}")
+            print("")
+        print(text.rstrip())
+
 
 def _chip(label: str, value: str | None) -> str:
     if not value:
@@ -221,6 +296,21 @@ def _format_ratio(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.2f}"
+
+
+def _print_section(title: str, items: Iterable[str]) -> None:
+    print(title)
+    for item in items:
+        print(f"  {item}")
+    print("")
+
+
+def _print_command_group(group: CommandGroup) -> None:
+    print(group.title)
+    max_len = max((len(cmd.name) for cmd in group.commands), default=0)
+    for cmd in group.commands:
+        print(f"  {cmd.name:<{max_len}}  {cmd.description}")
+    print("")
 
 
 def _render_table(

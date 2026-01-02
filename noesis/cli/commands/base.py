@@ -1,3 +1,8 @@
+"""Command protocol and base types.
+
+The canonical Command protocol is defined in noesis.cli.registry.
+This module re-exports it for backward compatibility.
+"""
 from __future__ import annotations
 
 import argparse
@@ -8,6 +13,8 @@ from ..render.base import OutputRenderer
 
 
 class Command(Protocol):
+    """Protocol for CLI commands."""
+
     name: str
     help: str
 

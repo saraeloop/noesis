@@ -9,6 +9,41 @@ The Noēsis CLI is installed with the package. Run via `noesis` or `uv run noesi
 The CLI surface is intentionally small in this release. A more robust CLI is in active development, with better scripting ergonomics, richer subcommands, and stronger JSON-first workflows. When in doubt, treat `noesis <command> --help` as the source of truth.
 </Note>
 
+## Home screen and help
+
+Running `noesis` with no arguments shows a curated home screen instead of raw argparse output. It highlights a concise Quick Start, commonly used commands, and a next-step hint. When Rich is available and allowed, the home screen uses a premium, panel-based layout with a clear welcome header (similar to the demo look you shared).
+
+The CLI also ships an explicit `noesis help` command that prints the same grouped help view as `-h/--help` (Run / Inspect / Integrity / Maintenance), and can target a specific subcommand:
+
+```bash
+noesis help
+noesis help view
+```
+
+Home/help output respects `--json`, `--quiet`, `NO_COLOR`, and TTY detection. Use `--force-rich` or `NOESIS_FORCE_RICH=1` to enable Rich output in non-TTY contexts.
+
+**Home screen mockup (ASCII)**
+
+```text
+╭──────────────────────────────────────────────────────────────────────╮
+│  * Welcome to Noēsis                                                  │
+│  Cognitive episodes with observability and governance.                │
+╰──────────────────────────────────────────────────────────────────────╯
+  Quick Start
+    $ noesis run "Summarize this repo"
+    $ noesis solve react "Weekly plan"
+    $ noesis view <episode_id>
+
+  Most Used
+    $ noesis ps
+    $ noesis events <episode_id>
+    $ noesis artifacts verify <episode_id>
+
+  Next
+    → noesis help
+    → noesis <command> -h
+```
+
 ## Installation
 
 Install from source while the PyPI release is pending:
@@ -24,7 +59,7 @@ When PyPI is live, use `uv add noesis` or `pip install noesis`.
 
 ## Commands
 
-Available commands (in `noesis --help` order): `run`, `solve`, `list`, `show`, `events`, `insight`, `version`, `new`, `validate-ports`, `diagnostics`, `migrate`, `view`, `artifacts`.
+Available commands (in `noesis --help` order): `run`, `solve`, `list`, `show`, `events`, `insight`, `version`, `new`, `validate-ports`, `diagnostics`, `migrate`, `view`, `artifacts`, `ps`, `help`.
 
 ### noesis run
 
@@ -610,6 +645,8 @@ These options work with all commands:
 | `--verbose` | Verbose output (detailed reasoning) |
 | `--debug` | Debug mode (implies verbose) |
 | `--port NAME=SPEC` | Register a runtime port (repeatable) |
+| `--home` | Show the Noēsis home screen (even with a subcommand) |
+| `--force-rich` | Force Rich output even when stdout is not a TTY |
 | `--help` | Show help message |
 
 ## Environment variables
@@ -620,6 +657,8 @@ These options work with all commands:
 | `NOESIS_VERBOSE` | Verbose output (`true`/`false`, CLI output control) |
 | `NOESIS_DEBUG` | Debug output (`true`/`false`, implies verbose; CLI output control) |
 | `NO_COLOR` | Disable rich formatting when set (standard) |
+| `NOESIS_FORCE_RICH` | Force Rich output in non-TTY contexts |
+| `NOESIS_HOME` | Show the home screen (`true`/`false`) |
 | `NOESIS_RUNS_DIR` | Default runs directory |
 | `NOESIS_PLANNER` | Default planner mode (`meta`/`minimal`) |
 | `NOESIS_DIRECTION_MIN_CONFIDENCE` | Default `direction_min_confidence` |
