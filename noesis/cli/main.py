@@ -208,7 +208,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     home_requested = bool(home_arg) if home_arg is not None else bool(env_home)
     if home_requested and not (options.json or options.quiet):
         _render_home(renderer, ctx)
-        return 0 if command is not None else EXIT_USAGE
+        return 0  # Explicit --home request is always successful
 
     if command is None:
         _render_home(renderer, ctx)
