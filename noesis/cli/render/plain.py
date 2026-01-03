@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, Iterable, Any, List
+from typing import Any, Dict, Iterable, List
 
 from ..view_models import EpisodeDashboardVM, TimelineRowVM
 from ..help_content import HelpScreen, HomeScreen, CommandGroup
@@ -143,6 +143,17 @@ class PlainRenderer:
             ) if item
         ))
 
+        # Governance summary line (if present)
+        gov = header.governance
+        if gov:
+            gov_parts = [f"governance: {gov.decision}"]
+            if gov.rule_id:
+                gov_parts.append(gov.rule_id)
+            if gov.score is not None:
+                gov_parts.append(f"score={gov.score:.2f}")
+            gov_parts.append(f"enforced={str(gov.enforced).lower()}")
+            print("  " + " ".join(gov_parts))
+
         kpis = view.kpis
         print("\nKPIs")
         kpi_rows = [
@@ -206,43 +217,50 @@ class PlainRenderer:
                 print(f"  {suggestion}")
 
     def print_home(self, screen: HomeScreen) -> None:
-        """Render home screen in plain mode."""
+        """Render home screen in plain mode - sparse bubbletea style."""
         if self.quiet:
             return
 
-        # Header
-        print(f"Noēsis {screen.version} — Cognitive Runtime CLI")
-        print(screen.tagline)
+        # Header line with tagline
+        print(f"Noesis v{screen.version}  {screen.tagline}")
+
+        # Config line
+        cfg = screen.config
+        print(f"profile={cfg.governance_mode}  planner={cfg.planner_mode}  intuition={cfg.intuition_mode}  runs={cfg.runs_dir}")
         print()
 
-        # Quick Start
-        print("Quick Start")
-        for item in screen.quick_start:
-            print(f"  $ {item.command:<40} {item.description}")
-        print()
-
-        # Recent Episodes (if any) - fixed-width columns
-        if screen.recent_episodes:
-            print("Recent Episodes")
-            print(f"  {'TIME':<5}  {'EPISODE':<12}  {'STATUS':<8}  {'DUR':<6}  {'TASK':<30}")
-            for ep in screen.recent_episodes[:5]:
-                task_display = truncate(ep.task, max_width=30)
-                print(f"  {ep.time_str:<5}  {ep.episode_short:<12}  {ep.status:<8}  {ep.duration:<6}  {task_display:<30}")
+        # Last episode (if any)
+        if screen.last_episode:
+            last = screen.last_episode
+            print(f"last   {last.episode_id[:12]:<12}   {last.status:<8}   {last.duration}")
+            print(f"task   {truncate(last.task, max_width=60)}")
+            if last.status == "VETOED" and last.rule_id:
+                score_str = f"score={last.score:.2f}" if last.score is not None else ""
+                print(f"rule   {last.rule_id}   {score_str}")
+                if last.message:
+                    print(f"why    {truncate(last.message, max_width=60)}")
             print()
 
-        # Command groups
-        print("Observe                           Verify")
-        max_rows = max(len(screen.observe_commands), len(screen.verify_commands), 1)
-        for i in range(max_rows):
-            obs = screen.observe_commands[i] if i < len(screen.observe_commands) else None
-            ver = screen.verify_commands[i] if i < len(screen.verify_commands) else None
-            obs_str = f"  {obs.name:<12} {obs.one_liner[:18]}" if obs else " " * 32
-            ver_str = f"  {ver.name:<16} {ver.one_liner[:20]}" if ver else ""
-            print(f"{obs_str}    {ver_str}")
-        print()
+        # Next actions
+        if screen.next_actions:
+            print("next")
+            for action in screen.next_actions[:3]:
+                # Pad command to align descriptions
+                cmd = action.command
+                desc = action.description
+                print(f"  {cmd:<40} {desc}")
+            print()
+
+        # Recent episodes (compact table)
+        if screen.recent_episodes:
+            print("recent")
+            for ep in screen.recent_episodes[:5]:
+                task_display = truncate(ep.task, max_width=45)
+                print(f"  {ep.time_str:<5}  {ep.episode_short:<12}  {ep.status:<8}  {task_display}")
+            print()
 
         # Footer
-        print(f"→ {screen.footer_hint}")
+        print(f"help: {screen.footer_hint}")
 
     def print_help(self, screen: HelpScreen) -> None:
         """Render help screen in plain mode."""
@@ -280,6 +298,64 @@ class PlainRenderer:
             print(f"{title}")
             print("")
         print(text.rstrip())
+
+    def print_explain(self, vm: Any) -> None:
+        """Render explain output in plain mode."""
+        if self.quiet:
+            return
+
+        print(f"Episode: {vm.episode_id}")
+        print(f"Task: {vm.task}")
+        print(f"Status: {vm.status.upper()}")
+
+        if vm.governance:
+            gov = vm.governance
+            print()
+            print("Governance Decision")
+            print(f"  decision:  {gov.decision.upper()}")
+            print(f"  enforced:  {gov.enforced}")
+            print(f"  mode:      {gov.mode}")
+            if gov.rule_id:
+                print(f"  rule_id:   {gov.rule_id}")
+            if gov.policy_id:
+                print(f"  policy_id: {gov.policy_id}")
+            if gov.score is not None:
+                print(f"  score:     {gov.score:.2f}")
+            if gov.message:
+                print(f"  message:   {gov.message}")
+
+        if vm.intuition_advice:
+            print()
+            print("Intuition Advice")
+            for advice in vm.intuition_advice:
+                conf = f" (confidence={advice.confidence:.2f})" if advice.confidence else ""
+                print(f"  - {advice.advice}{conf}")
+
+        if vm.direction_blocks:
+            print()
+            print("Direction Blocks")
+            for block in vm.direction_blocks:
+                print(f"  - {block.status}: {block.reason}")
+                if block.rule_id:
+                    print(f"    rule: {block.rule_id}")
+
+        if vm.risky_tokens:
+            print()
+            print(f"Risky Tokens: {', '.join(vm.risky_tokens)}")
+
+        if vm.causal_chain:
+            print()
+            chain_str = " → ".join(
+                f"{s.phase}({s.status})" if s.status else s.phase
+                for s in vm.causal_chain
+            )
+            print(f"Causal Chain: {chain_str}")
+
+        if vm.next_actions:
+            print()
+            print("Next Actions")
+            for action in vm.next_actions:
+                print(f"  $ {action}")
 
 
 def _chip(label: str, value: str | None) -> str:
