@@ -11,9 +11,9 @@ def test_cli_home_plain(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     code = cli.main([])
     out = capsys.readouterr().out
     assert code == 0  # no-args shows home and exits successfully
-    # New sparse design uses "Noesis" (no diacritic) and shows config line
+    # New modern design uses "Noesis" and shows config line
     assert "Noesis" in out
-    assert "profile=" in out  # config line
+    assert "governance" in out  # config line (new style without =)
     assert "next" in out or "help:" in out  # next actions or footer
 
 

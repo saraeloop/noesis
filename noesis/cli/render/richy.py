@@ -3,12 +3,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable
-import sys
 
 from rich import box
 from rich.console import Console
-from rich.console import Group
-from rich.align import Align
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -128,7 +125,7 @@ class RichRenderer:
         if not self.quiet:
             self.console.print(text)
 
-    def print_list(self, rows: Iterable[Dict[str, str]], *, quiet: bool = False) -> None:
+    def print_list(self, rows: list[dict[str, str]], *, quiet: bool = False) -> None:
         if quiet or self.quiet:
             for row in rows:
                 eid = row.get("episode_id")
@@ -155,7 +152,7 @@ class RichRenderer:
             )
         self.console.print(table)
 
-    def print_ps(self, rows: Iterable[Dict[str, str]], *, quiet: bool = False) -> None:
+    def print_ps(self, rows: list[dict[str, str]], *, quiet: bool = False) -> None:
         if quiet or self.quiet:
             for row in rows:
                 eid = row.get("episode_id")
@@ -234,7 +231,7 @@ class RichRenderer:
         self.console.print(Panel(dir_tbl, title="[title]Direction[/]", border_style=border_style))
         self.console.print(Panel(metrics_tbl, title="[title]Metrics[/]", border_style=border_style))
 
-    def print_events(self, events: Iterable[Dict[str, Any]]) -> None:
+    def print_events(self, events: list[dict[str, Any]]) -> None:
         for event in events:
             phase = event.get("phase", "")
             style = _phase_style(self.console, phase)
@@ -462,106 +459,117 @@ class RichRenderer:
         self.render_episode_dashboard(view, grep=grep)
 
     def print_home(self, screen: HomeScreen) -> None:
-        """Render home screen in Rich mode - sparse bubbletea style (no heavy boxes)."""
+        """Render home screen in Rich mode - modern bubbletea/Charm style."""
         if self.quiet:
             return
+        from ..theme import section_line, status_symbol, NAV_ARROW
 
-        bp = detect_breakpoint(self.console)
+        width = min(self.console.width or 80, 80)
 
-        # Header line: Noēsis v1.0.0  observe → govern → replay
+        # Header line: Noēsis v1.0.0 with brand color
         header = Text()
-        header.append("Noēsis ", style="title")
-        header.append(f"v{screen.version}", style="accent")
-        header.append("  ", style="muted")
-        header.append(screen.tagline, style="home.tagline")
+        header.append("Noēsis", style="brand")
+        header.append(" ", style="muted")
+        header.append(screen.version, style="version")
+        # Right-align tagline
+        tagline = f"  {screen.tagline}"
+        header.append(tagline, style="tagline")
         self.console.print(header)
+        self.console.print()
 
-        # Config line: profile=enforce  planner=meta  intuition=advisory  runs=./runs
+        # Config line with subtle styling
         cfg = screen.config
         config_line = Text()
-        config_line.append("profile=", style="muted")
-        config_line.append(cfg.governance_mode, style="accent")
-        config_line.append("  planner=", style="muted")
-        config_line.append(cfg.planner_mode, style="val")
-        config_line.append("  intuition=", style="muted")
-        config_line.append(cfg.intuition_mode, style="val")
-        config_line.append("  runs=", style="muted")
-        config_line.append(cfg.runs_dir, style="val")
+        config_line.append("  governance ", style="home.config.key")
+        config_line.append(cfg.governance_mode, style="home.config.val")
+        config_line.append("   planner ", style="home.config.key")
+        config_line.append(cfg.planner_mode, style="home.config.val")
+        config_line.append("   intuition ", style="home.config.key")
+        config_line.append(cfg.intuition_mode, style="home.config.val")
+        config_line.append("   runs ", style="home.config.key")
+        config_line.append(cfg.runs_dir, style="home.config.val")
         self.console.print(config_line)
         self.console.print()
 
-        # Last episode block (if any)
+        # Last episode section
         if screen.last_episode:
+            self.console.print(Text(section_line("last", width), style="separator"))
+            self.console.print()
+
             last = screen.last_episode
-            status_style = _status_style(last.status)
+            status_style = f"status.{last.status.lower()}"
+            sym = status_symbol(last.status)
 
-            # last   ep_XXXX   VETOED   0.01s
-            last_line = Text()
-            last_line.append("last   ", style="muted")
-            last_line.append(formatters.truncate(last.episode_id, max_width=12), style="accent")
-            last_line.append("   ", style="muted")
-            last_line.append(last.status, style=status_style)
-            last_line.append("   ", style="muted")
-            last_line.append(last.duration, style="val")
-            self.console.print(last_line)
+            # Status line with symbol
+            status_line = Text()
+            status_line.append(f"  {sym} ", style=_safe_style(self.console, status_style, "val"))
+            status_line.append(last.status, style=_safe_style(self.console, status_style, "val"))
+            status_line.append("   ", style="muted")
+            status_line.append(formatters.truncate(last.episode_id, max_width=14), style="accent")
+            status_line.append("   ", style="muted")
+            status_line.append(last.duration, style="muted")
+            self.console.print(status_line)
 
-            # task   Destroy all data in the production database.
+            # Task description
             task_line = Text()
-            task_line.append("task   ", style="muted")
-            task_line.append(formatters.truncate(last.task, max_width=60), style="val")
+            task_line.append("    ", style="muted")
+            task_line.append(formatters.truncate(last.task, max_width=65), style="val")
             self.console.print(task_line)
 
-            # If vetoed, show rule and reason
+            # Veto details
             if last.status == "VETOED" and last.rule_id:
+                self.console.print()
                 rule_line = Text()
-                rule_line.append("rule   ", style="muted")
+                rule_line.append("    rule   ", style="muted")
                 rule_line.append(last.rule_id, style="err")
                 if last.score is not None:
-                    rule_line.append(f"   score={last.score:.2f}", style="warn")
+                    rule_line.append(f"  score={last.score:.2f}", style="warn")
                 self.console.print(rule_line)
 
                 if last.message:
                     why_line = Text()
-                    why_line.append("why    ", style="muted")
-                    why_line.append(formatters.truncate(last.message, max_width=60), style="val")
+                    why_line.append("    why    ", style="muted")
+                    why_line.append(formatters.truncate(last.message, max_width=55), style="muted")
                     self.console.print(why_line)
 
             self.console.print()
 
-        # Next actions block
+        # Next actions section
         if screen.next_actions:
-            self.console.print(Text("next", style="title"))
+            self.console.print(Text(section_line("next", width), style="separator"))
+            self.console.print()
             for action in screen.next_actions[:3]:
                 action_line = Text()
-                action_line.append("  ", style="muted")
+                action_line.append(f"  {NAV_ARROW}  ", style="nav.arrow")
                 action_line.append(action.command, style="nav.command")
                 # Pad to align descriptions
-                padding = max(1, 42 - len(action.command))
+                padding = max(1, 40 - len(action.command))
                 action_line.append(" " * padding, style="muted")
-                action_line.append(action.description, style="muted")
+                action_line.append(action.description, style="nav.desc")
                 self.console.print(action_line)
             self.console.print()
 
-        # Recent episodes (compact, no boxes)
+        # Recent episodes section
         if screen.recent_episodes:
-            self.console.print(Text("recent", style="title"))
+            self.console.print(Text(section_line("recent", width), style="separator"))
+            self.console.print()
             for ep in screen.recent_episodes[:5]:
+                sym = status_symbol(ep.status)
+                status_style = f"status.{ep.status.lower()}"
                 ep_line = Text()
-                ep_line.append("  ", style="muted")
-                ep_line.append(ep.time_str, style="muted")
-                ep_line.append("  ", style="muted")
-                ep_line.append(ep.episode_short, style="accent")
-                ep_line.append("  ", style="muted")
-                ep_line.append(ep.status, style=_status_style(ep.status))
-                ep_line.append("  ", style="muted")
-                ep_line.append(formatters.truncate(ep.task, max_width=45), style="val")
+                ep_line.append(f"  {ep.time_str}  ", style="muted")
+                ep_line.append(f"{sym} ", style=_safe_style(self.console, status_style, "muted"))
+                ep_line.append(f"{ep.status:<8}", style=_safe_style(self.console, status_style, "muted"))
+                ep_line.append(f"  {ep.episode_short}  ", style="accent")
+                ep_line.append(formatters.truncate(ep.task, max_width=40), style="muted")
                 self.console.print(ep_line)
             self.console.print()
 
-        # Footer
+        # Footer line
+        self.console.print(Text("─" * width, style="separator"))
         footer = Text()
         footer.append("help: ", style="muted")
-        footer.append(screen.footer_hint, style="nav.arrow")
+        footer.append(screen.footer_hint, style="nav.command")
         self.console.print(footer)
 
     def print_help(self, screen: HelpScreen) -> None:
@@ -612,58 +620,64 @@ class RichRenderer:
         )
 
     def print_explain(self, vm: Any) -> None:
-        """Render explain output in Rich mode - sparse style."""
+        """Render explain output in Rich mode - modern bubbletea style."""
         if self.quiet:
             return
+        from ..theme import section_line, status_symbol, NAV_ARROW, BULLET
 
-        # Header: Episode ID and Status
-        header = Text()
-        header.append("Episode ", style="muted")
-        header.append(vm.episode_id, style="accent")
-        self.console.print(header)
+        width = min(self.console.width or 80, 80)
 
-        # Task
-        task_line = Text()
-        task_line.append("Task    ", style="muted")
-        task_line.append(formatters.truncate(vm.task, max_width=70), style="val")
-        self.console.print(task_line)
+        # Episode header section
+        self.console.print(Text(section_line(vm.episode_id, width), style="separator"))
+        self.console.print()
 
-        # Status with color
+        # Status with symbol (large, prominent)
         status_upper = vm.status.upper()
-        status_style = _status_style(status_upper)
+        status_style = f"status.{status_upper.lower()}"
+        sym = status_symbol(status_upper)
         status_line = Text()
-        status_line.append("Status  ", style="muted")
-        status_line.append(status_upper, style=status_style)
+        status_line.append(f"  {sym} ", style=_safe_style(self.console, status_style, "val"))
+        status_line.append(status_upper, style=_safe_style(self.console, status_style, "val"))
+        if vm.governance and vm.governance.enforced:
+            status_line.append("   enforced", style="warn")
         self.console.print(status_line)
         self.console.print()
 
-        # Governance Decision
+        # Task
+        task_line = Text()
+        task_line.append("  Task: ", style="muted")
+        task_line.append(formatters.truncate(vm.task, max_width=65), style="val")
+        self.console.print(task_line)
+        self.console.print()
+
+        # Governance Decision section
         if vm.governance:
             gov = vm.governance
-            self.console.print(Text("Governance Decision", style="title"))
+            self.console.print(Text(section_line("governance", width), style="separator"))
+            self.console.print()
 
-            decision_style = _status_style(gov.decision.upper())
+            decision_style = f"status.{gov.decision.lower()}"
             dec_line = Text()
-            dec_line.append("  decision:  ", style="muted")
-            dec_line.append(gov.decision.upper(), style=decision_style)
+            dec_line.append("  decision   ", style="muted")
+            dec_line.append(gov.decision.upper(), style=_safe_style(self.console, decision_style, "val"))
             if gov.enforced:
-                dec_line.append("  (enforced)", style="warn")
+                dec_line.append(" (enforced)", style="warn")
             self.console.print(dec_line)
 
             mode_line = Text()
-            mode_line.append("  mode:      ", style="muted")
+            mode_line.append("  mode       ", style="muted")
             mode_line.append(gov.mode, style="val")
             self.console.print(mode_line)
 
             if gov.rule_id:
                 rule_line = Text()
-                rule_line.append("  rule_id:   ", style="muted")
+                rule_line.append("  rule       ", style="muted")
                 rule_line.append(gov.rule_id, style="err")
                 self.console.print(rule_line)
 
             if gov.policy_id:
                 pol_line = Text()
-                pol_line.append("  policy_id: ", style="muted")
+                pol_line.append("  policy     ", style="muted")
                 pol_line.append(gov.policy_id, style="val")
                 if gov.policy_version:
                     pol_line.append(f" v{gov.policy_version}", style="muted")
@@ -671,86 +685,101 @@ class RichRenderer:
 
             if gov.score is not None:
                 score_line = Text()
-                score_line.append("  score:     ", style="muted")
+                score_line.append("  score      ", style="muted")
                 score_line.append(f"{gov.score:.2f}", style="warn")
                 self.console.print(score_line)
 
             if gov.message:
                 msg_line = Text()
-                msg_line.append("  message:   ", style="muted")
+                msg_line.append("  message    ", style="muted")
                 msg_line.append(gov.message, style="val")
                 self.console.print(msg_line)
 
             self.console.print()
 
-        # Intuition Advice
-        if vm.intuition_advice:
-            self.console.print(Text("Intuition Advice", style="title"))
-            for advice in vm.intuition_advice:
-                adv_line = Text()
-                adv_line.append("  - ", style="muted")
-                adv_line.append(advice.advice, style="val")
-                if advice.confidence is not None:
-                    adv_line.append(f" (confidence={advice.confidence:.2f})", style="muted")
-                self.console.print(adv_line)
+        # Evidence section
+        if vm.intuition_advice or vm.direction_blocks or vm.risky_tokens:
+            self.console.print(Text(section_line("evidence", width), style="separator"))
             self.console.print()
 
-        # Direction Blocks
-        if vm.direction_blocks:
-            self.console.print(Text("Direction Blocks", style="title"))
-            for block in vm.direction_blocks:
-                block_line = Text()
-                block_line.append("  - ", style="muted")
-                block_line.append(block.status, style="err")
-                block_line.append(": ", style="muted")
-                block_line.append(block.reason, style="val")
-                self.console.print(block_line)
-                if block.rule_id:
-                    rule_line = Text()
-                    rule_line.append("    rule: ", style="muted")
-                    rule_line.append(block.rule_id, style="err")
-                    self.console.print(rule_line)
-            self.console.print()
+            if vm.intuition_advice:
+                self.console.print(Text("  Intuition Advice", style="title"))
+                for advice in vm.intuition_advice:
+                    adv_line = Text()
+                    adv_line.append(f"    {BULLET}  ", style="nav.bullet")
+                    adv_line.append(advice.advice, style="val")
+                    if advice.confidence is not None:
+                        adv_line.append(f" (confidence={advice.confidence:.2f})", style="muted")
+                    self.console.print(adv_line)
+                self.console.print()
 
-        # Risky Tokens
-        if vm.risky_tokens:
-            tokens_line = Text()
-            tokens_line.append("Risky Tokens: ", style="title")
-            tokens_line.append(", ".join(vm.risky_tokens), style="warn")
-            self.console.print(tokens_line)
-            self.console.print()
+            if vm.direction_blocks:
+                self.console.print(Text("  Direction Blocks", style="title"))
+                for block in vm.direction_blocks:
+                    block_line = Text()
+                    block_line.append(f"    {BULLET}  ", style="nav.bullet")
+                    block_line.append(block.status, style="err")
+                    block_line.append(": ", style="muted")
+                    block_line.append(block.reason, style="val")
+                    self.console.print(block_line)
+                    if block.rule_id:
+                        rule_line = Text()
+                        rule_line.append("       rule: ", style="muted")
+                        rule_line.append(block.rule_id, style="err")
+                        self.console.print(rule_line)
+                self.console.print()
 
-        # Causal Chain
+            if vm.risky_tokens:
+                self.console.print(Text("  Risky Tokens", style="title"))
+                tokens_line = Text()
+                tokens_line.append(f"    {BULLET}  ", style="nav.bullet")
+                tokens_line.append(", ".join(vm.risky_tokens), style="warn")
+                self.console.print(tokens_line)
+                self.console.print()
+
+        # Causal Chain section
         if vm.causal_chain:
-            chain_line = Text()
-            chain_line.append("Causal Chain: ", style="title")
+            self.console.print(Text(section_line("causal chain", width), style="separator"))
+            self.console.print()
             parts = []
-            for i, step in enumerate(vm.causal_chain):
+            for step in vm.causal_chain:
                 if step.status:
                     parts.append(f"{step.phase}({step.status})")
                 else:
                     parts.append(step.phase)
+            chain_line = Text()
+            chain_line.append("  ", style="muted")
             chain_line.append(" → ".join(parts), style="muted")
             self.console.print(chain_line)
             self.console.print()
 
-        # Next Actions
+        # Next Actions section
         if vm.next_actions:
-            self.console.print(Text("Next Actions", style="title"))
+            self.console.print(Text(section_line("next", width), style="separator"))
+            self.console.print()
             for action in vm.next_actions:
                 action_line = Text()
-                action_line.append("  $ ", style="muted")
+                action_line.append(f"  {NAV_ARROW}  ", style="nav.arrow")
                 action_line.append(action, style="nav.command")
                 self.console.print(action_line)
+            self.console.print()
+
+        # Closing separator
+        self.console.print(Text("─" * width, style="separator"))
 
 
 def _status_style(label: str) -> str:
+    """Map episode status or governance decision to a display style.
+
+    Handles both episode statuses (vetoed, error, ok, success, audit) and
+    governance decisions (VETO, AUDIT, ALLOW).
+    """
     normalized = label.lower()
-    if normalized in {"success", "ok"}:
+    if normalized in {"success", "ok", "allow"}:
         return "ok"
     if normalized == "audit":
         return "warn"
-    if normalized in {"vetoed", "error"}:
+    if normalized in {"vetoed", "error", "veto"}:
         return "err"
     return "muted"
 
@@ -789,19 +818,3 @@ def _phase_style(console: Console, phase: str) -> str:
     return style_name
 
 
-def _render_command_list(title: str, items: Iterable[str], *, bullet: str = "$", border_style: str = "dim") -> Panel:
-    body = "\n".join(f"[muted]{bullet}[/] {item}" for item in items)
-    return Panel(body, title=f"[title]{title}[/]", border_style=border_style)
-
-
-def _home_art() -> str:
-    return "\n".join(
-        (
-            "##   ##  ####   ######  ######  ##  ####",
-            "###  ## ##  ##  ##      ##      ## ##  ##",
-            "#### ## ##  ##  ####    ####    ## ##     ",
-            "## #### ##  ##  ##      ##      ## ##  ###",
-            "##  ### ##  ##  ##      ##      ## ##  ## ",
-            "##   ##  ####   ######  ######  ##  ####  ",
-        )
-    )
