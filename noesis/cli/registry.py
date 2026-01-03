@@ -80,6 +80,7 @@ from .commands.validate_ports import COMMAND as VALIDATE_COMMAND
 from .commands.diagnostics import COMMAND as DIAGNOSTICS_COMMAND
 from .commands.migrate import COMMAND as MIGRATE_COMMAND
 from .commands.view import COMMAND as VIEW_COMMAND
+from .commands.browse import COMMAND as BROWSE_COMMAND
 from .commands.artifacts import COMMAND as ARTIFACTS_COMMAND
 from .commands.ps import COMMAND as PS_COMMAND
 from .commands.help import COMMAND as HELP_COMMAND
@@ -149,6 +150,15 @@ REGISTRY: Dict[str, CommandSpec] = {
             group="observe",
             one_liner="Print or stream episode events",
             examples=("noesis events <episode_id>",),
+            show_on_home=True,
+        ),
+    ),
+    "browse": CommandSpec(
+        cmd=BROWSE_COMMAND,
+        meta=CommandMeta(
+            group="observe",
+            one_liner="Interactive episode browser (TUI)",
+            examples=("noesis browse", "noesis browse -n 100"),
             show_on_home=True,
         ),
     ),
