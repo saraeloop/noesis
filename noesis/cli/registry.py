@@ -73,6 +73,7 @@ from .commands.list import COMMAND as LIST_COMMAND
 from .commands.show import COMMAND as SHOW_COMMAND
 from .commands.events import COMMAND as EVENTS_COMMAND
 from .commands.insight import COMMAND as INSIGHT_COMMAND
+from .commands.explain import COMMAND as EXPLAIN_COMMAND
 from .commands.version import COMMAND as VERSION_COMMAND
 from .commands.new import COMMAND as NEW_COMMAND
 from .commands.validate_ports import COMMAND as VALIDATE_COMMAND
@@ -157,6 +158,15 @@ REGISTRY: Dict[str, CommandSpec] = {
             group="observe",
             one_liner="Show computed insight metrics",
             examples=("noesis insight <episode_id>",),
+        ),
+    ),
+    "explain": CommandSpec(
+        cmd=EXPLAIN_COMMAND,
+        meta=CommandMeta(
+            group="observe",
+            one_liner="Explain why an episode was vetoed",
+            examples=("noesis explain <episode_id>",),
+            show_on_home=True,
         ),
     ),
     # ── Verify ───────────────────────────────────────────────────────────────

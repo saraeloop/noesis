@@ -11,10 +11,10 @@ def test_cli_home_plain(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     code = cli.main([])
     out = capsys.readouterr().out
     assert code == 0  # no-args shows home and exits successfully
-    assert "Noēsis" in out
-    assert "Quick Start" in out
-    assert "Observe" in out
-    assert "Verify" in out
+    # New sparse design uses "Noesis" (no diacritic) and shows config line
+    assert "Noesis" in out
+    assert "profile=" in out  # config line
+    assert "next" in out or "help:" in out  # next actions or footer
 
 
 def test_cli_home_rich(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,7 +24,9 @@ def test_cli_home_rich(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     code = cli.main([])
     out = capsys.readouterr().out
     assert code == 0  # no-args shows home and exits successfully
-    assert "Quick Start" in out
+    # New sparse design shows config and next actions
+    assert "Noesis" in out or "noesis" in out.lower()
+    assert "profile=" in out or "next" in out
 
 
 def test_cli_help_groups(capsys) -> None:
@@ -264,9 +266,10 @@ class TestHomeRecentEpisodes:
         out = capsys.readouterr().out
 
         assert code == 0
-        assert "Quick Start" in out
+        # New sparse design shows "Noesis" and config/next sections
+        assert "Noesis" in out or "noesis" in out.lower()
         # Footer should show help hint when no episodes
-        assert "noesis help" in out or "noesis view" in out
+        assert "noesis help" in out or "noesis view" in out or "help:" in out
 
     def test_home_flag_exits_zero(
         self, capsys, monkeypatch: pytest.MonkeyPatch
@@ -279,4 +282,5 @@ class TestHomeRecentEpisodes:
         out = capsys.readouterr().out
 
         assert code == 0  # Must be 0, not EXIT_USAGE
-        assert "Quick Start" in out
+        # New sparse design shows "Noesis" and config line
+        assert "Noesis" in out or "profile=" in out

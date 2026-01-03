@@ -28,11 +28,22 @@ from .query import (
 
 
 @dataclass(frozen=True)
+class GovernanceSummaryVM:
+    """Governance summary for the episode header."""
+
+    decision: str  # VETO | AUDIT | ALLOW
+    rule_id: str | None
+    score: float | None
+    enforced: bool
+
+
+@dataclass(frozen=True)
 class EpisodeHeaderVM:
     episode_id: str
     status_label: str
     started_at: Optional[str]
     duration: Optional[float]
+    governance: GovernanceSummaryVM | None = None
 
 
 @dataclass(frozen=True)
@@ -78,12 +89,19 @@ class EpisodeDashboardVM:
     suggestions: List[str]
 
     def to_dict(self) -> Dict[str, Any]:
+        gov = self.header.governance
         return {
             "header": {
                 "episode_id": self.header.episode_id,
                 "status_label": self.header.status_label,
                 "started_at": self.header.started_at,
                 "duration": self.header.duration,
+                "governance": {
+                    "decision": gov.decision,
+                    "rule_id": gov.rule_id,
+                    "score": gov.score,
+                    "enforced": gov.enforced,
+                } if gov else None,
             },
             "chips": {
                 "using": self.chips.using,
@@ -116,6 +134,22 @@ class EpisodeDashboardVM:
         }
 
 
+def _extract_governance_summary(events: Sequence[Dict[str, Any]]) -> GovernanceSummaryVM | None:
+    """Extract governance summary from events."""
+    for event in events:
+        if event.get("phase") == "governance":
+            payload = event.get("payload", {}) or {}
+            decision = payload.get("decision", "")
+            if decision in ("veto", "audit", "allow"):
+                return GovernanceSummaryVM(
+                    decision=decision.upper(),
+                    rule_id=payload.get("rule_id"),
+                    score=payload.get("score"),
+                    enforced=bool(payload.get("enforced")),
+                )
+    return None
+
+
 def build_episode_dashboard(
     ep_dir: Path,
     *,
@@ -138,6 +172,9 @@ def build_episode_dashboard(
     started_at = summary.get("started_at") if isinstance(summary, dict) else None
     duration = duration_seconds(summary, events)
     duration_str = formatters.format_duration(duration)
+
+    # Extract governance summary from events
+    governance = _extract_governance_summary(events)
 
     chips = EpisodeChipsVM(
         using=flags.get("using"),
@@ -173,6 +210,7 @@ def build_episode_dashboard(
             status_label=status_text,
             started_at=started_at,
             duration=duration,
+            governance=governance,
         ),
         chips=chips,
         kpis=kpis,
@@ -211,6 +249,9 @@ def build_episode_dashboard_from_payloads(
     duration = duration_seconds(summary_payload, events_payload)
     duration_str = formatters.format_duration(duration)
 
+    # Extract governance summary from events
+    governance = _extract_governance_summary(events_payload)
+
     chips = EpisodeChipsVM(
         using=flags.get("using"),
         planner_mode=flags.get("mode"),
@@ -244,6 +285,7 @@ def build_episode_dashboard_from_payloads(
             status_label=status_text,
             started_at=started_at,
             duration=duration,
+            governance=governance,
         ),
         chips=chips,
         kpis=kpis,

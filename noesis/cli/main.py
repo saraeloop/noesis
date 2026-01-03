@@ -11,9 +11,9 @@ import noesis as ns
 from .context import GlobalOptions, build_context
 from .errors import EXIT_ERROR, EXIT_USAGE, EXIT_VETO
 from .render.plain import PlainRenderer
-from .content.home import build_home_screen, RecentEpisode
+from .content.home import build_home_screen, RecentEpisode, LastEpisodeInfo
 from .content.help import build_help_screen
-from .query import episode_status, status_label
+from .query import episode_status, status_label, iter_events, load_episode_dir
 from .formatters import format_duration
 from .theme import build_theme_tokens
 
@@ -126,8 +126,9 @@ def _fetch_recent_episodes(ctx, *, limit: int = 5) -> list[RecentEpisode]:
                 RecentEpisode(
                     time_str=time_str or "--:--",
                     episode_short=episode_id[:12] if len(episode_id) > 12 else (episode_id or "—"),
+                    episode_id=episode_id,
                     status=label or "—",
-                    task=(task[:30] + "…" if len(task) > 30 else task) or "(no task)",
+                    task=(task[:50] + "…" if len(task) > 50 else task) or "(no task)",
                     duration=format_duration(row.get("duration_sec")) or "—",
                 )
             )
@@ -137,11 +138,70 @@ def _fetch_recent_episodes(ctx, *, limit: int = 5) -> list[RecentEpisode]:
     return episodes
 
 
+def _fetch_last_episode_info(ctx, recent: list[RecentEpisode]) -> LastEpisodeInfo | None:
+    """Fetch detailed info about the last episode including veto details.
+
+    Defensive: never raises. Returns None on any error.
+    """
+    if not recent:
+        return None
+
+    last = recent[0]
+    try:
+        # If vetoed, try to extract governance details from events
+        rule_id = None
+        score = None
+        message = None
+
+        if last.status == "VETOED":
+            ep_dir = load_episode_dir(last.episode_id, ctx.config_snapshot.runs_dir)
+            if ep_dir.exists():
+                for event in iter_events(ep_dir):
+                    if event.get("phase") == "governance":
+                        payload = event.get("payload", {}) or {}
+                        if payload.get("decision") == "veto":
+                            rule_id = payload.get("rule_id")
+                            score = payload.get("score")
+                            message = payload.get("message")
+                            break
+
+        return LastEpisodeInfo(
+            episode_id=last.episode_id,
+            status=last.status,
+            duration=last.duration,
+            task=last.task,
+            rule_id=rule_id,
+            score=score,
+            message=message,
+        )
+    except Exception:  # noqa: BLE001
+        # Return basic info without governance details
+        return LastEpisodeInfo(
+            episode_id=last.episode_id,
+            status=last.status,
+            duration=last.duration,
+            task=last.task,
+        )
+
+
 def _render_home(renderer, ctx) -> None:
     recent = _fetch_recent_episodes(ctx)
     # Dynamic hint: if we have recent episodes, suggest viewing the last one
-    last_episode_id = recent[0].episode_short if recent else None
-    renderer.print_home(build_home_screen(ctx.version, recent_episodes=recent, last_episode_id=last_episode_id))
+    last_episode_id = recent[0].episode_id if recent else None
+    last_episode_info = _fetch_last_episode_info(ctx, recent)
+
+    # Get config as mapping for display
+    config_mapping = ctx.config_snapshot.to_mapping() if hasattr(ctx.config_snapshot, "to_mapping") else {}
+
+    renderer.print_home(
+        build_home_screen(
+            ctx.version,
+            config_snapshot=config_mapping,
+            recent_episodes=recent,
+            last_episode_id=last_episode_id,
+            last_episode_info=last_episode_info,
+        )
+    )
 
 
 def _render_help(renderer, ctx, *, command_name: str | None = None) -> None:
