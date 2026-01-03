@@ -122,7 +122,7 @@ class PlainRenderer:
         if not grep:
             return list(rows)
         terms = [term.strip().lower() for term in grep.split() if term.strip()]
-        filtered: List[TimelineRow] = []
+        filtered: List[TimelineRowVM] = []
         for row in rows:
             haystack = f"phase={row.phase} agent={row.agent} summary={row.summary}".lower()
             if all(term in haystack for term in terms):
@@ -217,49 +217,57 @@ class PlainRenderer:
                 print(f"  {suggestion}")
 
     def print_home(self, screen: HomeScreen) -> None:
-        """Render home screen in plain mode - sparse bubbletea style."""
+        """Render home screen in plain mode - modern ASCII style."""
         if self.quiet:
             return
+        from ..theme import section_line_ascii, status_symbol, NAV_ARROW_ASCII
+
+        width = 72
 
         # Header line with tagline
-        print(f"Noesis v{screen.version}  {screen.tagline}")
+        print(f"Noesis {screen.version}  {screen.tagline}")
+        print()
 
         # Config line
         cfg = screen.config
-        print(f"profile={cfg.governance_mode}  planner={cfg.planner_mode}  intuition={cfg.intuition_mode}  runs={cfg.runs_dir}")
+        print(f"  governance {cfg.governance_mode}   planner {cfg.planner_mode}   intuition {cfg.intuition_mode}   runs {cfg.runs_dir}")
         print()
 
-        # Last episode (if any)
+        # Last episode section
         if screen.last_episode:
+            print(section_line_ascii("last", width))
+            print()
             last = screen.last_episode
-            print(f"last   {last.episode_id[:12]:<12}   {last.status:<8}   {last.duration}")
-            print(f"task   {truncate(last.task, max_width=60)}")
+            sym = status_symbol(last.status, ascii_mode=True)
+            print(f"  {sym} {last.status:<8}   {last.episode_id[:12]:<12}   {last.duration}")
+            print(f"    {truncate(last.task, max_width=60)}")
             if last.status == "VETOED" and last.rule_id:
                 score_str = f"score={last.score:.2f}" if last.score is not None else ""
-                print(f"rule   {last.rule_id}   {score_str}")
+                print(f"    rule   {last.rule_id}   {score_str}")
                 if last.message:
-                    print(f"why    {truncate(last.message, max_width=60)}")
+                    print(f"    why    {truncate(last.message, max_width=55)}")
             print()
 
-        # Next actions
+        # Next actions section
         if screen.next_actions:
-            print("next")
+            print(section_line_ascii("next", width))
+            print()
             for action in screen.next_actions[:3]:
-                # Pad command to align descriptions
-                cmd = action.command
-                desc = action.description
-                print(f"  {cmd:<40} {desc}")
+                print(f"  {NAV_ARROW_ASCII}  {action.command:<40} {action.description}")
             print()
 
-        # Recent episodes (compact table)
+        # Recent episodes section
         if screen.recent_episodes:
-            print("recent")
+            print(section_line_ascii("recent", width))
+            print()
             for ep in screen.recent_episodes[:5]:
-                task_display = truncate(ep.task, max_width=45)
-                print(f"  {ep.time_str:<5}  {ep.episode_short:<12}  {ep.status:<8}  {task_display}")
+                sym = status_symbol(ep.status, ascii_mode=True)
+                task_display = truncate(ep.task, max_width=40)
+                print(f"  {ep.time_str:<5}  {sym} {ep.status:<8}  {ep.episode_short:<12}  {task_display}")
             print()
 
         # Footer
+        print("-" * width)
         print(f"help: {screen.footer_hint}")
 
     def print_help(self, screen: HelpScreen) -> None:
@@ -300,62 +308,92 @@ class PlainRenderer:
         print(text.rstrip())
 
     def print_explain(self, vm: Any) -> None:
-        """Render explain output in plain mode."""
+        """Render explain output in plain mode - modern ASCII style."""
         if self.quiet:
             return
+        from ..theme import section_line_ascii, status_symbol, NAV_ARROW_ASCII, BULLET_ASCII
 
-        print(f"Episode: {vm.episode_id}")
-        print(f"Task: {vm.task}")
-        print(f"Status: {vm.status.upper()}")
+        width = 72
 
+        # Episode header section
+        print(section_line_ascii(vm.episode_id, width))
+        print()
+
+        # Status with symbol
+        sym = status_symbol(vm.status, ascii_mode=True)
+        enforced_str = "   enforced" if vm.governance and vm.governance.enforced else ""
+        print(f"  {sym} {vm.status.upper()}{enforced_str}")
+        print()
+
+        # Task
+        print(f"  Task: {truncate(vm.task, max_width=65)}")
+        print()
+
+        # Governance Decision section
         if vm.governance:
             gov = vm.governance
+            print(section_line_ascii("governance", width))
             print()
-            print("Governance Decision")
-            print(f"  decision:  {gov.decision.upper()}")
-            print(f"  enforced:  {gov.enforced}")
-            print(f"  mode:      {gov.mode}")
+            enforced_tag = " (enforced)" if gov.enforced else ""
+            print(f"  decision   {gov.decision.upper()}{enforced_tag}")
+            print(f"  mode       {gov.mode}")
             if gov.rule_id:
-                print(f"  rule_id:   {gov.rule_id}")
+                print(f"  rule       {gov.rule_id}")
             if gov.policy_id:
-                print(f"  policy_id: {gov.policy_id}")
+                version_str = f" v{gov.policy_version}" if gov.policy_version else ""
+                print(f"  policy     {gov.policy_id}{version_str}")
             if gov.score is not None:
-                print(f"  score:     {gov.score:.2f}")
+                print(f"  score      {gov.score:.2f}")
             if gov.message:
-                print(f"  message:   {gov.message}")
-
-        if vm.intuition_advice:
+                print(f"  message    {gov.message}")
             print()
-            print("Intuition Advice")
-            for advice in vm.intuition_advice:
-                conf = f" (confidence={advice.confidence:.2f})" if advice.confidence is not None else ""
-                print(f"  - {advice.advice}{conf}")
 
-        if vm.direction_blocks:
+        # Evidence section
+        if vm.intuition_advice or vm.direction_blocks or vm.risky_tokens:
+            print(section_line_ascii("evidence", width))
             print()
-            print("Direction Blocks")
-            for block in vm.direction_blocks:
-                print(f"  - {block.status}: {block.reason}")
-                if block.rule_id:
-                    print(f"    rule: {block.rule_id}")
 
-        if vm.risky_tokens:
-            print()
-            print(f"Risky Tokens: {', '.join(vm.risky_tokens)}")
+            if vm.intuition_advice:
+                print("  Intuition Advice")
+                for advice in vm.intuition_advice:
+                    conf = f" (confidence={advice.confidence:.2f})" if advice.confidence is not None else ""
+                    print(f"    {BULLET_ASCII}  {advice.advice}{conf}")
+                print()
 
+            if vm.direction_blocks:
+                print("  Direction Blocks")
+                for block in vm.direction_blocks:
+                    print(f"    {BULLET_ASCII}  {block.status}: {block.reason}")
+                    if block.rule_id:
+                        print(f"       rule: {block.rule_id}")
+                print()
+
+            if vm.risky_tokens:
+                print("  Risky Tokens")
+                print(f"    {BULLET_ASCII}  {', '.join(vm.risky_tokens)}")
+                print()
+
+        # Causal Chain section
         if vm.causal_chain:
+            print(section_line_ascii("causal chain", width))
             print()
-            chain_str = " → ".join(
+            chain_str = " -> ".join(
                 f"{s.phase}({s.status})" if s.status else s.phase
                 for s in vm.causal_chain
             )
-            print(f"Causal Chain: {chain_str}")
-
-        if vm.next_actions:
+            print(f"  {chain_str}")
             print()
-            print("Next Actions")
+
+        # Next Actions section
+        if vm.next_actions:
+            print(section_line_ascii("next", width))
+            print()
             for action in vm.next_actions:
-                print(f"  $ {action}")
+                print(f"  {NAV_ARROW_ASCII}  {action}")
+            print()
+
+        # Closing separator
+        print("-" * width)
 
 
 def _chip(label: str, value: str | None) -> str:

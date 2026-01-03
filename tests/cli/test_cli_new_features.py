@@ -264,7 +264,7 @@ def test_plain_renderer_home_screen():
 
     output = captured.getvalue()
     assert "Noesis" in output
-    assert "profile=enforce" in output
+    assert "governance enforce" in output  # new modern style without =
 
 
 def test_plain_renderer_explain():

@@ -7,6 +7,88 @@ from typing import Mapping
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SYMBOLS (Modern geometric style)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Status symbols - used for episode status indicators
+STATUS_SYMBOLS = {
+    "SUCCESS": "●",
+    "OK": "●",
+    "VETOED": "✗",
+    "VETO": "✗",
+    "AUDIT": "⚠",
+    "ERROR": "✗",
+    "PENDING": "○",
+    "UNKNOWN": "○",
+}
+
+# Phase symbols - used in timeline visualization
+PHASE_SYMBOLS = {
+    "start": "◆",
+    "observe": "○",
+    "intuition": "◇",
+    "interpret": "◈",
+    "plan": "▸",
+    "governance": "◈",
+    "direction": "→",
+    "act": "●",
+    "reflect": "↺",
+    "learn": "◆",
+    "insight": "◇",
+    "memory": "◆",
+    "terminate": "■",
+    "error": "✗",
+}
+
+# Navigation symbols
+NAV_ARROW = "→"
+BULLET = "●"
+DIAMOND = "◆"
+
+# ASCII fallbacks for plain renderer
+STATUS_SYMBOLS_ASCII = {
+    "SUCCESS": "[OK]",
+    "OK": "[OK]",
+    "VETOED": "[VETO]",
+    "VETO": "[VETO]",
+    "AUDIT": "[!]",
+    "ERROR": "[ERR]",
+    "PENDING": "[ ]",
+    "UNKNOWN": "[?]",
+}
+
+NAV_ARROW_ASCII = ">"
+BULLET_ASCII = "*"
+
+
+def section_line(title: str, width: int = 72) -> str:
+    """Create a section header line: ─── title ─────────────────"""
+    left = f"─── {title} "
+    remaining = max(0, width - len(left))
+    return left + "─" * remaining
+
+
+def section_line_ascii(title: str, width: int = 72) -> str:
+    """Create an ASCII section header line: --- title ---"""
+    left = f"--- {title} "
+    remaining = max(0, width - len(left))
+    return left + "-" * remaining
+
+
+def status_symbol(status: str, ascii_mode: bool = False) -> str:
+    """Get the symbol for a status."""
+    key = status.upper()
+    if ascii_mode:
+        return STATUS_SYMBOLS_ASCII.get(key, "[?]")
+    return STATUS_SYMBOLS.get(key, "○")
+
+
+def phase_symbol(phase: str) -> str:
+    """Get the symbol for a phase."""
+    return PHASE_SYMBOLS.get(phase.lower(), "○")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # BREAKPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -66,57 +148,83 @@ class ThemeTokens:
 
 
 def build_theme_tokens() -> ThemeTokens:
-    """Build the complete theme token set."""
+    """Build the complete theme token set - modern Charm/bubbletea inspired."""
     return ThemeTokens(
         styles={
             # ── Core text styles ─────────────────────────────────────────────
-            "title": "bold bright_cyan",
+            "title": "bold",
+            "subtitle": "bold bright_cyan",
             "accent": "bright_cyan",
-            "muted": "grey66",
-            "hint": "dim",
+            "muted": "bright_black",
+            "dim": "bright_black",
+            "hint": "italic bright_black",
             # ── Key-value pairs ──────────────────────────────────────────────
-            "key": "bright_cyan",
+            "key": "bright_black",
             "val": "white",
-            # ── Status indicators ────────────────────────────────────────────
-            "ok": "green",
-            "warn": "yellow",
-            "err": "bold red",
+            "label": "bright_black",
+            # ── Status indicators (vibrant) ──────────────────────────────────
+            "ok": "bright_green",
+            "success": "bright_green",
+            "warn": "bright_yellow",
+            "err": "bold bright_red",
+            "info": "bright_blue",
+            # ── Status styles with symbols ───────────────────────────────────
+            "status.success": "bold bright_green",
+            "status.vetoed": "bold bright_red",
+            "status.veto": "bold bright_red",
+            "status.audit": "bold bright_yellow",
+            "status.error": "bold bright_red",
+            "status.pending": "bright_black",
             # ── Structural elements ──────────────────────────────────────────
-            "border": "grey42",
-            "panel": "grey50",
-            "header": "bold bright_cyan",
+            "border": "bright_black",
+            "panel": "bright_black",
+            "header": "bold",
+            "separator": "bright_black",
+            "section": "bright_black",
+            # ── Brand ────────────────────────────────────────────────────────
+            "brand": "bold bright_magenta",
+            "version": "bright_magenta",
+            "tagline": "bright_black",
             # ── Badges ───────────────────────────────────────────────────────
             "badge": "black on bright_cyan",
-            "badge.version": "black on bright_cyan",
+            "badge.version": "bold bright_magenta",
             "badge.success": "bold white on green",
             "badge.warn": "bold black on yellow",
             "badge.error": "bold white on red",
-            # ── Navigation ───────────────────────────────────────────────────
-            "nav.arrow": "bright_blue",
-            "nav.command": "bold bright_cyan",
+            # ── Navigation (bubbletea style) ─────────────────────────────────
+            "nav.arrow": "bright_magenta",
+            "nav.bullet": "bright_cyan",
+            "nav.command": "bright_cyan",
+            "nav.desc": "bright_black",
             # ── Group headers ────────────────────────────────────────────────
-            "group.title": "bold bright_cyan",
+            "group.title": "bold bright_black",
             # ── Home screen ──────────────────────────────────────────────────
-            "home.tagline": "italic grey74",
+            "home.tagline": "bright_black",
+            "home.brand": "bold bright_magenta",
+            "home.version": "bright_magenta",
+            "home.config.key": "bright_black",
+            "home.config.val": "bright_cyan",
             "hero.badge": "bold white on blue",
             "hero.art": "bright_blue",
             "hero.prompt": "grey70",
             "hero.accent": "bold bright_blue",
             "hero.border": "blue",
             # ── Phase colors (for timeline/events) ───────────────────────────
-            "phase.start": "cyan",
-            "phase.intuition": "magenta",
-            "phase.observe": "bright_black",
+            "phase.start": "bright_cyan",
+            "phase.intuition": "bright_magenta",
+            "phase.observe": "bright_blue",
             "phase.interpret": "bright_blue",
             "phase.plan": "bright_cyan",
-            "phase.direction": "blue",
-            "phase.insight": "green",
+            "phase.governance": "bright_yellow",
+            "phase.direction": "bright_blue",
+            "phase.insight": "bright_green",
             "phase.reason": "bright_black",
             "phase.act": "white",
-            "phase.reflect": "green",
-            "phase.learn": "cyan",
-            "phase.terminate": "yellow",
-            "phase.error": "bold red",
+            "phase.reflect": "bright_green",
+            "phase.learn": "bright_cyan",
+            "phase.memory": "bright_black",
+            "phase.terminate": "bright_yellow",
+            "phase.error": "bold bright_red",
         }
     )
 
