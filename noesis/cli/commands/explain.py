@@ -296,7 +296,7 @@ def _render_explain_plain(renderer: OutputRenderer, vm: ExplainVM) -> None:
         renderer.echo("")
         renderer.echo("Intuition Advice")
         for advice in vm.intuition_advice:
-            conf = f" (confidence={advice.confidence:.2f})" if advice.confidence else ""
+            conf = f" (confidence={advice.confidence:.2f})" if advice.confidence is not None else ""
             renderer.echo(f"  - {advice.advice}{conf}")
 
     if vm.direction_blocks:
