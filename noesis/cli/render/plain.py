@@ -328,7 +328,7 @@ class PlainRenderer:
             print()
             print("Intuition Advice")
             for advice in vm.intuition_advice:
-                conf = f" (confidence={advice.confidence:.2f})" if advice.confidence else ""
+                conf = f" (confidence={advice.confidence:.2f})" if advice.confidence is not None else ""
                 print(f"  - {advice.advice}{conf}")
 
         if vm.direction_blocks:
