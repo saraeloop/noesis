@@ -21,6 +21,7 @@ classifiers = [
 # Runtime dependencies
 dependencies = [
   "ruamel.yaml>=0.18",
+  "textual>=6.5.0",
 ]
 
 [project.optional-dependencies]
