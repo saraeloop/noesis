@@ -21,6 +21,10 @@ def _episode_dir(root: Path) -> Path:
     [
         Path("tests/golden/deterministic_run"),
         Path("tests/golden/veto_enforce"),
+        Path("tests/golden/adr_008/allow_enforce"),
+        Path("tests/golden/adr_008/veto_enforce"),
+        Path("tests/golden/adr_008/fail_closed_error"),
+        Path("tests/golden/adr_008/audit_veto"),
     ],
 )
 def test_compare_runs_reports_no_drift(dataset: Path) -> None:
@@ -55,6 +59,10 @@ def test_compare_runs_surfaces_byte_drift(tmp_path: Path) -> None:
     [
         Path("tests/golden/deterministic_run"),
         Path("tests/golden/veto_enforce"),
+        Path("tests/golden/adr_008/allow_enforce"),
+        Path("tests/golden/adr_008/veto_enforce"),
+        Path("tests/golden/adr_008/fail_closed_error"),
+        Path("tests/golden/adr_008/audit_veto"),
     ],
 )
 def test_golden_manifests_verify(dataset: Path) -> None:
