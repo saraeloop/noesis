@@ -23,6 +23,7 @@ from noesis.domain.faculties.governance import (
 )
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.state import PlanStep
+from noesis.diagnostics.validators import is_valid_sha256_state_hash
 from noesis.runtime.artifacts.ids import action_candidate_uuid, governance_uuid
 
 
@@ -57,6 +58,8 @@ def govern_pre_act_action(
 
     Returns a gate result indicating whether execution should proceed.
     """
+    _validate_state_ref(candidate.state_ref)
+    _validate_state_hash(candidate.state_hash)
     candidate = _ensure_candidate_id(candidate, episode_id=episode_id)
     candidate_event_id = event_bus.emit_action_candidate(candidate=candidate, caused_by=caused_by)
 
@@ -145,6 +148,23 @@ def _ensure_candidate_id(candidate: ActionCandidate, *, episode_id: str) -> Acti
     fingerprint = candidate.canonical_json()
     candidate_id = str(action_candidate_uuid(episode_id, fingerprint))
     return candidate.with_id(candidate_id)
+
+
+def _validate_state_ref(state_ref: str) -> None:
+    if not state_ref:
+        raise ValueError("ActionCandidate.state_ref is required for auditability")
+
+
+def _validate_state_hash(state_hash: str) -> None:
+    if not state_hash:
+        raise ValueError(
+            "ActionCandidate.state_hash is required (expected sha256:<64 lowercase hex>)"
+        )
+    if not is_valid_sha256_state_hash(state_hash):
+        raise ValueError(
+            "ActionCandidate.state_hash must be 'sha256:<64 lowercase hex>', "
+            f"got: {state_hash!r}"
+        )
 
 
 def _with_stable_governance_id(result: GovernanceResult, episode_id: str) -> GovernanceResult:
