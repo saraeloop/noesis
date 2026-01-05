@@ -10,6 +10,7 @@ FACULTY_HOOK_ORDER: Tuple[str, ...] = (
     "interpret",
     "plan",
     "direction",
+    "action_candidate",
     "governance",
     "act",
     "reflect",

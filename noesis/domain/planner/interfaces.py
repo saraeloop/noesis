@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
 from uuid import UUID
 
+from ..action_candidates import ActionCandidate
 from ..state import ActionRecord, NoesisState, PlanStep, CognitiveMetrics, CognitiveEvent
 from noesis.domain.faculties.direction import PlannerDirective
 from noesis.domain.faculties.governance import GovernanceResult
@@ -80,6 +81,14 @@ class EventBus(Protocol):
         *,
         payload: Mapping[str, object],
         agent_id: str,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        ...
+
+    def emit_action_candidate(
+        self,
+        *,
+        candidate: ActionCandidate,
         caused_by: UUID | None = None,
     ) -> UUID:
         ...

@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.planner.minimal import MinimalActuator, MinimalPlanner
+from noesis.domain.action_candidates import ActionCandidate
 from noesis.domain.state import ActionRecord, CognitiveEvent, CognitiveVerb, NoesisState, PlanKind
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.usecases.episode_runner import (
@@ -35,6 +36,14 @@ class DummyEventBus(EventBus):
         *,
         payload: Mapping[str, object],
         agent_id: str,
+        caused_by=None,
+    ) -> UUID:
+        return uuid4()
+
+    def emit_action_candidate(  # type: ignore[override]
+        self,
+        *,
+        candidate: ActionCandidate,
         caused_by=None,
     ) -> UUID:
         return uuid4()

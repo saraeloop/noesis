@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "event",
+  "$schema_version": "1.3.0",
+  "title": "Noesis event record",
+  "description": "Canonical schema for a single line in events.jsonl.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "id",
+    "timestamp",
+    "episode_id",
+    "phase",
+    "payload",
+    "evidence_ids"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "episode_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "phase": { "type": "string" },
+    "faculty": {
+      "type": "string",
+      "enum": ["intuition", "direction", "governance", "insight"]
+    },
+    "payload": { "type": "object" },
+    "evidence_ids": { "type": "array", "items": { "type": "string" } },
+    "caused_by": { "type": "string" },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["started_at", "completed_at", "duration_ms"],
+      "properties": {
+        "started_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "phase": { "const": "learn" }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Design A learn reference payload (learn.jsonl pointer).",
+                "required": ["learn_path", "learn_schema", "proposal_count", "proposal_ids"],
+                "properties": {
+                  "learn_path": { "type": "string" },
+                  "learn_schema": { "type": "string" },
+                  "proposal_count": { "type": "integer", "minimum": 0 },
+                  "proposal_ids": { "type": "array", "items": { "type": "string" } },
+                  "applied": { "type": "boolean" },
+                  "applied_count": { "type": "integer", "minimum": 0 }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Legacy learn payload (inline proposal data).",
+                "required": ["policy_id", "basis", "proposal", "scope"],
+                "properties": {
+                  "policy_id": { "type": "string" },
+                  "basis": { "type": ["object", "array", "string"] },
+                  "proposal": { "type": "array" },
+                  "scope": { "type": "string" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": { "const": "action_candidate" }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "schema_version",
+              "action_candidate_id",
+              "kind",
+              "payload",
+              "state_ref",
+              "state_hash",
+              "redaction"
+            ],
+            "properties": {
+              "schema_version": { "type": "string" },
+              "action_candidate_id": { "type": ["string", "null"] },
+              "kind": { "type": "string" },
+              "payload": { "type": "object" },
+              "state_ref": { "type": "string" },
+              "state_hash": { "type": "string" },
+              "redaction": { "type": "object" },
+              "provenance": { "type": "object" },
+              "risk_tags": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": { "const": "act" }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["input_excerpt", "outcome"],
+            "properties": {
+              "input_excerpt": { "type": "string" },
+              "outcome": { "type": "string" },
+              "action_candidate_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

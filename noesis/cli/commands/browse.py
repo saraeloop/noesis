@@ -28,7 +28,7 @@ class BrowseCommand:
             from ..tui.browse import run_browse
         except ImportError as e:
             renderer.echo(f"Textual not available: {e}")
-            renderer.echo("Install with: pip install textual")
+            renderer.echo("Install with: pip install 'noesis[ui]'")
             return 1
 
         # Fetch episodes

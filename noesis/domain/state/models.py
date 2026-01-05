@@ -241,6 +241,7 @@ class NoesisState:
         step_id: Optional[str] = None,
         provenance: Optional[Provenance] = None,
         result_artifacts: Optional[Sequence[ActionArtifact | Dict[str, Any]]] = None,
+        extensions: Optional[Dict[str, Any]] = None,
     ) -> ActionRecord:
         action_id = f"act-{next(self._action_counter)}"
         artifacts: List[ActionArtifact] = []
@@ -261,6 +262,7 @@ class NoesisState:
             step_id=step_id,
             provenance=prov_obj,
             result_artifacts=artifacts,
+            extensions=extensions or {},
         )
         self.actions.append(action)
         return action

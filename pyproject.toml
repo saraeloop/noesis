@@ -29,7 +29,7 @@ migrate = ["libcst>=1.5.0"]
 ui = [
   "rich>=14.2.0",
   "rich-argparse>=1.7.1",
-  "textual>=0.79.0",
+  "textual>=6.5.0",
   "streamlit>=1.51.0",
 ]
 dev = [
@@ -58,7 +58,7 @@ dev = [
 ui = [
   "rich>=14.2.0",
   "rich-argparse>=1.7.1",
-  "textual>=0.79.0",
+  "textual>=6.5.0",
   "streamlit>=1.51.0",
 ]
 migrate = ["libcst>=1.5.0"]

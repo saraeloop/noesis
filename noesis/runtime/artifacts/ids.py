@@ -14,6 +14,7 @@ _RANDOM_MASK: Final[int] = (1 << 80) - 1
 
 _DIRECTIVE_ROOT_NAMESPACE = UUID("5c41078f-64dc-42c1-a9b2-e3ea2df5f6d5")
 _GOVERNANCE_ROOT_NAMESPACE = UUID("3a326538-7b7b-4d4f-8dbd-818842d4a1d0")
+_ACTION_CANDIDATE_ROOT_NAMESPACE = UUID("8cdd2caa-6f62-4e8f-9c2c-8a98b1d6f10c")
 
 _ulid_lock = threading.Lock()
 _last_timestamp_ms = -1
@@ -117,6 +118,7 @@ class EpisodeIds:
     episode_id: str
     directive_namespace: UUID
     governance_namespace: UUID
+    action_candidate_namespace: UUID
 
     @classmethod
     def mint(
@@ -130,11 +132,13 @@ class EpisodeIds:
         episode_id = f"ep_{ulid}"
         directive_ns = uuid5(_DIRECTIVE_ROOT_NAMESPACE, ulid)
         governance_ns = uuid5(_GOVERNANCE_ROOT_NAMESPACE, ulid)
+        action_candidate_ns = uuid5(_ACTION_CANDIDATE_ROOT_NAMESPACE, ulid)
         return cls(
             ulid=ulid,
             episode_id=episode_id,
             directive_namespace=directive_ns,
             governance_namespace=governance_ns,
+            action_candidate_namespace=action_candidate_ns,
         )
 
     @classmethod
@@ -142,11 +146,13 @@ class EpisodeIds:
         ulid = _extract_ulid(episode_id)
         directive_ns = uuid5(_DIRECTIVE_ROOT_NAMESPACE, ulid)
         governance_ns = uuid5(_GOVERNANCE_ROOT_NAMESPACE, ulid)
+        action_candidate_ns = uuid5(_ACTION_CANDIDATE_ROOT_NAMESPACE, ulid)
         return cls(
             ulid=ulid,
             episode_id=episode_id,
             directive_namespace=directive_ns,
             governance_namespace=governance_ns,
+            action_candidate_namespace=action_candidate_ns,
         )
 
     def directive(self, *, step_index: int, rule: str) -> UUID:
@@ -155,6 +161,9 @@ class EpisodeIds:
 
     def governance(self, *, rule_id: str) -> UUID:
         return uuid5(self.governance_namespace, rule_id)
+
+    def action_candidate(self, *, fingerprint: str) -> UUID:
+        return uuid5(self.action_candidate_namespace, fingerprint)
 
 
 def directive_uuid(episode_id: str, step_index: int, rule: str) -> UUID:
@@ -169,10 +178,17 @@ def governance_uuid(episode_id: str, rule_id: str) -> UUID:
     return ids.governance(rule_id=rule_id)
 
 
+def action_candidate_uuid(episode_id: str, fingerprint: str) -> UUID:
+    """Derive a deterministic UUID for an action candidate."""
+    ids = EpisodeIds.from_episode(episode_id)
+    return ids.action_candidate(fingerprint=fingerprint)
+
+
 __all__ = [
     "EpisodeIds",
     "directive_uuid",
     "governance_uuid",
+    "action_candidate_uuid",
     "new_episode_ulid",
     "reset_ulid_state",
 ]

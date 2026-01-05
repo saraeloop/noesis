@@ -9,6 +9,7 @@ from .config_provider import RuntimeContext, create_runtime_context, get_context
 from .utils import now
 
 __all__ = [
+    "action_candidate_event",
     "act_event",
     "direction_event",
     "ensure_act_event",
@@ -33,6 +34,7 @@ def __getattr__(name: str) -> Any:
     Lazy-load event and summary helpers to avoid import-time cycles.
     """
     if name in {
+        "action_candidate_event",
         "act_event",
         "direction_event",
         "ensure_act_event",
