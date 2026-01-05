@@ -30,6 +30,7 @@ def test_validate_hook_sequence_accepts_good_ordering() -> None:
         "interpret",
         "plan",
         "direction",
+        "action_candidate",
         "governance",
         "terminate",
         "insight",
@@ -43,6 +44,8 @@ def test_validate_hook_sequence_rejects_bad_ordering() -> None:
         validate_hook_sequence(["observe", "governance", "direction", "terminate"])
     with pytest.raises(ValueError):
         validate_hook_sequence(["observe", "plan", "act", "interpret"])
+    with pytest.raises(ValueError):
+        validate_hook_sequence(["observe", "direction", "governance", "action_candidate", "act"])
 
 
 def test_enforce_veto_orders_direction_before_governance(tmp_path: Path) -> None:

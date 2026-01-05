@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.faculties.direction import PlannerDirective
 from noesis.domain.faculties.governance import GovernanceResult
+from noesis.domain.action_candidates import ActionCandidate
 from noesis.domain.state import (
     ActionRecord,
     CognitiveEvent,
@@ -26,7 +27,11 @@ from noesis.domain.state import (
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
 from noesis.runtime.events_emitter import CognitiveEventEmitter
-from noesis.runtime.events import direction_event as _direction_event, governance_event as _governance_event
+from noesis.runtime.events import (
+    action_candidate_event as _action_candidate_event,
+    direction_event as _direction_event,
+    governance_event as _governance_event,
+)
 
 
 @dataclass(slots=True)
@@ -103,6 +108,23 @@ class RuntimeEventBus(EventBus):
             id_factory=self.event_id_factory,
         )
 
+    def emit_action_candidate(
+        self,
+        *,
+        candidate: ActionCandidate,
+        caused_by: UUID | None = None,
+    ) -> UUID:
+        payload = candidate.to_mapping()
+        return _action_candidate_event(
+            self.context.run_dir,
+            self.context.episode_id,
+            payload,
+            agent=self.context.adapter_label,
+            caused_by=str(caused_by) if caused_by else None,
+            now_fn=lambda: self.now().isoformat(),
+            id_factory=self.event_id_factory,
+        )
+
     def emit_governance(
         self,
         *,
@@ -128,10 +150,15 @@ class RuntimeEventBus(EventBus):
         metrics: CognitiveMetrics | None = None,
         caused_by: UUID | None = None,
     ) -> None:
+        candidate_id = action.extensions.get("x-action_candidate_id") if action.extensions else None
+        if candidate_id and caused_by is None:
+            raise ValueError("action_candidate_id requires explicit caused_by for act lineage")
         payload = {
             "input_excerpt": action.input_excerpt,
             "outcome": action.result_status,
         }
+        if candidate_id:
+            payload["action_candidate_id"] = candidate_id
         if action.tool:
             payload["tool"] = action.tool
         metrics = metrics or self._instant_metric(CognitiveVerb.ACT)

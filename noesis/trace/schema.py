@@ -14,7 +14,7 @@ from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Public schema version exported to runtime/core.
 SUMMARY_SCHEMA_VERSION = "1.2.0"
-EVENTS_SCHEMA_VERSION = "1.2.0"
+EVENTS_SCHEMA_VERSION = "1.3.0"
 
 _FACULTY_SCHEMA_FILES: Dict[str, str] = {
     "intuition": "intuition.schema.json",

@@ -46,3 +46,24 @@ def test_learn_event_schema_legacy_inline() -> None:
         "evidence_ids": [],
     }
     validate(instance=event, schema=schema)
+
+
+def test_action_candidate_event_schema() -> None:
+    schema = _load_events_schema()
+    event = {
+        "id": "evt-3",
+        "timestamp": "2025-01-01T00:00:00+00:00",
+        "episode_id": "ep-3",
+        "phase": "action_candidate",
+        "payload": {
+            "schema_version": "action_candidate/1.0.0",
+            "action_candidate_id": "ac-123",
+            "kind": "tool",
+            "payload": {"tool_name": "fs.write", "args": {"path": "notes.txt"}},
+            "state_ref": "state.json",
+            "state_hash": "sha256:abc123",
+            "redaction": {"mode": "hash_only", "policy_id": "redact.v1", "policy_version": "1.0.0", "field_rules": {}},
+        },
+        "evidence_ids": [],
+    }
+    validate(instance=event, schema=schema)

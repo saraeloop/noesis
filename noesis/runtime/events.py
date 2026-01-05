@@ -19,6 +19,7 @@ __all__ = [
     "observe_event",
     "interpret_event",
     "plan_event",
+    "action_candidate_event",
     "act_event",
     "reflect_event",
     "direction_event",
@@ -145,6 +146,34 @@ def plan_event(
             "evidence_ids": [],
         },
     )
+
+
+def action_candidate_event(
+    run_dir: Path,
+    episode_id: str,
+    payload: Dict[str, Any],
+    *,
+    agent: str = "system",
+    caused_by: Optional[str] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
+) -> UUID:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
+    event_id = id_factory()
+    record: Dict[str, Any] = {
+        "id": str(event_id),
+        "timestamp": now_fn(),
+        "episode_id": episode_id,
+        "agent_id": agent,
+        "phase": "action_candidate",
+        "payload": payload,
+        "evidence_ids": [],
+    }
+    if caused_by:
+        record["caused_by"] = caused_by
+    write_event(run_dir, record)
+    return event_id
 
 
 def act_event(

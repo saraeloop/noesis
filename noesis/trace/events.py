@@ -66,6 +66,7 @@ PHASES: set[str] = {
     "start",
     "intuition",
     "direction",
+    "action_candidate",
     "governance",
     "reason",
     "memory",
@@ -88,6 +89,15 @@ _VERB_PAYLOAD_MINIMA: dict[str, set[str]] = {
     "plan": {"steps"},
     "act": {"input_excerpt", "outcome"},
     "reflect": {"success"},
+}
+
+_ACTION_CANDIDATE_MINIMA: set[str] = {
+    "action_candidate_id",
+    "kind",
+    "payload",
+    "state_ref",
+    "state_hash",
+    "redaction",
 }
 
 # Minimal schema contract for events
@@ -180,6 +190,14 @@ def _validate_event_schema(event: Dict[str, Any]) -> None:
                     raise ValueError(
                         f"learn payload missing required keys: {sorted(missing)}"
                     )
+    if phase == "action_candidate":
+        payload = event["payload"]
+        payload_keys = set(payload.keys())
+        missing_payload = _ACTION_CANDIDATE_MINIMA - payload_keys
+        if missing_payload:
+            raise ValueError(
+                f"action_candidate payload missing required keys: {sorted(missing_payload)}"
+            )
     faculty = event.get("faculty")
     if faculty is not None and not isinstance(faculty, str):
         raise ValueError("event.faculty must be a string when provided")
