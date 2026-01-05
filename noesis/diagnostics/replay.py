@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Literal
 import json
 
+from noesis.diagnostics.invariants import check_action_candidate_invariants
 
 DriftStatus = Literal["NO_DRIFT", "DRIFT"]
 
@@ -60,6 +61,8 @@ def compare_runs(dir_a: Path | str, dir_b: Path | str) -> DriftResult:
     _compare_normalized(run_a, run_b, "state.json", _normalize_state, mismatches)
     _compare_normalized(run_a, run_b, "manifest.json", _normalize_manifest, mismatches)
     _compare_normalized_events(run_a, run_b, mismatches)
+    _check_invariants(run_a, mismatches)
+    _check_invariants(run_b, mismatches)
 
     status: DriftStatus = "DRIFT" if mismatches else "NO_DRIFT"
     return DriftResult(status=status, mismatches=mismatches)
@@ -130,6 +133,22 @@ def _iter_lines(path: Path) -> Iterable[str]:
             line = line.strip()
             if line:
                 yield line
+
+
+def _check_invariants(run_dir: Path, mismatches: list[DriftMismatch]) -> None:
+    path = run_dir / "events.jsonl"
+    if not path.exists():
+        mismatches.append(DriftMismatch(artifact="events.jsonl", detail="missing file"))
+        return
+    events = [json.loads(line) for line in _iter_lines(path)]
+    violations = check_action_candidate_invariants(events)
+    for violation in violations:
+        mismatches.append(
+            DriftMismatch(
+                artifact="events.jsonl",
+                detail=f"invariant: {violation.detail} (event_id={violation.event_id})",
+            )
+        )
 
 
 def _normalize_state(state: dict[str, Any]) -> dict[str, Any]:

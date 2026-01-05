@@ -15,11 +15,15 @@ def _episode_dir(root: Path) -> Path:
 
 @pytest.mark.parametrize(
     "dataset",
-    [
-        Path("tests/golden/deterministic_run"),
-        Path("tests/golden/veto_enforce"),
-    ],
-)
+        [
+            Path("tests/golden/deterministic_run"),
+            Path("tests/golden/veto_enforce"),
+            Path("tests/golden/adr_008/allow_enforce"),
+            Path("tests/golden/adr_008/veto_enforce"),
+            Path("tests/golden/adr_008/fail_closed_error"),
+            Path("tests/golden/adr_008/audit_veto"),
+        ],
+    )
 def test_cli_diagnostics_replay_no_drift(capsys, dataset: Path) -> None:
     run_a = _episode_dir(dataset / "run_a")
     run_b = _episode_dir(dataset / "run_b")

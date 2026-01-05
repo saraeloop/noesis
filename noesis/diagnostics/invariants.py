@@ -35,6 +35,9 @@ def check_action_candidate_invariants(
     """
     violations: list[InvariantViolation] = []
     seen_candidates: set[str] = set()
+    candidate_ids_by_event: dict[str, str] = {}
+    vetoed_candidate_ids: set[str] = set()
+    vetoed_governance_ids: set[str] = set()
     for event in events:
         phase = event.get("phase")
         payload = event.get("payload")
@@ -43,6 +46,7 @@ def check_action_candidate_invariants(
             candidate_id = payload.get("action_candidate_id")
             if isinstance(candidate_id, str):
                 seen_candidates.add(candidate_id)
+                candidate_ids_by_event[event_id] = candidate_id
             else:
                 violations.append(
                     InvariantViolation(
@@ -66,10 +70,23 @@ def check_action_candidate_invariants(
                         detail="action_candidate state_hash invalid",
                     )
                 )
+        if phase == "governance" and isinstance(payload, dict):
+            decision = payload.get("decision")
+            enforced = payload.get("enforced")
+            if decision == "veto" and enforced is True:
+                vetoed_governance_ids.add(event_id)
+                caused_by = event.get("caused_by")
+                candidate_id = (
+                    candidate_ids_by_event.get(str(caused_by))
+                    if caused_by is not None
+                    else None
+                )
+                if candidate_id:
+                    vetoed_candidate_ids.add(candidate_id)
         if phase == "act" and isinstance(payload, dict):
             candidate_id = payload.get("action_candidate_id")
             has_side_effect_marker = any(key in payload for key in ("tool", "adapter"))
-            if has_side_effect_marker and not isinstance(candidate_id, str):
+            if has_side_effect_marker and seen_candidates and not isinstance(candidate_id, str):
                 violations.append(
                     InvariantViolation(
                         event_id=event_id,
@@ -81,6 +98,20 @@ def check_action_candidate_invariants(
                     InvariantViolation(
                         event_id=event_id,
                         detail="act references unknown action_candidate_id",
+                    )
+                )
+            if isinstance(candidate_id, str) and candidate_id in vetoed_candidate_ids:
+                violations.append(
+                    InvariantViolation(
+                        event_id=event_id,
+                        detail="act emitted after vetoed governance",
+                    )
+                )
+            if event.get("caused_by") in vetoed_governance_ids:
+                violations.append(
+                    InvariantViolation(
+                        event_id=event_id,
+                        detail="act caused_by vetoed governance",
                     )
                 )
     return violations
