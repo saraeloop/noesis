@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from noesis.domain.action_candidates import ActionCandidate, RedactionSpec
 from noesis.domain.faculties.governance import GovernanceMode, PreActGovernor
 from noesis.domain.planner.minimal import MinimalPlanner
@@ -38,7 +40,7 @@ def test_govern_pre_act_action_emits_candidate_and_governance(tmp_path: Path) ->
         kind="tool",
         payload={"tool_name": "fs.write", "args": {"path": "notes.txt"}},
         state_ref="state.json",
-        state_hash="sha256:abc123",
+        state_hash="sha256:" + "a" * 64,
         redaction=RedactionSpec(
             mode="hash_only",
             policy_id="redact.v1",
@@ -72,3 +74,53 @@ def test_govern_pre_act_action_emits_candidate_and_governance(tmp_path: Path) ->
     phases = [event.get("phase") for event in events]
     assert "action_candidate" in phases
     assert "governance" in phases
+
+
+def test_govern_pre_act_action_rejects_invalid_state_hash(tmp_path: Path) -> None:
+    run_dir = tmp_path / "gate"
+    run_dir.mkdir()
+    context = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="ep_gate",
+        seed=0,
+        task="danger",
+        tags={},
+        adapter_label="adapter:tooling",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    event_bus = RuntimeEventBus(
+        context=context,
+        emitter=CognitiveEventEmitter(run_dir=run_dir),
+        lineage=LineageTracker(),
+        clock=RuntimeClock(),
+    )
+    plan = MinimalPlanner().build_plan(goal="danger", beliefs=())
+    candidate = ActionCandidate(
+        id=None,
+        kind="tool",
+        payload={"tool_name": "fs.write", "args": {"path": "notes.txt"}},
+        state_ref="state.json",
+        state_hash="sha256:BAD",
+        redaction=RedactionSpec(
+            mode="hash_only",
+            policy_id="redact.v1",
+            policy_version="1.0.0",
+            field_rules={},
+        ),
+        provenance={"plan_step_id": "step-2"},
+        risk_tags=["destructive_fs"],
+    )
+
+    with pytest.raises(ValueError, match="ActionCandidate.state_hash"):
+        govern_pre_act_action(
+            goal="danger",
+            plan=plan,
+            candidate=candidate,
+            event_bus=event_bus,
+            episode_id=context.episode_id,
+            governance_policy=PreActGovernor(),
+            governance_mode=GovernanceMode.ENFORCE,
+            failure_policy=None,
+            timeout_ms=None,
+            caused_by=None,
+        )
