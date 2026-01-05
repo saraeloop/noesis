@@ -121,7 +121,7 @@ def test_governed_actuator_blocks_on_veto(tmp_path: Path) -> None:
 
     result = governed.execute(plan=plan, request=request, state=state, event_bus=event_bus)
 
-    assert result.status == "blocked"
+    assert result.status == "vetoed"
     assert inner.called == 0
     events = read_events(context.run_dir)
     phases = [event.get("phase") for event in events]
