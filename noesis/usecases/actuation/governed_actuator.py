@@ -154,8 +154,11 @@ class _ActionCandidateEventBus(EventBus):
 
 
 def _as_legacy_result(result: GovernedResult) -> ActuationResult:
+    status = result.status.value
+    if result.status is ActuationStatus.BLOCKED:
+        status = "vetoed"
     return ActuationResult(
-        status=result.status.value,
+        status=status,
         summary=result.summary,
         metrics=dict(result.metrics),
         reasons=list(result.reasons),

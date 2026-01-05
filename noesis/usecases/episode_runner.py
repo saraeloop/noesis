@@ -40,6 +40,8 @@ from noesis.runtime.events_emitter import CognitiveEventEmitter
 from noesis.runtime.artifacts.ids import directive_uuid, governance_uuid
 from noesis.trace.events import read_events
 from noesis.runtime.normalization import normalize_using
+from noesis.usecases.actuation.candidate_builder import DefaultActionCandidateBuilder
+from noesis.usecases.actuation.governed_actuator import ActionCandidateBuilder, GovernedActuator
 from .hooks.meta_phase import CompositeMetaPhaseHook, MetaPhaseHook, NullMetaPhaseHook
 from .ports import (
     ClockPort,
@@ -107,6 +109,7 @@ class EpisodeDependencies:
     governance_timeout_ms: int | None = None
     intuition_policy: Intuition | None = None
     intuition_enabled: bool = False
+    action_candidate_builder: ActionCandidateBuilder | None = None
 
 
 @dataclass(slots=True)
@@ -131,7 +134,7 @@ class EpisodeRunner:
         *,
         instrumentation: EpisodeInstrumentation | None = None,
     ) -> None:
-        self._deps = deps
+        self._deps = self._wrap_actuator(deps)
         context = getattr(deps.state_repository, "context", None)
         if instrumentation is None:
             if context is None:
@@ -157,6 +160,24 @@ class EpisodeRunner:
         self._hooks = CompositeMetaPhaseHook(tuple(hooks))
         self._context = context
         self._prompt_recorder: PromptRecorderPort | None = instrumentation.prompt_recorder or getattr(context, "prompt_recorder", None)
+
+    def _wrap_actuator(self, deps: EpisodeDependencies) -> EpisodeDependencies:
+        if deps.governance_policy is None:
+            return deps
+        if deps.governance_mode is GovernanceMode.OFF:
+            return deps
+        if isinstance(deps.actuator, GovernedActuator):
+            return deps
+        builder = deps.action_candidate_builder or DefaultActionCandidateBuilder()
+        governed = GovernedActuator(
+            inner=deps.actuator,
+            candidate_builder=builder,
+            governance_policy=deps.governance_policy,
+            governance_mode=deps.governance_mode,
+            failure_policy=deps.governance_failure_policy,
+            timeout_ms=deps.governance_timeout_ms,
+        )
+        return replace(deps, actuator=governed)
 
     def run(self, request: EpisodeRequest) -> EpisodeResult:
         context = request.context
@@ -532,6 +553,11 @@ class EpisodeRunner:
             state=state,
             event_bus=self._deps.event_bus,
         )
+        if actuation.status == "vetoed" or (
+            actuation.status == "error" and "governance_failure" in actuation.reasons
+        ):
+            _ = self._clock.stop(token)
+            return actuation, None
         if governance_result and (
             governance_result.decision is GovernanceDecision.AUDIT
             or (governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.AUDIT)
