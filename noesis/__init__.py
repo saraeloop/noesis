@@ -18,6 +18,7 @@ from .runtime.determinism import DeterministicClock, DeterministicRNG
 from .direction import DirectedIntuition
 from .exceptions import NoesisVeto
 from .io import list_runs, last, paths
+from .api.governed_act import governed_act
 
 # Package metadata
 __version__ = "v1.0.0"
@@ -104,12 +105,16 @@ def set(*, context: Any | None = None, **overrides: object) -> None:
     """
     Apply config overrides for either a provided runtime context or the default session.
     """
+    from .runtime.actuation_registry import apply_actuation_overrides
+
+    overrides = apply_actuation_overrides(overrides)
     if context is not None:
         from .core import set as core_set
 
         core_set(context=context, **overrides)
         return
     _current_session().configure(**overrides)
+
 
 def get() -> dict[str, Any]:
     """Public accessor returning a mapping of the current runtime configuration."""
@@ -126,6 +131,7 @@ __all__ = (
     "solve",
     "set",
     "get",
+    "governed_act",
     # Session management
     "create_session",
     "session_provider",
