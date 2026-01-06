@@ -113,9 +113,14 @@ def _load_graph(source: GraphSource) -> Any:
 # Public API
 
 def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
+    from .runtime.actuation_registry import apply_actuation_overrides
+
     app = context or get_context()
+    remaining = apply_actuation_overrides(overrides)
+    if not remaining:
+        return
     config_port = app.require("config", getattr(app.config_port, "__api_version__", "config/1.0-rc1"))
-    config_port.set(**overrides)
+    config_port.set(**remaining)
 
 
 def solve(

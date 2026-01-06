@@ -127,6 +127,37 @@ ns.set(planner_mode="minimal")   # opt out for throughput
 ns.run("Summarize release notes", intuition=False)
 ```
 
+Governed side effects (pre-act gating):
+
+ns.governed_act(...) is the “operating-system boundary” for side effects. It emits:
+	•	action_candidate → governance → act
+	•	or, on enforced veto: action_candidate → governance → terminate (no act)
+
+```python
+import noesis as ns
+from noesis.exceptions import NoesisVeto
+
+def run_shell(*, command: str, cwd: str | None = None, timeout_ms: int | None = None):
+    return {"stdout": "ok", "stderr": "", "exit_code": 0, "command": command}
+
+ns.set(shell_executor=run_shell)
+
+try:
+    result = ns.governed_act(
+        goal="List repository files",
+        kind="shell",
+        payload={
+            "command": "ls -a",
+            "cwd": ".",
+            "timeout_ms": 2000,
+        },
+    )
+    print(result)
+except NoesisVeto as veto:
+    # Raised only when governance is enforcing and the action is vetoed.
+    print(f"Blocked by governance: {veto.advice}")
+```
+
 ## Docs & links
 - Artifacts guide: `docs/artifacts/state.md`
 - Runs cheat sheet: `runs/README.md`

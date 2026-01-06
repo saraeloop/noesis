@@ -8,7 +8,7 @@ from noesis.context import RuntimeContext
 from noesis.interfaces.config import ConfigPort, ConfigSnapshot
 from noesis.intuition import Intuition
 
-from .models import SessionConfig
+from .models import SessionConfig, DeterminismConfig
 from .runner_port import RunnerProtocol, SessionRunRequest
 from .threading import SessionLock
 
@@ -31,6 +31,15 @@ class NoesisSession:
     @property
     def context(self) -> RuntimeContext:
         return self._context
+
+    @property
+    def determinism(self) -> DeterminismConfig | None:
+        """Expose deterministic instrumentation for callers that need it."""
+        return self._config.determinism
+
+    def merge_tags(self, tags: MutableMapping[str, Any] | None) -> dict[str, Any]:
+        """Merge tags with the session's defaults."""
+        return self._config.merge_tags(tags)
 
     def configure(self, **overrides: object) -> SessionConfig:
         """Apply config overrides and refresh the stored snapshot."""
