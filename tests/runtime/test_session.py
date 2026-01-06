@@ -18,6 +18,7 @@ from noesis.runtime.session import (
     SessionBuilder,
 )
 from noesis.runtime.session.runner_port import SessionRunRequest
+from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
 
 
 class _FakeConfigPort(ConfigPort):
@@ -187,3 +188,19 @@ def test_session_reuse_does_not_leak_state(tmp_path: Path) -> None:
     for episode_id, task in [(first, "first"), (second, "second")]:
         summary = json.loads((tmp_path / episode_id / "summary.json").read_text(encoding="utf-8"))
         assert summary["task"] == task
+
+
+def test_session_configure_preserves_determinism(tmp_path: Path) -> None:
+    snapshot = _snapshot_for(tmp_path)
+    builder = SessionBuilder(config_port=_FakeConfigPort(snapshot))
+    clock = DeterministicClock()
+    rng = DeterministicRNG(seed=123)
+    session = builder.with_determinism(clock=clock, rng=rng, episode_timestamp_ms=111).build()
+
+    before = session.determinism
+    assert before is not None
+
+    session.configure(planner_mode=PlannerMode.MINIMAL.value)
+
+    after = session.determinism
+    assert after is before

@@ -46,7 +46,11 @@ class NoesisSession:
         api = getattr(self._config_port, "__api_version__", "config/1.0-rc1")
         port = self._context.require("config", api)
         snapshot = port.set(**overrides)
-        self._config = SessionConfig(snapshot=snapshot, default_tags=self._config.default_tags)
+        self._config = SessionConfig(
+            snapshot=snapshot,
+            default_tags=self._config.default_tags,
+            determinism=self._config.determinism,
+        )
         return self._config
 
     def run(
