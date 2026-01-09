@@ -182,6 +182,7 @@ def _bootstrap_runtime(
         tags=dict(request.tags or {}),
         adapter_label=adapter_label,
         started_at=started_at,
+        intuition_mode=cfg.intuition_mode,
         prompt_provenance_enabled=getattr(cfg, "prompt_provenance_enabled", False),
         prompt_provenance_mode=getattr(cfg, "prompt_provenance_mode", "hash_only"),
     )
@@ -377,7 +378,7 @@ def _finalize_terminal(
         seed=runtime.state.seed,
         started_at=runtime.started_at,
         intuition_enabled=False,
-        intuition_mode=runtime.state.intuition_mode,  # type: ignore[attr-defined]
+        intuition_mode=runtime.state.intuition_mode,
         using_label=runtime.adapter_label,
         tags=runtime.state.tags,
         intuition=None,
