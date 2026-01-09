@@ -8,6 +8,7 @@ while keeping orchestration logic free from infrastructure concerns.
 from __future__ import annotations
 
 import re
+import inspect
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Sequence
@@ -190,6 +191,60 @@ class EpisodeRunner:
         interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
         plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
         actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
+        if act_event is None:
+            state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
+            state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
+            self._deps.state_repository.persist(state)
+            self._maybe_emit_terminate(
+                context,
+                {"status": actuation.status, "message": actuation.summary},
+            )
+            outcome = EpisodeOutcome(
+                status=actuation.status,
+                success=actuation.success,
+                summary=actuation.summary,
+                metrics=actuation.metrics,
+                reasons=actuation.reasons,
+            )
+            return EpisodeResult(state=state, outcome=outcome, plan=plan)
+
+        reflect_event = self._run_reflect(actuation, plan_event.event_id)
+        self._run_learn(actuation, reflect_event.event_id)
+
+        state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
+        state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
+        self._deps.state_repository.persist(state)
+        self._maybe_emit_terminate(
+            context,
+            {"status": actuation.status, "message": actuation.summary},
+        )
+
+        outcome = EpisodeOutcome(
+            status=actuation.status,
+            success=actuation.success,
+            summary=actuation.summary,
+            metrics=actuation.metrics,
+            reasons=actuation.reasons,
+        )
+        return EpisodeResult(state=state, outcome=outcome, plan=plan)
+
+    async def run_async(self, request: EpisodeRequest) -> EpisodeResult:
+        context = request.context
+        self._seed_lineage(context)
+        state = self._deps.state_repository.init(request.context)
+
+        observe_event = self._run_observe(request, state)
+        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
+        signals = tuple(request.beliefs) + tuple(intuition_signals)
+        interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
+        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
+        actuation, act_event = await self._run_act_async(
+            plan,
+            plan_event,
+            direction_event_id,
+            request,
+            state,
+        )
         if act_event is None:
             state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
@@ -553,6 +608,157 @@ class EpisodeRunner:
             state=state,
             event_bus=self._deps.event_bus,
         )
+        if actuation.status == "vetoed" or (
+            actuation.status == "error" and "governance_failure" in actuation.reasons
+        ):
+            _ = self._clock.stop(token)
+            return actuation, None
+        if governance_result and (
+            governance_result.decision is GovernanceDecision.AUDIT
+            or (governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.AUDIT)
+        ):
+            actuation.reasons.append(governance_result.rule_id)
+        metrics = self._clock.stop(token)
+        excerpt_basis = plan[0].description if plan else request.goal
+        payload: Dict[str, object] = {
+            "input_excerpt": excerpt_basis or "",
+            "outcome": actuation.status,
+            "adapter": request.context.adapter_label,
+            "reasons": actuation.reasons,
+            "synthetic": True,
+        }
+        event = self._emit_event(
+            verb=verb,
+            context=context,
+            payload=payload,
+            metrics=metrics,
+            agent_id=request.context.adapter_label,
+            cause=latest_direction_id or governance_event_id or plan_anchor,
+        )
+        return actuation, event
+
+    async def _await_actuation(self, value: ActuationResult | object) -> ActuationResult:
+        if inspect.isawaitable(value):
+            return await value  # type: ignore[return-value]
+        return value  # type: ignore[return-value]
+
+    async def _run_act_async(
+        self,
+        plan: Sequence[PlanStep],
+        plan_event: CognitiveEvent,
+        direction_event_id: Optional[UUID],
+        request: EpisodeRequest,
+        state: NoesisState,
+    ) -> tuple[ActuationResult, CognitiveEvent | None]:
+        verb = CognitiveVerb.ACT
+        context = request.context
+        self._hooks.before_phase(verb, context)
+        token = self._clock.start(verb)
+        plan_anchor = plan_event.event_id
+        latest_direction_id: Optional[UUID] = direction_event_id
+        governance_result: GovernanceResult | None = None
+        governance_event_id: Optional[UUID] = None
+        mode = _parse_governance_mode(getattr(self._deps, "governance_mode", GovernanceMode.OFF))
+        failure_policy = _parse_failure_policy(
+            getattr(self._deps, "governance_failure_policy", None),
+            mode,
+        )
+        if self._deps.governance_policy is not None and mode is not GovernanceMode.OFF:
+            governance_error: Dict[str, object] | None = None
+            try:
+                raw_result = _evaluate_governance(
+                    policy=self._deps.governance_policy,
+                    goal=request.goal,
+                    plan=plan,
+                    timeout_ms=getattr(self._deps, "governance_timeout_ms", None),
+                )
+            except Exception as exc:  # noqa: BLE001
+                governance_error = _governance_error_payload(exc)
+                raw_result = GovernanceResult(
+                    decision=GovernanceDecision.AUDIT,
+                    rule_id="rule:governance.failure",
+                    score=0.0,
+                    message="Governance evaluation failed",
+                    policy_id="policy:runtime.governance",
+                    policy_version="1.0.0",
+                    policy_kind="rules",
+                    details={"error": governance_error},
+                )
+            governance_result = with_governance_context(
+                _with_stable_governance_id(raw_result, context.episode_id),
+                mode=mode,
+                failure_policy=failure_policy,
+                enforced=(
+                    mode is GovernanceMode.ENFORCE
+                    and raw_result.decision is GovernanceDecision.VETO
+                    and governance_error is None
+                ),
+                error=governance_error,
+            )
+            blocked_direction_id: Optional[UUID] = None
+            if (
+                governance_result.decision is GovernanceDecision.VETO
+                and mode is GovernanceMode.ENFORCE
+                and governance_error is None
+            ):
+                blocked_direction_id = _emit_governance_blocked_direction(
+                    event_bus=self._deps.event_bus,
+                    plan=plan,
+                    governance_result=governance_result,
+                    caused_by=latest_direction_id or plan_anchor,
+                )
+                latest_direction_id = blocked_direction_id
+            governance_event_id = self._deps.event_bus.emit_governance(
+                result=governance_result,
+                caused_by=blocked_direction_id or latest_direction_id or plan_anchor,
+            )
+            recorder = self._resolve_prompt_recorder(request.context)
+            if recorder:
+                rendered_governance = (
+                    f"[governance] policy={governance_result.policy_id} decision={governance_result.decision.value}"
+                )
+                self._record_prompt(
+                    recorder=recorder,
+                    phase="governance",
+                    agent_id="governance",
+                    rendered=rendered_governance,
+                    role="system",
+                    kind="governance",
+                    template_id="governance.v1",
+                    tags=request.context.tags,
+                    event_id=governance_event_id,
+                )
+            if governance_error and mode is GovernanceMode.ENFORCE and failure_policy is GovernanceFailurePolicy.FAIL_CLOSED:
+                _ = self._clock.stop(token)
+                return (
+                    ActuationResult(
+                        status="error",
+                        summary=governance_result.message or "Governance evaluation failed",
+                        metrics={},
+                        reasons=["governance_failure"],
+                        success=False,
+                    ),
+                    None,
+                )
+            if governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.ENFORCE:
+                _ = self._clock.stop(token)
+                return (
+                    ActuationResult(
+                        status=OUTCOME_STATUS_VETOED,
+                        summary=governance_result.message or "Episode vetoed by governance",
+                        metrics={},
+                        reasons=[governance_result.rule_id],
+                        success=False,
+                    ),
+                    None,
+                )
+        actuation_value = self._deps.actuator.execute(
+            plan=plan,
+            request=request,
+            state=state,
+            event_bus=self._deps.event_bus,
+        )
+        actuation = await self._await_actuation(actuation_value)
         if actuation.status == "vetoed" or (
             actuation.status == "error" and "governance_failure" in actuation.reasons
         ):

@@ -145,6 +145,28 @@ def solve(
     )
 
 
+async def solve_async(
+    task: str,
+    *,
+    using: GraphSource,
+    seed: int = 0,
+    intuition: bool | Intuition = True,
+    tags: Optional[Dict[str, Any]] = None,
+    context: RuntimeContext | None = None,
+    determinism: "_DeterminismConfig | None" = None,
+) -> str:
+    app = context or get_context()
+    return await run_using_async(
+        using=using,
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+        context=app,
+        determinism=determinism,
+    )
+
+
 @dataclass(slots=True)
 class _EpCtx:
     ids: EpisodeIds
@@ -498,6 +520,99 @@ def _run_impl(
     return _run_episode(setup=setup, task=task, seed=seed, tags=tags, using=using)
 
 
+async def _run_episode_async(
+    *,
+    setup: _EpisodeRuntime,
+    task: str,
+    seed: int,
+    tags: Optional[Dict[str, Any]],
+    using: Optional[GraphSource],
+) -> str:
+    event_bus, instrumentation, _lineage = _build_runner_ports(setup)
+    direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
+    governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
+    governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
+    governance_failure_policy = _parse_governance_failure_policy(
+        getattr(setup.cfg, "governance_failure_policy", None),
+        governance_mode,
+    )
+    governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
+
+    if using is None:
+        actuator = MinimalActuator(tool_label=setup.adapter_label)
+    else:
+        from noesis.infrastructure.episode.adapter_actuator import AsyncAdapterActuator
+
+        graph = _load_graph(using)
+        actuator = AsyncAdapterActuator(graph=graph, tool_label=setup.adapter_label)
+
+    deps = EpisodeDependencies(
+        planner=MinimalPlanner(),
+        actuator=actuator,
+        event_bus=event_bus,
+        state_repository=setup.state_repo,
+        direction_planner=direction_planner,
+        governance_policy=governance_policy,
+        governance_mode=governance_mode,
+        governance_failure_policy=governance_failure_policy,
+        governance_timeout_ms=governance_timeout_ms,
+        intuition_policy=setup.intuition_impl,
+        intuition_enabled=setup.intuition_enabled,
+    )
+    runner = EpisodeRunner(deps, instrumentation=instrumentation)
+    using_norm = normalize_using(setup.raw_using_label)
+    using_label = using_norm.display if using_norm else setup.raw_using_label
+    episode_request = EpisodeRequest(
+        goal=task,
+        beliefs=tuple(),
+        context=setup.episode_ctx,
+        using_label=using_label,
+    )
+    result = await runner.run_async(episode_request)
+
+    status_value = str(result.outcome.status or "unknown")
+    default_message = "Episode terminated."
+    message_raw = result.outcome.summary
+    message_value = str(message_raw).strip() if message_raw else ""
+    if not message_value:
+        message_value = f"{status_value}." if status_value != "unknown" else default_message
+    status_payload: Dict[str, Any] = {
+        "status": status_value,
+        "message": message_value,
+    }
+
+    existing_events = read_events(setup.ctx.run_dir)
+    if not any(is_terminate_event(evt) for evt in existing_events):
+        _terminate_event(
+            setup.ctx.run_dir,
+            setup.ctx.episode_id,
+            status_payload,
+            now_fn=setup.now_fn if setup.determinism else None,
+            id_factory=setup.event_id_factory,
+        )
+
+    state = result.state
+    ensure_learn_file(setup.ctx.run_dir)
+    state.set_links(
+        events="events.jsonl",
+        summary="summary.json",
+        learn="learn.jsonl",
+        manifest="manifest.json",
+    )
+    setup.state_repo.persist(state)
+
+    _finalize_episode(
+        setup=setup,
+        state=state,
+        task=task,
+        seed=seed,
+        tags=tags,
+        status=status_payload["status"],
+    )
+
+    return setup.ctx.episode_id
+
+
 def run(
     task: str,
     *,
@@ -539,6 +654,60 @@ def run_using(
         context=app,
         determinism=determinism,
     )
+
+
+async def run_using_async(
+    *,
+    using: GraphSource,
+    task: str,
+    seed: int = 0,
+    intuition: bool | Intuition = True,
+    tags: Optional[Dict[str, Any]] = None,
+    context: RuntimeContext | None = None,
+    determinism: "_DeterminismConfig | None" = None,
+) -> str:
+    app = context or get_context()
+    return await _run_impl_async(
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+        using=using,
+        context=app,
+        determinism=determinism,
+    )
+
+
+async def _run_impl_async(
+    *,
+    task: str,
+    seed: int,
+    intuition: bool | Intuition,
+    tags: Optional[Dict[str, Any]],
+    using: Optional[GraphSource],
+    context: RuntimeContext,
+    determinism: "_DeterminismConfig | None",
+) -> str:
+    minimal_mode = using is None
+    raw_using_label: Optional[str]
+    if minimal_mode:
+        raw_using_label = "core.minimal"
+    else:
+        raw_using_label = _safe_using_label(using) if using is not None else "core.null"
+    adapter_label = f"adapter:{raw_using_label}"
+
+    setup = _bootstrap_episode(
+        task=task,
+        seed=seed,
+        tags=tags,
+        raw_using_label=raw_using_label,
+        adapter_label=adapter_label,
+        context=context,
+        intuition=intuition,
+        determinism=determinism,
+    )
+
+    return await _run_episode_async(setup=setup, task=task, seed=seed, tags=tags, using=using)
 
 
 def run_graph(

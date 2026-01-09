@@ -101,6 +101,36 @@ def solve(
     )
 
 
+async def solve_async(
+    task: str,
+    *,
+    using: GraphSource,
+    seed: int = 0,
+    intuition: bool | Intuition | None = True,
+    tags: Optional[Dict[str, Any]] = None,
+    context: Any | None = None,
+) -> str:
+    """Execute a task using an explicit graph/adapter (async)."""
+    if context is not None:
+        from .core import solve_async as core_solve_async
+
+        return await core_solve_async(
+            task=task,
+            using=using,
+            seed=seed,
+            intuition=intuition,
+            tags=tags,
+            context=context,
+        )
+    return await _current_session().solve_async(
+        using=using,
+        task=task,
+        seed=seed,
+        intuition=intuition,
+        tags=tags,
+    )
+
+
 def set(*, context: Any | None = None, **overrides: object) -> None:
     """
     Apply config overrides for either a provided runtime context or the default session.
@@ -129,6 +159,7 @@ __all__ = (
     # Core execution
     "run",
     "solve",
+    "solve_async",
     "set",
     "get",
     "governed_act",
