@@ -171,7 +171,7 @@ If your crew expects a different input shape, provide `__noesis_input_mapper__` 
 
 ## Claude Agent SDK integration
 
-Because `ns.solve()` is synchronous today, you must bridge the SDK's async stream into a synchronous call boundary. The Claude Agent SDK already owns the tool loop, so wrap the async query loop with `asyncio.run` (or an equivalent sync bridge).
+Because `ns.solve()` is synchronous today, the simplest integration is to wrap the SDK's async `query(...)` loop behind a synchronous function and pass that function as `using=`.
 
 ```python
 import asyncio
@@ -179,23 +179,23 @@ import noesis as ns
 from claude_agent_sdk import ClaudeAgentOptions, query
 
 
-def claude_agent_adapter(task: str) -> object:
+def claude_sync(task: str, *, options: ClaudeAgentOptions | None = None) -> object:
     async def _run() -> object | None:
-        result = None
-        async for message in query(
-            prompt=task,
-            options=ClaudeAgentOptions(allowed_tools=["Read", "Edit", "Bash"]),
-        ):
+        last = None
+        async for message in query(prompt=task, options=options):
             if hasattr(message, "result"):
-                result = message.result
-        return result
+                last = message.result
+        return last
 
     return asyncio.run(_run())
 
 
 episode_id = ns.solve(
     "Find and fix the bug in auth.py",
-    using=claude_agent_adapter,
+    using=lambda task: claude_sync(
+        task,
+        options=ClaudeAgentOptions(allowed_tools=["Read", "Edit", "Bash"]),
+    ),
     intuition=True,
 )
 ```
