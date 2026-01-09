@@ -176,6 +176,7 @@ If your crew expects a different input shape, provide `__noesis_input_mapper__` 
 When you're already running inside an event loop, use `ns.solve_async(...)` and pass an async adapter directly.
 
 ```python
+import asyncio
 import noesis as ns
 from claude_agent_sdk import ClaudeAgentOptions, query
 
