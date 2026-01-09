@@ -5,13 +5,33 @@ description: "How to connect Noēsis to LangGraph, CrewAI, or your own agent run
 
 Noēsis doesn't replace your agent runtime—it wraps it with observable cognition. This guide shows how to integrate your existing graphs and tools.
 
+<Note>
+This guide reflects the current codebase and is updated frequently while Noēsis is in active development.
+</Note>
+
 ## How adapters work
 
-An adapter is any callable that Noēsis can invoke. When you call `ns.solve()` with `using=`, Noēsis:
+An adapter is any execution target that Noēsis can invoke.
 
-1. **Auto-detects** the adapter type based on the object's interface
+### The `ns.solve()` integration contract
+
+`ns.solve()` invokes the resolved `using=` target in the **act** phase by calling `invoke()`, then `run()`, then `__call__()` (in that order). EpisodeRunner owns cognition, governance, and event emission.
+
+### The `execute(...)` adapter protocol (advanced)
+
+The repo also defines an `Adapter.execute(...)` protocol in `noesis.adapters.protocols.Adapter`:
+
+```
+execute(*, task, episode_id, run_dir, intuition=None, seed=0, tags=None) -> Any
+```
+
+This protocol is used by some integrations and legacy adapters, but `ns.solve()` does **not** call `execute()` directly.
+
+When you call `ns.solve()` with `using=`, Noēsis:
+
+1. Resolves the target via the graph loader (callable, object, or string source)
 2. Captures the task in the **observe** phase
-3. Runs your adapter in the **act** phase
+3. Runs the target in the **act** phase
 4. Records the result in the **reflect** phase
 5. Emits all events to the timeline
 
@@ -26,29 +46,20 @@ def my_adapter(task: str) -> str:
 episode_id = ns.solve("Do something", using=my_adapter)
 ```
 
-## Adapter auto-detection
+## Resolution rules
 
-Noēsis automatically selects the appropriate adapter wrapper based on the object you pass:
+`using=` accepts several shapes, resolved by the loader:
 
-| Object type | Detection method | Adapter used |
-| --- | --- | --- |
-| LangGraph | Has `.invoke()` or `.ainvoke()` | `LangGraphAdapter` |
-| CrewAI | Has `.kickoff()` | `CrewAIAdapter` |
-| MCP URL | Starts with `mcp://` | `MCPAdapter` |
-| Callable | Has `__call__` | `_CallableAdapter` |
+- **Callable**: used directly (or invoked if it is a zero-arg factory).
+- **Object**: used directly if it exposes `invoke()` or is callable.
+- **String**: can be a dotted factory (`pkg.mod:make`), a filesystem path, or a short name resolved via `flows.<name>` or `noesis_user.<name>`.
 
-```python
-import noesis as ns
+Noēsis invokes adapters via `invoke()`, `run()`, or `__call__()` (in that order).
+Objects that only define `execute()` are not compatible with `ns.solve()` unless wrapped.
 
-# Auto-detected as LangGraph
-ns.solve("task", using=langgraph_app)
-
-# Auto-detected as CrewAI
-ns.solve("task", using=crew)
-
-# Auto-detected as callable
-ns.solve("task", using=my_function)
-```
+If you need to map the input task string to a structured payload, you can:
+- wrap the target and do the mapping inside your wrapper, or
+- if supported by the invocation path you're using, define a `__noesis_input_mapper__` callable that transforms the task before invocation.
 
 ## Plain functions
 
@@ -60,20 +71,17 @@ import noesis as ns
 
 def echo_adapter(task: str) -> dict:
     """Simple adapter that echoes the task."""
-    return {
-        "status": "ok",
-        "result": task.upper(),
-    }
+    return {"result": task.upper()}
 
 
 episode_id = ns.solve("hello world", using=echo_adapter)
 summary = ns.summary.read(episode_id)
-print(summary["metrics"]["success"])  # 1
+print(summary["metrics"]["success"])  # 1 (no exception raised)
 ```
 
 ## LangGraph integration
 
-Wrap a LangGraph application:
+Compiled LangGraph graphs expose `invoke()`, so you can pass them directly:
 
 ```python
 import noesis as ns
@@ -94,57 +102,28 @@ def create_graph():
     return graph.compile()
 
 
-# Create the adapter
+# Create the graph
 app = create_graph()
-
-
-def langgraph_adapter(task: str) -> dict:
-    result = app.invoke({"task": task})
-    return result
 
 
 # Run through Noēsis
 episode_id = ns.solve(
     "Process this request",
-    using=langgraph_adapter,
+    using=app,
     intuition=True,
 )
 ```
 
-### With state preservation
-
-To preserve LangGraph state across the Noēsis timeline:
-
-```python
-import noesis as ns
-
-
-class LangGraphAdapter:
-    """Adapter that preserves graph state."""
-    
-    def __init__(self, graph):
-        self.graph = graph
-        self.last_state = None
-    
-    def __call__(self, task: str) -> dict:
-        result = self.graph.invoke({"task": task})
-        self.last_state = result
-        return result
-
-
-# Usage
-adapter = LangGraphAdapter(create_graph())
-episode_id = ns.solve("my task", using=adapter)
-print(adapter.last_state)  # Access preserved state
-```
+If your graph returns awaitables, wrap it with `noesis.adapters.langgraph.LangGraphAdapter`. It resolves awaitables with `asyncio.run()` when no event loop is running (and raises if a loop is already running). It also supports an optional input mapper and may fall back to `__noesis_input_mapper__` if the wrapped graph provides one.
 
 ## CrewAI integration
 
-Noēsis auto-detects CrewAI crews and wraps them with `CrewAIAdapter`:
+Wrap a CrewAI crew with `noesis.adapters.crewai.CrewAIAdapter`:
 
 ```python
 import noesis as ns
 from crewai import Agent, Task, Crew
+from noesis.adapters.crewai import CrewAIAdapter
 
 
 def create_crew():
@@ -164,10 +143,9 @@ def create_crew():
 
 crew = create_crew()
 
-# Noēsis auto-detects CrewAI and uses CrewAIAdapter
 episode_id = ns.solve(
     "Research quantum computing",
-    using=crew,  # Pass the crew directly
+    using=CrewAIAdapter(crew),
     intuition=True,
 )
 ```
@@ -176,8 +154,9 @@ Or wrap manually:
 
 ```python
 def crewai_adapter(task: str) -> dict:
-    result = crew.kickoff(inputs={"topic": task})
-    return {"status": "ok", "result": str(result)}
+    # CrewAI expects an input payload; adapt as needed for your crew definition.
+    result = crew.kickoff({"task": task})
+    return {"result": str(result)}
 
 
 episode_id = ns.solve(
@@ -187,29 +166,56 @@ episode_id = ns.solve(
 )
 ```
 
-## MCP protocol integration
+CrewAIAdapter defaults to mapping the task as `{"task": task}` unless the crew defines `__noesis_input_mapper__`.
+If your crew expects a different input shape, provide `__noesis_input_mapper__` on the crew or pass `input_mapper=` when constructing `CrewAIAdapter`.
 
-Noēsis supports the Model Context Protocol (MCP) for tool integration:
+## Claude Agent SDK integration
+
+Because `ns.solve()` is synchronous today, you must bridge the SDK's async stream into a synchronous call boundary. The Claude Agent SDK already owns the tool loop, so wrap the async query loop with `asyncio.run` (or an equivalent sync bridge).
 
 ```python
+import asyncio
 import noesis as ns
+from claude_agent_sdk import ClaudeAgentOptions, query
 
-# MCP adapter for tool servers
+
+def claude_agent_adapter(task: str) -> object:
+    async def _run() -> object | None:
+        result = None
+        async for message in query(
+            prompt=task,
+            options=ClaudeAgentOptions(allowed_tools=["Read", "Edit", "Bash"]),
+        ):
+            if hasattr(message, "result"):
+                result = message.result
+        return result
+
+    return asyncio.run(_run())
+
+
 episode_id = ns.solve(
-    "Fetch weather data",
-    using="mcp://localhost:8080/weather",
+    "Find and fix the bug in auth.py",
+    using=claude_agent_adapter,
     intuition=True,
 )
 ```
 
-The `MCPAdapter` handles:
-- Tool discovery from MCP servers
-- Input/output mapping
-- Error handling and retries
+<Note>
+`asyncio.run` cannot be used inside an already-running event loop. If you're inside async code,
+bridge with your own loop runner or move the adapter call to a worker thread.
+</Note>
+
+<Note>
+SDK surface shown above reflects the public `claude_agent_sdk` examples; verify against your installed SDK version.
+</Note>
+
+## Experimental Assistants adapter
+
+`noesis.adapters.assistant.AssistantsAdapter` is experimental and writes its own events via `write_event`. It follows the `execute(...)` protocol but does not expose `invoke()` / `run()` / `__call__()`, so it is **not** compatible with `ns.solve()` without a wrapper. Use it only with a custom runner that explicitly calls `execute()`.
 
 ## Custom adapters with metadata
 
-Create adapters that emit rich metadata:
+Adapters can return any object. Noēsis uses `str(result)` when constructing the action summary. If you return a dict, the summary will include its string representation.
 
 ```python
 import noesis as ns
@@ -240,12 +246,7 @@ class InstrumentedAdapter:
         
         duration = time.time() - start
         
-        return {
-            "status": "ok",
-            "result": result,
-            "adapter": self.name,
-            "duration_seconds": duration,
-        }
+        return {"adapter": self.name, "duration_seconds": duration, "result": result}
     
     def _process(self, task: str) -> str:
         # Override in subclasses
@@ -257,49 +258,20 @@ adapter = InstrumentedAdapter("my-adapter")
 episode_id = ns.solve("task", using=adapter)
 ```
 
-## Async adapters
-
-Noēsis supports async adapters:
-
-```python
-import noesis as ns
-import asyncio
-
-
-async def async_adapter(task: str) -> dict:
-    await asyncio.sleep(0.1)  # Simulate async work
-    return {"status": "ok", "result": task}
-
-
-# Run with asyncio
-async def main():
-    episode_id = await ns.solve_async(
-        "async task",
-        using=async_adapter,
-    )
-    return episode_id
-
-
-episode_id = asyncio.run(main())
-```
-
 ## Error handling
 
-Adapters should handle errors gracefully:
+Noēsis treats exceptions as failures. Raise to mark a failed action:
 
 ```python
 import noesis as ns
 
 
 def safe_adapter(task: str) -> dict:
-    try:
-        # Your logic
-        result = process(task)
-        return {"status": "ok", "result": result}
-    except ValueError as e:
-        return {"status": "error", "error": str(e), "recoverable": True}
-    except Exception as e:
-        return {"status": "error", "error": str(e), "recoverable": False}
+    # Your logic
+    result = process(task)
+    if not result:
+        raise ValueError("empty result")
+    return {"result": result}
 
 
 episode_id = ns.solve("risky task", using=safe_adapter)
@@ -308,39 +280,22 @@ summary = ns.summary.read(episode_id)
 # Check status
 if summary["metrics"]["success"] == 0:
     events = list(ns.events.read(episode_id))
-    error_event = next(e for e in events if e["phase"] == "reflect")
-    print(f"Failed: {error_event['payload'].get('error')}")
+    reflect_event = next(e for e in events if e["phase"] == "reflect")
+    print(f"Failed: {reflect_event['payload'].get('reasons')}")  # ["adapter_error"]
 ```
 
-## Registering adapters
+## Using string sources
 
-For repeated use, register adapters with Noēsis:
+You can also pass a string `using=` value that the loader resolves:
 
-```python
-import noesis as ns
-
-
-def my_adapter(task: str) -> dict:
-    return {"result": task}
-
-
-# Register for CLI and programmatic use
-ns.adapters.register("my-adapter", my_adapter)
-
-# Now usable by name
-episode_id = ns.solve("task", using="my-adapter")
-```
-
-From the CLI:
-
-```bash
-noesis solve "my task" --using my-adapter
-```
+- `pkg.mod:factory` to import and call a zero-arg factory
+- `./path/to/module.py` to load a local module
+- `name` to load `flows.name` or `noesis_user.name`
 
 ## Adapter best practices
 
 <Tip>
-**Return structured data.** Always return a dict with at least `status` and `result` keys for consistent event formatting.
+**Return structured data.** Return JSON-serializable objects so summaries are readable.
 </Tip>
 
 <Warning>
@@ -360,19 +315,16 @@ import pytest
 
 
 def test_adapter_success():
-    result = my_adapter("test input")
-    assert result["status"] == "ok"
-    assert "result" in result
+    result = echo_adapter("test input")
+    assert result["result"] == "TEST INPUT"
 
 
-def test_adapter_handles_empty():
-    result = my_adapter("")
-    assert result["status"] == "ok"
+def test_adapter_raises_on_error():
+    def bad_adapter(task: str) -> object:
+        raise ValueError("boom")
 
-
-def test_adapter_handles_error():
-    result = my_adapter("trigger_error")
-    assert result["status"] == "error"
+    with pytest.raises(ValueError):
+        bad_adapter("x")
 ```
 
 ## Next steps
