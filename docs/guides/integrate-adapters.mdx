@@ -173,7 +173,7 @@ If your crew expects a different input shape, provide `__noesis_input_mapper__` 
 
 ## Claude Agent SDK integration
 
-Because `ns.solve()` is synchronous today, the simplest integration is to wrap the SDK's async `query(...)` loop behind a synchronous function and pass that function as `using=`.
+When you're already running inside an event loop, use `ns.solve_async(...)` and pass an async adapter directly.
 
 ```python
 import asyncio
@@ -181,30 +181,27 @@ import noesis as ns
 from claude_agent_sdk import ClaudeAgentOptions, query
 
 
-def claude_sync(task: str, *, options: ClaudeAgentOptions | None = None) -> object:
-    async def _run() -> object | None:
-        last = None
-        async for message in query(prompt=task, options=options):
-            if hasattr(message, "result"):
-                last = message.result
-        return last
-
-    return asyncio.run(_run())
-
-
-episode_id = ns.solve(
-    "Find and fix the bug in auth.py",
-    using=lambda task: claude_sync(
-        task,
+async def claude_adapter(task: str) -> object:
+    last = None
+    async for message in query(
+        prompt=task,
         options=ClaudeAgentOptions(allowed_tools=["Read", "Edit", "Bash"]),
-    ),
+    ):
+        if hasattr(message, "result"):
+            last = message.result
+    return last
+
+
+episode_id = await ns.solve_async(
+    "Find and fix the bug in auth.py",
+    using=claude_adapter,
     intuition=True,
 )
 ```
 
 <Note>
-`asyncio.run` cannot be used inside an already-running event loop. If you're inside async code,
-bridge with your own loop runner or move the adapter call to a worker thread.
+If you're in synchronous code, wrap the SDK's async loop with `asyncio.run(...)` or move the call
+to a worker thread before calling `ns.solve(...)`.
 </Note>
 
 <Note>
