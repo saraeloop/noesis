@@ -17,6 +17,8 @@ An adapter is any execution target that Noēsis can invoke.
 
 `ns.solve()` invokes the resolved `using=` target in the **act** phase by calling `invoke()`, then `run()`, then `__call__()` (in that order). EpisodeRunner owns cognition, governance, and event emission.
 
+If you're already inside an event loop, use `ns.solve_async(...)`, which preserves the same invocation order and semantics while allowing async adapters to be awaited.
+
 ### The `execute(...)` adapter protocol (advanced)
 
 The repo also defines an `Adapter.execute(...)` protocol in `noesis.adapters.protocols.Adapter`:

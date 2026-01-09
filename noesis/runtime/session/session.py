@@ -109,6 +109,30 @@ class NoesisSession:
                 determinism=self._config.determinism,
             )
 
+    async def solve_async(
+        self,
+        *,
+        using: Any,
+        task: str,
+        seed: int = 0,
+        intuition: bool | Intuition = True,
+        tags: Optional[MutableMapping[str, Any]] = None,
+    ) -> str:
+        """Execute a task using a supplied graph/adapter (async)."""
+        from noesis.core import run_using_async as core_run_using_async
+
+        merged_tags = self._config.merge_tags(tags)
+        with self._lock.scoped():
+            return await core_run_using_async(
+                using=using,
+                task=task,
+                seed=seed,
+                intuition=intuition,
+                tags=merged_tags,
+                context=self._context,
+                determinism=self._config.determinism,
+            )
+
     def with_ports(self, **ports: tuple[Any, str]) -> "NoesisSession":
         """Register additional ports on the underlying runtime context."""
         for name, binding in ports.items():
