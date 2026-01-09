@@ -13,6 +13,7 @@ from typing import Literal, Protocol, TYPE_CHECKING
 
 from noesis.runtime.serialization import atomic_write_json
 from noesis.runtime.normalization import normalize_using
+from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.state import NoesisState, create_state
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ class EpisodeContext:
     tags: dict[str, object]
     adapter_label: str
     started_at: str
+    intuition_mode: IntuitionMode = IntuitionMode.ADVISORY
     prompt_provenance_enabled: bool = False
     prompt_provenance_mode: Literal["full", "hash_only", "redacted"] = "hash_only"
     prompt_recorder: "PromptRecorder | None" = None
@@ -63,6 +65,7 @@ class RuntimeStateRepository(StateRepository):
             started_at=ctx.started_at,
             tags=ctx.tags,
             adapter_label=ctx.adapter_label,
+            intuition_mode=ctx.intuition_mode,
         )
         _write_state(path, state)
         self._state = state

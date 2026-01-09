@@ -334,6 +334,7 @@ def _bootstrap_episode(
         tags=tags or {},
         adapter_label=adapter_label,
         started_at=ctx.started_at,
+        intuition_mode=cfg.intuition_mode,
         prompt_provenance_enabled=cfg.prompt_provenance_enabled,
         prompt_provenance_mode=cfg.prompt_provenance_mode,
     )

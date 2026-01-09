@@ -10,9 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, TYPE_CHECKING
 import itertools
 
+if TYPE_CHECKING:
+    from noesis.domain.faculties.intuition import IntuitionMode
 
 STATE_VERSION = "1.0"
 STATE_SCHEMA_VERSION = "1.0.0"
@@ -20,6 +22,11 @@ STATE_SCHEMA_VERSION = "1.0.0"
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+def _default_intuition_mode() -> "IntuitionMode":
+    from noesis.domain.faculties.intuition import IntuitionMode
+
+    return IntuitionMode.ADVISORY
 
 
 class PlanKind(str, Enum):
@@ -189,6 +196,7 @@ class NoesisState:
     started_at: str
     tags: Dict[str, Any]
     adapter_label: str
+    intuition_mode: "IntuitionMode" = field(default_factory=_default_intuition_mode)
     plan_steps: List[PlanStep] = field(default_factory=list)
     plan_rationale: Optional[str] = None
     plan_source: str = "planner"
@@ -292,6 +300,7 @@ class NoesisState:
                 "started_at": self.started_at,
                 "tags": self.tags,
                 "using": self.adapter_label,
+                "intuition_mode": self.intuition_mode.value,
             },
             "goal": {"task": self.task, "type": "task"},
             "beliefs": list(self.beliefs),
@@ -361,8 +370,11 @@ def create_state(
     started_at: str,
     tags: Dict[str, Any],
     adapter_label: str,
+    intuition_mode: "IntuitionMode | None" = None,
 ) -> NoesisState:
     """Factory to instantiate a state with immutable metadata."""
+    if intuition_mode is None:
+        intuition_mode = _default_intuition_mode()
     return NoesisState(
         episode_id=episode_id,
         seed=seed,
@@ -370,4 +382,5 @@ def create_state(
         started_at=started_at,
         tags=tags,
         adapter_label=adapter_label,
+        intuition_mode=intuition_mode,
     )
