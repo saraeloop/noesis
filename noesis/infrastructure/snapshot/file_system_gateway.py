@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
-from noesis.domain.snapshot import DEFAULT_IGNORE, HASH_PREFIX, Snapshot, SnapshotCaptureError
+from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotCaptureError, SnapshotPolicy
 
 
 def _utc_now() -> datetime:
@@ -25,7 +25,7 @@ def _hash_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(chunk_size), b""):
             hasher.update(chunk)
-    return f"{HASH_PREFIX}{hasher.hexdigest()}"
+    return hasher.hexdigest()
 
 
 def _iter_files(workspace: Path, ignore: Sequence[str]) -> Iterable[tuple[str, Path]]:
@@ -72,6 +72,7 @@ class FileSystemSnapshotGateway:
             workspace_root=workspace.resolve().as_posix(),
             captured_at=captured_at,
             files=files,
+            policy=SnapshotPolicy(ignore=tuple(ignore), symlinks="skip"),
         )
 
     def save(self, snapshot: Snapshot, path: Path) -> None:

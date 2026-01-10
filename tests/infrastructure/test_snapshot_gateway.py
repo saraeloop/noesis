@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from noesis.domain.snapshot import SnapshotCaptureError
+from noesis.domain.snapshot import DEFAULT_IGNORE, SnapshotCaptureError
 from noesis.infrastructure.snapshot.file_system_gateway import FileSystemSnapshotGateway
 
 
@@ -122,6 +122,8 @@ def test_save_and_load_snapshot_round_trip(tmp_path: Path) -> None:
 
     assert snapshot.files == loaded.files
     assert snapshot.workspace_root == loaded.workspace_root
+    assert loaded.policy.ignore == DEFAULT_IGNORE
+    assert loaded.policy.symlinks == "skip"
 
 
 def test_capture_raises_snapshot_capture_error_on_oserror(
