@@ -214,6 +214,30 @@ Once these three conditions are met, the Noēsis runtime and artifact model are 
 
 ---
 
+### Phase 1.8 — Action Candidates (ADR-008 — DONE)
+
+**Focus:** Make side-effectful actions observable and governable before execution.
+
+**Delivered**
+
+- ActionCandidate data model and deterministic state hashing for pre-act gating (`domain/action_candidates.py`, `usecases/action_gating.py`).
+- Pre-act governance wiring for governed actuation with action-candidate lineage (`infrastructure/actuation/default_actuation.py`, `usecases/actuation/governed_actuator.py`).
+- Determinism fixtures covering allow/veto/fail-closed candidate flows (`tests/golden/adr_008/*`).
+
+---
+
+### Phase 1.9 — Dual Sync/Async Execution (ADR-009 — DONE)
+
+**Focus:** Add first-class async execution without changing sync semantics.
+
+**Delivered**
+
+- Async solve path with preserved invocation order and failure semantics (`core.solve_async`, `usecases/episode_runner.py`).
+- Async adapter actuator for awaitable results while keeping cognitive ownership in EpisodeRunner (`infrastructure/episode/adapter_actuator.py`).
+- Tests covering async callables, async invoke/run, and error semantics (`tests/runtime/test_async_solve.py`).
+
+---
+
 ### Phase 2 — NoesisSession GA (ADR-001 → Accepted; finalize GA proof)
 
 **Focus:** Make the session the public, deterministic entrypoint.
