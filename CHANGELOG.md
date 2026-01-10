@@ -3,6 +3,8 @@
 ## Unreleased
 - Internal: Core orchestration split into `_run_minimal_episode` and `_run_adapter_episode` with shared finalization and runner-port wiring for determinism (behavior and artifacts unchanged).
 - Use-case ports added (`noesis/usecases/ports.py`) and `EpisodeRunner` refactored to depend on ports; import-linter contracts now enforce `usecases` isolation from adapters/CLI (ADR-006).
+- ADR-008: Action candidates and pre-act gating for governed actuation, with deterministic candidate lineage.
+- ADR-009: Dual sync/async execution model with `solve_async` and async adapter actuation, preserving sync semantics.
 
 ## v1.1.0 – 2025-12-08
 ### Added
