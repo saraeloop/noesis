@@ -58,7 +58,7 @@ def _iter_files(workspace: Path, ignore: Sequence[str]) -> Iterable[tuple[str, P
 class FileSystemSnapshotGateway:
     """Capture and persist workspace snapshots on the local filesystem."""
 
-    now: Callable[[], datetime] = field(default_factory=_utc_now)
+    now: Callable[[], datetime] = field(default=_utc_now)
 
     def capture(self, workspace: Path, ignore: Sequence[str] = DEFAULT_IGNORE) -> Snapshot:
         try:
