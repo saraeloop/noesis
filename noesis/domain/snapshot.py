@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Protocol, Sequence
 
 DEFAULT_IGNORE: tuple[str, ...] = (".git", "__pycache__", ".venv", ".noesis")
@@ -21,9 +22,14 @@ HASH_PREFIX = "sha256:"
 class WorkspaceDiff:
     """Deterministic diff between two workspace snapshots."""
 
-    added: list[str] = field(default_factory=list)
-    modified: list[str] = field(default_factory=list)
-    deleted: list[str] = field(default_factory=list)
+    added: tuple[str, ...] = ()
+    modified: tuple[str, ...] = ()
+    deleted: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "added", tuple(self.added))
+        object.__setattr__(self, "modified", tuple(self.modified))
+        object.__setattr__(self, "deleted", tuple(self.deleted))
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +41,7 @@ class Snapshot:
     files: Mapping[str, str]
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "files", dict(self.files))
+        object.__setattr__(self, "files", MappingProxyType(dict(self.files)))
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable mapping with stable ordering."""
@@ -72,7 +78,7 @@ class Snapshot:
         modified = sorted(
             path for path in (pre_paths & post_paths) if pre.files[path] != post.files[path]
         )
-        return WorkspaceDiff(added=added, modified=modified, deleted=deleted)
+        return WorkspaceDiff(added=tuple(added), modified=tuple(modified), deleted=tuple(deleted))
 
 
 class SnapshotGateway(Protocol):
