@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
@@ -29,15 +30,26 @@ def _hash_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 def _iter_files(workspace: Path, ignore: Sequence[str]) -> Iterable[tuple[str, Path]]:
     entries: list[tuple[str, Path]] = []
-    for path in workspace.rglob("*"):
-        if path.is_symlink():
+    for root, dirs, files in os.walk(workspace, followlinks=False):
+        root_path = Path(root)
+        relative_root = root_path.relative_to(workspace)
+        if relative_root.parts and _has_ignored_segment(relative_root, ignore):
+            dirs[:] = []
             continue
-        if not path.is_file():
-            continue
-        relative_path = path.relative_to(workspace)
-        if _has_ignored_segment(relative_path, ignore):
-            continue
-        entries.append((relative_path.as_posix(), path))
+        dirs[:] = [
+            name
+            for name in dirs
+            if not _has_ignored_segment((relative_root / name), ignore)
+            and not (root_path / name).is_symlink()
+        ]
+        for name in files:
+            path = root_path / name
+            if path.is_symlink():
+                continue
+            relative_path = path.relative_to(workspace)
+            if _has_ignored_segment(relative_path, ignore):
+                continue
+            entries.append((relative_path.as_posix(), path))
     entries.sort(key=lambda item: item[0])
     return entries
 

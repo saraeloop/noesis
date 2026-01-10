@@ -68,6 +68,46 @@ def test_capture_skips_symlinks(tmp_path: Path) -> None:
     assert "target.txt" in snapshot.files
 
 
+def test_capture_skips_symlinked_directories(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    _write_text(real_dir / "outside.txt", "outside")
+    link_dir = workspace / "linked"
+
+    try:
+        os.symlink(real_dir, link_dir)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    snapshot = gateway.capture(workspace)
+
+    assert "linked/outside.txt" not in snapshot.files
+
+
+def test_capture_ignores_segments_with_symlinked_children(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    _write_text(real_dir / "outside.txt", "outside")
+    ignored_dir = workspace / ".git"
+    ignored_dir.mkdir()
+    link_dir = ignored_dir / "linked"
+
+    try:
+        os.symlink(real_dir, link_dir)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    snapshot = gateway.capture(workspace)
+
+    assert "linked/outside.txt" not in snapshot.files
+
+
 def test_save_and_load_snapshot_round_trip(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
