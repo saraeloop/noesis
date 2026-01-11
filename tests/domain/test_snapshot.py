@@ -2,26 +2,26 @@ from __future__ import annotations
 
 import pytest
 
-from noesis.domain.snapshot import Snapshot
+from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotPolicy
 
 
 def test_snapshot_diff_added_modified_deleted_sorted() -> None:
     pre = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:00Z",
         files={
-            "b.txt": "sha256:bbb",
-            "a.txt": "sha256:aaa",
-            "d.txt": "sha256:ddd",
+            "b.txt": "bbb",
+            "a.txt": "aaa",
+            "d.txt": "ddd",
         },
+        policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
     )
     post = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:01Z",
         files={
-            "b.txt": "sha256:bbb-changed",
-            "c.txt": "sha256:ccc",
+            "b.txt": "bbb-changed",
+            "c.txt": "ccc",
         },
+        policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
     )
 
     diff = Snapshot.diff(pre, post)
@@ -35,13 +35,13 @@ def test_workspace_diff_is_immutable() -> None:
     diff = Snapshot.diff(
         Snapshot(
             workspace_root="/workspace",
-            captured_at="2024-01-01T00:00:00Z",
             files={},
+            policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
         ),
         Snapshot(
             workspace_root="/workspace",
-            captured_at="2024-01-01T00:00:01Z",
-            files={"a.txt": "sha256:aaa"},
+            files={"a.txt": "aaa"},
+            policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
         ),
     )
 
@@ -55,8 +55,8 @@ def test_workspace_diff_is_immutable() -> None:
 def test_snapshot_files_is_read_only_mapping() -> None:
     snap = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:00Z",
-        files={"a.txt": "sha256:aaa"},
+        files={"a.txt": "aaa"},
+        policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
     )
 
     with pytest.raises(TypeError):
@@ -66,12 +66,14 @@ def test_snapshot_files_is_read_only_mapping() -> None:
 def test_snapshot_to_dict_returns_mutable_files_mapping() -> None:
     snap = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:00Z",
-        files={"a.txt": "sha256:aaa"},
+        files={"a.txt": "aaa"},
+        policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
     )
 
     payload = snap.to_dict()
 
     assert type(payload["files"]) is dict
-    payload["files"]["b.txt"] = "sha256:bbb"
-    assert payload["files"]["b.txt"] == "sha256:bbb"
+    assert "captured_at" not in payload
+    assert payload["policy"]["ignore"] == list(DEFAULT_IGNORE)
+    payload["files"]["b.txt"] = "bbb"
+    assert payload["files"]["b.txt"] == "bbb"
