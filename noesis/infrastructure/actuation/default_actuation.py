@@ -28,6 +28,8 @@ from noesis.runtime.events import start_event as _start_event, terminate_event a
 from noesis.runtime.events_emitter import CognitiveEventEmitter
 from noesis.runtime.learning import ensure_learn_file
 from noesis.runtime.summary import finalize_summary as _finalize_summary
+from noesis.domain.snapshot import DEFAULT_IGNORE, SnapshotPolicy
+from noesis.domain.verification import VerificationSummary
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 from noesis.usecases.action_gating import govern_pre_act_action
 from noesis.usecases.memory_sync import persist_episode_memory
@@ -355,6 +357,32 @@ def _message_for_status(goal: str, outcome: str, error: Exception | None) -> str
     return str(error) if error else "Action failed"
 
 
+def _adapter_result(status: str) -> str:
+    if status == "ok":
+        return "success"
+    if status == "vetoed":
+        return "skipped"
+    return "error"
+
+
+def _outcome_for_status(status: str) -> str:
+    if status == "ok":
+        return "success_unverified"
+    return "error"
+
+
+def _default_verification() -> dict[str, object | None]:
+    return VerificationSummary(
+        provided=False,
+        passed=None,
+        assertions=(),
+        workspace_diff=None,
+        snapshots=None,
+        policy=SnapshotPolicy(ignore=DEFAULT_IGNORE, symlinks="skip"),
+        error=None,
+    ).to_dict()
+
+
 def _finalize_terminal(
     *,
     runtime: _GovernedActRuntime,
@@ -385,6 +413,9 @@ def _finalize_terminal(
         schema_version=SUMMARY_SCHEMA_VERSION,
         config=_config_snapshot(context),
         ports=context.list_ports(),
+        adapter_result=_adapter_result(status),
+        outcome=_outcome_for_status(status),
+        verification=_default_verification(),
     )
     ensure_learn_file(runtime.run_dir)
     persist_episode_memory(run_dir=runtime.run_dir, context=context)

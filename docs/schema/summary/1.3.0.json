@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "summary",
+  "$schema_version": "1.3.0",
+  "title": "Noesis summary artifact",
+  "description": "Canonical schema for summary.json.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "episode_id",
+    "task",
+    "started_at",
+    "metrics",
+    "adapter_result",
+    "outcome",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.3.0" },
+    "episode_id": { "type": "string" },
+    "task": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "metrics": { "type": "object" },
+    "adapter_result": {
+      "type": "string",
+      "enum": ["success", "error", "skipped"]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "goal_not_achieved", "success_unverified", "error"]
+    },
+    "verification": {
+      "type": "object",
+      "required": ["provided", "passed", "assertions", "workspace_diff", "snapshots", "policy"],
+      "properties": {
+        "provided": { "type": "boolean" },
+        "passed": { "type": ["boolean", "null"] },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "passed"],
+            "properties": {
+              "name": { "type": "string" },
+              "target": {},
+              "passed": { "type": "boolean" },
+              "reason": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "workspace_diff": {
+          "type": ["object", "null"],
+          "properties": {
+            "added": { "type": "array", "items": { "type": "string" } },
+            "modified": { "type": "array", "items": { "type": "string" } },
+            "deleted": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "snapshots": {
+          "type": ["object", "null"],
+          "properties": {
+            "pre": { "type": ["string", "null"] },
+            "post": { "type": ["string", "null"] }
+          }
+        },
+        "policy": {
+          "type": "object",
+          "required": ["ignore", "symlinks"],
+          "properties": {
+            "ignore": { "type": "array", "items": { "type": "string" } },
+            "symlinks": { "type": "string" }
+          }
+        },
+        "error": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

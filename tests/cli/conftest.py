@@ -22,12 +22,25 @@ def demo_run(tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
     (run_dir / "summary.json").write_text(
         """{
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "episode_id": "ep_20251104_155501_805857_c5f4_s0",
   "task": "Danger operation: delete production database",
   "seed": 0,
   "started_at": "2025-11-04T15:55:01.120000+00:00",
   "duration_sec": 0.18,
+  "adapter_result": "skipped",
+  "outcome": "error",
+  "verification": {
+    "provided": false,
+    "passed": null,
+    "assertions": [],
+    "workspace_diff": null,
+    "snapshots": null,
+    "policy": {
+      "ignore": [".git", "__pycache__", ".venv", ".noesis"],
+      "symlinks": "skip"
+    }
+  },
   "flags": {
     "intuition": false,
     "mode": "off",

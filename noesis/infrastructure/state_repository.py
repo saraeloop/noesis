@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, TYPE_CHECKING
+from typing import Literal, Protocol, Sequence, TYPE_CHECKING
 
 from noesis.runtime.serialization import atomic_write_json
 from noesis.runtime.normalization import normalize_using
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.state import NoesisState, create_state
+from noesis.domain.verification import Assertion
 
 if TYPE_CHECKING:
     from noesis.runtime.prompt_recorder import PromptRecorder
@@ -39,6 +40,8 @@ class EpisodeContext:
     tags: dict[str, object]
     adapter_label: str
     started_at: str
+    workspace: Path | None = None
+    verify: Sequence[Assertion] | None = None
     intuition_mode: IntuitionMode = IntuitionMode.ADVISORY
     prompt_provenance_enabled: bool = False
     prompt_provenance_mode: Literal["full", "hash_only", "redacted"] = "hash_only"

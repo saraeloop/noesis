@@ -36,6 +36,9 @@ def finalize(
     schema_version: str,
     config: Any,
     ports: Dict[str, str],
+    adapter_result: str,
+    outcome: str,
+    verification: Dict[str, object | None],
 ) -> None:
     """Public alias for `finalize_summary`."""
     _finalize_summary(
@@ -52,6 +55,9 @@ def finalize(
         schema_version=schema_version,
         config=config,
         ports=ports,
+        adapter_result=adapter_result,
+        outcome=outcome,
+        verification=verification,
     )
 
 

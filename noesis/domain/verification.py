@@ -6,11 +6,11 @@ without performing any direct I/O.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Protocol, Sequence
 
-from noesis.domain.snapshot import Snapshot, WorkspaceDiff
+from noesis.domain.snapshot import Snapshot, SnapshotPolicy, WorkspaceDiff
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +55,17 @@ class SnapshotMetadataStore(Protocol):
 
     def load(self, *, snapshots_dir: Path) -> SnapshotCaptureTimes | None:
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotPaths:
+    """Snapshot artifact paths persisted during verification."""
+
+    pre: str | None = None
+    post: str | None = None
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {"pre": self.pre, "post": self.post}
 
 
 class FileContentReader(Protocol):
@@ -188,6 +199,30 @@ class NoModificationsAssertion:
         return AssertionResult(self.name, None, False, reason)
 
 
+@dataclass(frozen=True, slots=True)
+class VerificationSummary:
+    """Summary of verification inputs and outcomes for an episode."""
+
+    provided: bool
+    passed: bool | None
+    assertions: tuple[AssertionResult, ...] = field(default_factory=tuple)
+    workspace_diff: WorkspaceDiff | None = None
+    snapshots: SnapshotPaths | None = None
+    policy: SnapshotPolicy = field(default_factory=SnapshotPolicy)
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, object | None]:
+        return {
+            "provided": self.provided,
+            "passed": self.passed,
+            "assertions": [assertion.to_dict() for assertion in self.assertions],
+            "workspace_diff": _diff_payload(self.workspace_diff),
+            "snapshots": self.snapshots.to_dict() if self.snapshots else None,
+            "policy": self.policy.to_dict(),
+            "error": self.error,
+        }
+
+
 def _normalize_path(path: str | Path) -> str:
     if isinstance(path, Path):
         return path.as_posix()
@@ -218,6 +253,16 @@ def _format_unexpected_changes(
     return "unexpected_changes: " + ", ".join(parts)
 
 
+def _diff_payload(diff: WorkspaceDiff | None) -> dict[str, list[str]] | None:
+    if diff is None:
+        return None
+    return {
+        "added": list(diff.added),
+        "modified": list(diff.modified),
+        "deleted": list(diff.deleted),
+    }
+
+
 __all__ = [
     "Assertion",
     "AssertionContext",
@@ -230,4 +275,6 @@ __all__ = [
     "SnapshotClock",
     "SnapshotCaptureTimes",
     "SnapshotMetadataStore",
+    "SnapshotPaths",
+    "VerificationSummary",
 ]

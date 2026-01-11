@@ -13,7 +13,7 @@ from importlib.resources import files
 from typing import Any, Dict, List, NotRequired, TypedDict
 
 # Public schema version exported to runtime/core.
-SUMMARY_SCHEMA_VERSION = "1.2.0"
+SUMMARY_SCHEMA_VERSION = "1.3.0"
 EVENTS_SCHEMA_VERSION = "1.3.0"
 
 _FACULTY_SCHEMA_FILES: Dict[str, str] = {
@@ -70,6 +70,9 @@ class SummarySnapshot(TypedDict, total=False):
     answer: Dict[str, Any]
     metrics: Dict[str, Any]
     tags: Dict[str, Any]
+    adapter_result: str
+    outcome: str
+    verification: Dict[str, Any]
 
 
 def schema_path(name: str) -> str:

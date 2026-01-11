@@ -36,6 +36,8 @@ from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
 from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
+from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
+from .infrastructure.verification import FileSystemFileReader
 from .interfaces.observability import RuntimeEventBus
 from .interfaces.config import PlannerMode
 from .trace.events import read_events, is_terminate_event
@@ -59,6 +61,7 @@ from .usecases.episode_runner import (
     EpisodeRequest,
     EpisodeRunner,
 )
+from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
 from .context import RuntimeContext, get_context
 
@@ -283,6 +286,9 @@ def _finalize_episode(
     seed: int,
     tags: Optional[Dict[str, Any]],
     status: str,
+    adapter_result: str,
+    outcome: str,
+    verification: Dict[str, object | None],
 ) -> None:
     _finalize_summary(
         run_dir=setup.ctx.run_dir,
@@ -298,6 +304,9 @@ def _finalize_episode(
         schema_version=SCHEMA_VERSION,
         config=setup.cfg,
         ports=setup.port_versions,
+        adapter_result=adapter_result,
+        outcome=outcome,
+        verification=verification,
     )
 
     persist_episode_memory(run_dir=setup.ctx.run_dir, context=setup.runtime_context)
@@ -421,11 +430,19 @@ def _run_episode(
         graph = _load_graph(using)
         actuator = AdapterActuator(graph=graph, tool_label=setup.adapter_label)
 
+    snapshot_writer = SnapshotArtifactWriter(
+        gateway=FileSystemSnapshotGateway(),
+        metadata_store=FileSystemSnapshotMetadataStore(),
+        clock=UtcSnapshotClock(),
+    )
+    file_reader_factory = lambda root: FileSystemFileReader(root=root)
     deps = EpisodeDependencies(
         planner=MinimalPlanner(),
         actuator=actuator,
         event_bus=event_bus,
         state_repository=setup.state_repo,
+        snapshot_writer=snapshot_writer,
+        file_reader_factory=file_reader_factory,
         direction_planner=direction_planner,
         governance_policy=governance_policy,
         governance_mode=governance_mode,
@@ -483,6 +500,9 @@ def _run_episode(
         seed=seed,
         tags=tags,
         status=status_payload["status"],
+        adapter_result=result.adapter_result,
+        outcome=result.verification_outcome,
+        verification=result.verification,
     )
 
     return setup.ctx.episode_id
@@ -608,6 +628,9 @@ async def _run_episode_async(
         seed=seed,
         tags=tags,
         status=status_payload["status"],
+        adapter_result=result.adapter_result,
+        outcome=result.verification_outcome,
+        verification=result.verification,
     )
 
     return setup.ctx.episode_id

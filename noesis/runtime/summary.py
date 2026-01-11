@@ -54,6 +54,9 @@ def finalize_summary(
     schema_version: str,
     config: ConfigSnapshot,
     ports: Dict[str, str],
+    adapter_result: str,
+    outcome: str,
+    verification: Dict[str, object | None],
 ) -> None:
     snapshot = config
     events = read_events(run_dir)
@@ -94,6 +97,10 @@ def finalize_summary(
         tags=tags or {},
         ports=ports,
     ).__dict__
+
+    summary["adapter_result"] = adapter_result
+    summary["outcome"] = outcome
+    summary["verification"] = verification
 
     metrics_bucket = summary.setdefault("metrics", {})
     summary.setdefault("insight", {})["metrics"] = insight_metrics.to_mapping()

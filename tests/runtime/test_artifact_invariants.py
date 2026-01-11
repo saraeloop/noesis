@@ -80,7 +80,7 @@ def _validate_events(run_dir: Path) -> list[dict]:
 
 def _validate_summary(run_dir: Path) -> dict:
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
-    schema = _load_schema("summary", "1.2.0")
+    schema = _load_schema("summary", "1.3.0")
     validate(instance=summary, schema=schema)
     return summary
 
