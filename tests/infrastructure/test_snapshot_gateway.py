@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import os
 from pathlib import Path
 
@@ -8,10 +7,6 @@ import pytest
 
 from noesis.domain.snapshot import DEFAULT_IGNORE, SnapshotCaptureError
 from noesis.infrastructure.snapshot.file_system_gateway import FileSystemSnapshotGateway
-
-
-def _fixed_now() -> datetime:
-    return datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -25,7 +20,7 @@ def test_capture_is_deterministic_for_files_mapping(tmp_path: Path) -> None:
     _write_text(workspace / "a.txt", "alpha")
     _write_text(workspace / "dir" / "b.txt", "bravo")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
     first = gateway.capture(workspace)
     second = gateway.capture(workspace)
 
@@ -42,7 +37,7 @@ def test_capture_ignores_segment_tokens(tmp_path: Path) -> None:
     _write_text(workspace / ".noesis" / "skip.txt", "ignored")
     _write_text(workspace / "__init__" / "keep.txt", "ok")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
     snapshot = gateway.capture(workspace)
 
     assert list(snapshot.files.keys()) == ["__init__/keep.txt", "keep.txt"]
@@ -61,7 +56,7 @@ def test_capture_skips_symlinks(tmp_path: Path) -> None:
     except (OSError, NotImplementedError):
         pytest.skip("symlinks not supported on this platform")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
     snapshot = gateway.capture(workspace)
 
     assert "link.txt" not in snapshot.files
@@ -81,7 +76,7 @@ def test_capture_skips_symlinked_directories(tmp_path: Path) -> None:
     except (OSError, NotImplementedError):
         pytest.skip("symlinks not supported on this platform")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
     snapshot = gateway.capture(workspace)
 
     assert "linked/outside.txt" not in snapshot.files
@@ -102,7 +97,7 @@ def test_capture_ignores_segments_with_symlinked_children(tmp_path: Path) -> Non
     except (OSError, NotImplementedError):
         pytest.skip("symlinks not supported on this platform")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
     snapshot = gateway.capture(workspace)
 
     assert "linked/outside.txt" not in snapshot.files
@@ -113,7 +108,7 @@ def test_save_and_load_snapshot_round_trip(tmp_path: Path) -> None:
     workspace.mkdir()
     _write_text(workspace / "a.txt", "alpha")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
     snapshot = gateway.capture(workspace)
     path = tmp_path / "snapshot.json"
 
@@ -133,7 +128,7 @@ def test_capture_raises_snapshot_capture_error_on_oserror(
     workspace.mkdir()
     _write_text(workspace / "a.txt", "alpha")
 
-    gateway = FileSystemSnapshotGateway(now=_fixed_now)
+    gateway = FileSystemSnapshotGateway()
 
     def _raise_oserror(_: Path, __: int = 0) -> str:
         raise OSError("nope")

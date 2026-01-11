@@ -1,19 +1,14 @@
 """Filesystem-backed snapshot capture and persistence."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Iterable, Sequence
 
 from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotCaptureError, SnapshotPolicy
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _has_ignored_segment(relative_path: Path, ignore: Sequence[str]) -> bool:
@@ -58,8 +53,6 @@ def _iter_files(workspace: Path, ignore: Sequence[str]) -> Iterable[tuple[str, P
 class FileSystemSnapshotGateway:
     """Capture and persist workspace snapshots on the local filesystem."""
 
-    now: Callable[[], datetime] = field(default=_utc_now)
-
     def capture(self, workspace: Path, ignore: Sequence[str] = DEFAULT_IGNORE) -> Snapshot:
         try:
             files = {
@@ -67,15 +60,14 @@ class FileSystemSnapshotGateway:
             }
         except OSError as exc:
             raise SnapshotCaptureError(f"snapshot_capture_failed: {exc}") from exc
-        captured_at = self.now().isoformat()
         return Snapshot(
             workspace_root=workspace.resolve().as_posix(),
-            captured_at=captured_at,
             files=files,
             policy=SnapshotPolicy(ignore=tuple(ignore), symlinks="skip"),
         )
 
     def save(self, snapshot: Snapshot, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(
             snapshot.to_dict(),
             sort_keys=True,

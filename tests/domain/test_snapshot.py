@@ -8,7 +8,6 @@ from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotPolicy
 def test_snapshot_diff_added_modified_deleted_sorted() -> None:
     pre = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:00Z",
         files={
             "b.txt": "bbb",
             "a.txt": "aaa",
@@ -18,7 +17,6 @@ def test_snapshot_diff_added_modified_deleted_sorted() -> None:
     )
     post = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:01Z",
         files={
             "b.txt": "bbb-changed",
             "c.txt": "ccc",
@@ -37,13 +35,11 @@ def test_workspace_diff_is_immutable() -> None:
     diff = Snapshot.diff(
         Snapshot(
             workspace_root="/workspace",
-            captured_at="2024-01-01T00:00:00Z",
             files={},
             policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
         ),
         Snapshot(
             workspace_root="/workspace",
-            captured_at="2024-01-01T00:00:01Z",
             files={"a.txt": "aaa"},
             policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
         ),
@@ -59,7 +55,6 @@ def test_workspace_diff_is_immutable() -> None:
 def test_snapshot_files_is_read_only_mapping() -> None:
     snap = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:00Z",
         files={"a.txt": "aaa"},
         policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
     )
@@ -71,7 +66,6 @@ def test_snapshot_files_is_read_only_mapping() -> None:
 def test_snapshot_to_dict_returns_mutable_files_mapping() -> None:
     snap = Snapshot(
         workspace_root="/workspace",
-        captured_at="2024-01-01T00:00:00Z",
         files={"a.txt": "aaa"},
         policy=SnapshotPolicy(ignore=DEFAULT_IGNORE),
     )

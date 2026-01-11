@@ -45,12 +45,12 @@ class SnapshotPolicy:
         return {"ignore": list(self.ignore), "symlinks": self.symlinks}
 
 
+
 @dataclass(frozen=True, slots=True)
 class Snapshot:
     """Immutable view of workspace files and their hashes."""
 
     workspace_root: str
-    captured_at: str
     files: Mapping[str, str]
     policy: SnapshotPolicy
 
@@ -79,13 +79,12 @@ class Snapshot:
             raise ValueError("Snapshot mapping missing policy mapping.")
         ignore = policy_data.get("ignore", [])
         symlinks = policy_data.get("symlinks", "skip")
-        if not isinstance(ignore, Sequence) or isinstance(ignore, (str, bytes)):
-            raise ValueError("Snapshot policy ignore must be a sequence.")
+        if not isinstance(ignore, list) or any(not isinstance(item, str) for item in ignore):
+            raise ValueError("Snapshot policy ignore must be a list of strings.")
         if not isinstance(symlinks, str):
             raise ValueError("Snapshot policy symlinks must be a string.")
         return cls(
             workspace_root=workspace_root,
-            captured_at=str(data.get("captured_at", "")),
             files={str(key): str(value) for key, value in files.items()},
             policy=SnapshotPolicy(ignore=tuple(ignore), symlinks=symlinks),
         )
