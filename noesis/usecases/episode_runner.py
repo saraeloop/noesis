@@ -11,6 +11,7 @@ import re
 import inspect
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence
 from uuid import UUID, uuid4
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
@@ -32,7 +33,9 @@ from noesis.domain.faculties.governance import (
     with_governance_context,
 )
 from noesis.domain.faculties.intuition import Intuition, IntuitionEvent
+from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotPolicy
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
+from noesis.domain.verification import Assertion, FileContentReader, SnapshotPaths, VerificationSummary
 from noesis import events as runtime_events
 from noesis.trace.events import is_terminate_event
 from noesis.infrastructure.state_repository import EpisodeContext
@@ -43,6 +46,8 @@ from noesis.trace.events import read_events
 from noesis.runtime.normalization import normalize_using
 from noesis.usecases.actuation.candidate_builder import DefaultActionCandidateBuilder
 from noesis.usecases.actuation.governed_actuator import ActionCandidateBuilder, GovernedActuator
+from noesis.usecases.snapshot_artifacts import SnapshotArtifactWriter
+from noesis.usecases.verification_evaluator import AdapterResult, OutcomeStatus, compute_outcome, evaluate_verification
 from .hooks.meta_phase import CompositeMetaPhaseHook, MetaPhaseHook, NullMetaPhaseHook
 from .ports import (
     ClockPort,
@@ -95,6 +100,9 @@ class EpisodeResult:
     state: NoesisState
     outcome: EpisodeOutcome
     plan: Sequence[PlanStep]
+    adapter_result: AdapterResult
+    verification_outcome: OutcomeStatus
+    verification: dict[str, object | None]
 
 
 @dataclass(slots=True)
@@ -103,6 +111,8 @@ class EpisodeDependencies:
     actuator: Actuator
     event_bus: EventBus
     state_repository: StateRepositoryPort
+    snapshot_writer: SnapshotArtifactWriter | None = None
+    file_reader_factory: Callable[[Path], FileContentReader] | None = None
     direction_planner: MetaPlanner | None = None
     governance_policy: PreActGovernor | None = None
     governance_mode: GovernanceMode = GovernanceMode.OFF
@@ -180,6 +190,34 @@ class EpisodeRunner:
         )
         return replace(deps, actuator=governed)
 
+    def _verification_policy(self) -> SnapshotPolicy:
+        return SnapshotPolicy(ignore=DEFAULT_IGNORE, symlinks="skip")
+
+    def _build_verification_summary(
+        self,
+        *,
+        request: EpisodeRequest,
+        verify: Sequence[Assertion] | None,
+        pre: Snapshot | None,
+        post: Snapshot | None,
+        workspace_available: bool,
+    ) -> VerificationSummary:
+        policy = self._verification_policy()
+        snapshots = None
+        if workspace_available and pre is not None and post is not None:
+            snapshots = SnapshotPaths(pre="snapshots/pre.json", post="snapshots/post.json")
+        file_reader = None
+        if workspace_available and request.context.workspace and self._deps.file_reader_factory:
+            file_reader = self._deps.file_reader_factory(request.context.workspace)
+        return evaluate_verification(
+            verify=verify,
+            pre=pre,
+            post=post,
+            policy=policy,
+            snapshots=snapshots,
+            file_reader=file_reader,
+        )
+
     def run(self, request: EpisodeRequest) -> EpisodeResult:
         context = request.context
         self._seed_lineage(context)
@@ -190,7 +228,52 @@ class EpisodeRunner:
         signals = tuple(request.beliefs) + tuple(intuition_signals)
         interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
         plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
-        actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
+        workspace = request.context.workspace
+        verify = request.context.verify
+        verification_requested = bool(verify)
+        workspace_available = workspace is not None and self._deps.snapshot_writer is not None
+        pre_snapshot: Snapshot | None = None
+        post_snapshot: Snapshot | None = None
+        adapter_result: AdapterResult | None = None
+        if verification_requested and not workspace_available:
+            adapter_result = "skipped"
+            actuation = ActuationResult(
+                status="error",
+                summary="Verification unavailable: workspace not provided",
+                metrics={},
+                reasons=["verification_unavailable"],
+                success=False,
+            )
+            act_event = None
+        else:
+            if workspace_available:
+                pre_snapshot = self._deps.snapshot_writer.capture_and_store(
+                    phase="pre",
+                    workspace=workspace,
+                    run_dir=context.run_dir,
+                )
+            try:
+                actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
+                adapter_result = "success"
+            except Exception as exc:  # noqa: BLE001
+                adapter_result = "error"
+                actuation = ActuationResult(
+                    status="error",
+                    summary=str(exc),
+                    metrics={},
+                    reasons=["adapter_exception"],
+                    success=False,
+                )
+                act_event = None
+            finally:
+                if workspace_available:
+                    post_snapshot = self._deps.snapshot_writer.capture_and_store(
+                        phase="post",
+                        workspace=workspace,
+                        run_dir=context.run_dir,
+                    )
+            if adapter_result == "success" and act_event is None:
+                adapter_result = "skipped"
         if act_event is None:
             state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
@@ -199,6 +282,18 @@ class EpisodeRunner:
                 context,
                 {"status": actuation.status, "message": actuation.summary},
             )
+            verification = self._build_verification_summary(
+                request=request,
+                verify=verify,
+                pre=pre_snapshot,
+                post=post_snapshot,
+                workspace_available=workspace_available,
+            )
+            verification_outcome = compute_outcome(
+                adapter_result=adapter_result,
+                verification_provided=verification.provided,
+                verification_passed=verification.passed,
+            )
             outcome = EpisodeOutcome(
                 status=actuation.status,
                 success=actuation.success,
@@ -206,7 +301,14 @@ class EpisodeRunner:
                 metrics=actuation.metrics,
                 reasons=actuation.reasons,
             )
-            return EpisodeResult(state=state, outcome=outcome, plan=plan)
+            return EpisodeResult(
+                state=state,
+                outcome=outcome,
+                plan=plan,
+                adapter_result=adapter_result,
+                verification_outcome=verification_outcome,
+                verification=verification.to_dict(),
+            )
 
         reflect_event = self._run_reflect(actuation, plan_event.event_id)
         self._run_learn(actuation, reflect_event.event_id)
@@ -219,6 +321,18 @@ class EpisodeRunner:
             {"status": actuation.status, "message": actuation.summary},
         )
 
+        verification = self._build_verification_summary(
+            request=request,
+            verify=verify,
+            pre=pre_snapshot,
+            post=post_snapshot,
+            workspace_available=workspace_available,
+        )
+        verification_outcome = compute_outcome(
+            adapter_result=adapter_result,
+            verification_provided=verification.provided,
+            verification_passed=verification.passed,
+        )
         outcome = EpisodeOutcome(
             status=actuation.status,
             success=actuation.success,
@@ -226,7 +340,14 @@ class EpisodeRunner:
             metrics=actuation.metrics,
             reasons=actuation.reasons,
         )
-        return EpisodeResult(state=state, outcome=outcome, plan=plan)
+        return EpisodeResult(
+            state=state,
+            outcome=outcome,
+            plan=plan,
+            adapter_result=adapter_result,
+            verification_outcome=verification_outcome,
+            verification=verification.to_dict(),
+        )
 
     async def run_async(self, request: EpisodeRequest) -> EpisodeResult:
         context = request.context
@@ -238,13 +359,58 @@ class EpisodeRunner:
         signals = tuple(request.beliefs) + tuple(intuition_signals)
         interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
         plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
-        actuation, act_event = await self._run_act_async(
-            plan,
-            plan_event,
-            direction_event_id,
-            request,
-            state,
-        )
+        workspace = request.context.workspace
+        verify = request.context.verify
+        verification_requested = bool(verify)
+        workspace_available = workspace is not None and self._deps.snapshot_writer is not None
+        pre_snapshot: Snapshot | None = None
+        post_snapshot: Snapshot | None = None
+        adapter_result: AdapterResult | None = None
+        if verification_requested and not workspace_available:
+            adapter_result = "skipped"
+            actuation = ActuationResult(
+                status="error",
+                summary="Verification unavailable: workspace not provided",
+                metrics={},
+                reasons=["verification_unavailable"],
+                success=False,
+            )
+            act_event = None
+        else:
+            if workspace_available:
+                pre_snapshot = self._deps.snapshot_writer.capture_and_store(
+                    phase="pre",
+                    workspace=workspace,
+                    run_dir=context.run_dir,
+                )
+            try:
+                actuation, act_event = await self._run_act_async(
+                    plan,
+                    plan_event,
+                    direction_event_id,
+                    request,
+                    state,
+                )
+                adapter_result = "success"
+            except Exception as exc:  # noqa: BLE001
+                adapter_result = "error"
+                actuation = ActuationResult(
+                    status="error",
+                    summary=str(exc),
+                    metrics={},
+                    reasons=["adapter_exception"],
+                    success=False,
+                )
+                act_event = None
+            finally:
+                if workspace_available:
+                    post_snapshot = self._deps.snapshot_writer.capture_and_store(
+                        phase="post",
+                        workspace=workspace,
+                        run_dir=context.run_dir,
+                    )
+            if adapter_result == "success" and act_event is None:
+                adapter_result = "skipped"
         if act_event is None:
             state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
@@ -253,6 +419,18 @@ class EpisodeRunner:
                 context,
                 {"status": actuation.status, "message": actuation.summary},
             )
+            verification = self._build_verification_summary(
+                request=request,
+                verify=verify,
+                pre=pre_snapshot,
+                post=post_snapshot,
+                workspace_available=workspace_available,
+            )
+            verification_outcome = compute_outcome(
+                adapter_result=adapter_result,
+                verification_provided=verification.provided,
+                verification_passed=verification.passed,
+            )
             outcome = EpisodeOutcome(
                 status=actuation.status,
                 success=actuation.success,
@@ -260,7 +438,14 @@ class EpisodeRunner:
                 metrics=actuation.metrics,
                 reasons=actuation.reasons,
             )
-            return EpisodeResult(state=state, outcome=outcome, plan=plan)
+            return EpisodeResult(
+                state=state,
+                outcome=outcome,
+                plan=plan,
+                adapter_result=adapter_result,
+                verification_outcome=verification_outcome,
+                verification=verification.to_dict(),
+            )
 
         reflect_event = self._run_reflect(actuation, plan_event.event_id)
         self._run_learn(actuation, reflect_event.event_id)
@@ -273,6 +458,18 @@ class EpisodeRunner:
             {"status": actuation.status, "message": actuation.summary},
         )
 
+        verification = self._build_verification_summary(
+            request=request,
+            verify=verify,
+            pre=pre_snapshot,
+            post=post_snapshot,
+            workspace_available=workspace_available,
+        )
+        verification_outcome = compute_outcome(
+            adapter_result=adapter_result,
+            verification_provided=verification.provided,
+            verification_passed=verification.passed,
+        )
         outcome = EpisodeOutcome(
             status=actuation.status,
             success=actuation.success,
@@ -280,7 +477,14 @@ class EpisodeRunner:
             metrics=actuation.metrics,
             reasons=actuation.reasons,
         )
-        return EpisodeResult(state=state, outcome=outcome, plan=plan)
+        return EpisodeResult(
+            state=state,
+            outcome=outcome,
+            plan=plan,
+            adapter_result=adapter_result,
+            verification_outcome=verification_outcome,
+            verification=verification.to_dict(),
+        )
 
     def _run_observe(self, request: EpisodeRequest, state: NoesisState) -> CognitiveEvent:
         verb = CognitiveVerb.OBSERVE

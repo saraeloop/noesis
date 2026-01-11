@@ -9,11 +9,14 @@ The `summary.json` artifact provides a high-level view of episode outcomes, metr
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "episode_id": "ep_2024_abc123_s0",
   "task": "Draft release notes for v1.2.0",
   "started_at": "2024-01-15T10:30:00Z",
   "duration_sec": 5.0,
+  "adapter_result": "success",
+  "outcome": "success_unverified",
+  "verification": { ... },
   "flags": { ... },
   "metrics": { ... },
   "insight": { ... },
@@ -24,7 +27,7 @@ The `summary.json` artifact provides a high-level view of episode outcomes, metr
 ## Root fields
 
 <ResponseField name="schema_version" type="string" required>
-Version of the summary schema. Currently `"1.2.0"`.
+Version of the summary schema. Currently `"1.3.0"`.
 </ResponseField>
 
 <ResponseField name="episode_id" type="string" required>
@@ -41,6 +44,48 @@ ISO 8601 start timestamp.
 
 <ResponseField name="duration_sec" type="number" required>
 Total episode duration in seconds.
+</ResponseField>
+
+<ResponseField name="adapter_result" type="string" required>
+Adapter execution status: `"success"`, `"error"`, or `"skipped"`.
+</ResponseField>
+
+<ResponseField name="outcome" type="string" required>
+Verification outcome: `"success"`, `"goal_not_achieved"`, `"success_unverified"`, or `"error"`.
+</ResponseField>
+
+<ResponseField name="verification" type="object" required>
+Verification summary block.
+
+<Expandable title="Verification properties">
+  <ResponseField name="provided" type="boolean">
+  Whether verification assertions were provided.
+  </ResponseField>
+
+  <ResponseField name="passed" type="boolean | null">
+  Verification pass/fail status (null when unverified or unavailable).
+  </ResponseField>
+
+  <ResponseField name="assertions" type="array">
+  Assertion results (empty when not provided).
+  </ResponseField>
+
+  <ResponseField name="workspace_diff" type="object | null">
+  Snapshot diff with `added`, `modified`, and `deleted` lists.
+  </ResponseField>
+
+  <ResponseField name="snapshots" type="object | null">
+  Snapshot paths for `pre` and `post`.
+  </ResponseField>
+
+  <ResponseField name="policy" type="object">
+  Snapshot policy (ignore list + symlink handling).
+  </ResponseField>
+
+  <ResponseField name="error" type="string | null">
+  Verification error reason (e.g., `"workspace_unavailable"`).
+  </ResponseField>
+</Expandable>
 </ResponseField>
 
 ## Flags
@@ -232,11 +277,24 @@ Key-value pairs of user-provided metadata.
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "episode_id": "ep_2024_abc123_s0",
   "task": "Draft release notes for v1.2.0",
   "started_at": "2024-01-15T10:30:00Z",
   "duration_sec": 5.0,
+  "adapter_result": "success",
+  "outcome": "success_unverified",
+  "verification": {
+    "provided": false,
+    "passed": null,
+    "assertions": [],
+    "workspace_diff": null,
+    "snapshots": null,
+    "policy": {
+      "ignore": [".git", "__pycache__", ".venv", ".noesis"],
+      "symlinks": "skip"
+    }
+  },
   "flags": {
     "intuition": true,
     "mode": "meta",
