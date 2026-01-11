@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from noesis.usecases.snapshot_artifacts import SnapshotClock
+from noesis.domain.verification import SnapshotClock
 
 
 @dataclass(slots=True)

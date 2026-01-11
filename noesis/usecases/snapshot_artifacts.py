@@ -3,27 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, Sequence
+from typing import Literal, Sequence
 
 from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotGateway
-from noesis.domain.verification import SnapshotCaptureTimes
-
-
-class SnapshotClock(Protocol):
-    """Clock boundary for snapshot capture timestamps."""
-
-    def now_utc_iso(self) -> str:
-        ...
-
-
-class SnapshotMetadataStore(Protocol):
-    """Persistence boundary for snapshot capture timestamps."""
-
-    def save(self, *, snapshots_dir: Path, times: SnapshotCaptureTimes) -> Path:
-        ...
-
-    def load(self, *, snapshots_dir: Path) -> SnapshotCaptureTimes | None:
-        ...
+from noesis.domain.verification import (
+    SnapshotCaptureTimes,
+    SnapshotClock,
+    SnapshotMetadataStore,
+)
 
 
 @dataclass(slots=True)
