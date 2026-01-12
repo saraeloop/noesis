@@ -47,6 +47,8 @@ class PsCommand:
                     "episode_id": episode_id,
                     "episode_short": episode_id[:10],
                     "status": label,
+                    "status_raw": row.get("status"),
+                    "success": row.get("success"),
                     "outcome": outcome,
                     "using": (row.get("flags", {}) or {}).get("using", "") or "",
                     "started_at": (row.get("started_at") or "")[:20],

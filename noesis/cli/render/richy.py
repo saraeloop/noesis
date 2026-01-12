@@ -174,7 +174,11 @@ class RichRenderer:
         table.add_column("DURATION", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
         for row in rows:
             status = row.get("status", "")
-            outcome = normalize_outcome(row.get("outcome"), status=status)
+            outcome = normalize_outcome(
+                row.get("outcome"),
+                status=row.get("status_raw"),
+                success=row.get("success"),
+            )
             badge = outcome_badge(outcome)
             style = _safe_style(self.console, badge.style, "white")
             status_text = Text(f"{badge.symbol} {badge.label}", style=style)
