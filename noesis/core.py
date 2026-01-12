@@ -61,6 +61,7 @@ from .usecases.episode_runner import (
     EpisodeRequest,
     EpisodeRunner,
 )
+from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
 from .context import RuntimeContext, get_context
@@ -134,6 +135,8 @@ def solve(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
@@ -144,6 +147,8 @@ def solve(
         intuition=intuition,
         tags=tags,
         context=app,
+        workspace=workspace,
+        verify=verify,
         determinism=determinism,
     )
 
@@ -156,6 +161,8 @@ async def solve_async(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
@@ -166,6 +173,8 @@ async def solve_async(
         intuition=intuition,
         tags=tags,
         context=app,
+        workspace=workspace,
+        verify=verify,
         determinism=determinism,
     )
 
@@ -344,6 +353,8 @@ def _bootstrap_episode(
     raw_using_label: str,
     adapter_label: str,
     context: RuntimeContext,
+    workspace: str | Path | None,
+    verify: VerifyInput,
     intuition: bool | Intuition,
     determinism: "_DeterminismConfig | None",
 ) -> _EpisodeRuntime:
@@ -356,6 +367,8 @@ def _bootstrap_episode(
     run_clock, now_fn = _init_clock(determinism)
     ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_fn())
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_specs = normalize_verify(verify)
 
     episode_ctx = EpisodeContext(
         run_dir=ctx.run_dir,
@@ -365,6 +378,8 @@ def _bootstrap_episode(
         tags=tags or {},
         adapter_label=adapter_label,
         started_at=ctx.started_at,
+        workspace=workspace_path,
+        verify=verify_specs,
         intuition_mode=cfg.intuition_mode,
         prompt_provenance_enabled=cfg.prompt_provenance_enabled,
         prompt_provenance_mode=cfg.prompt_provenance_mode,
@@ -516,6 +531,8 @@ def _run_impl(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
     context: RuntimeContext,
+    workspace: str | Path | None,
+    verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
 ) -> str:
     minimal_mode = using is None
@@ -533,6 +550,8 @@ def _run_impl(
         raw_using_label=raw_using_label,
         adapter_label=adapter_label,
         context=context,
+        workspace=workspace,
+        verify=verify,
         intuition=intuition,
         determinism=determinism,
     )
@@ -643,9 +662,13 @@ def run(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_specs = normalize_verify(verify)
     return _run_impl(
         task=task,
         seed=seed,
@@ -653,6 +676,8 @@ def run(
         tags=tags,
         using=None,
         context=app,
+        workspace=workspace_path,
+        verify=verify_specs,
         determinism=determinism,
     )
 
@@ -665,9 +690,13 @@ def run_using(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_specs = normalize_verify(verify)
     return _run_impl(
         task=task,
         seed=seed,
@@ -675,6 +704,8 @@ def run_using(
         tags=tags,
         using=using,
         context=app,
+        workspace=workspace_path,
+        verify=verify_specs,
         determinism=determinism,
     )
 
@@ -687,9 +718,13 @@ async def run_using_async(
     intuition: bool | Intuition = True,
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
     app = context or get_context()
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_specs = normalize_verify(verify)
     return await _run_impl_async(
         task=task,
         seed=seed,
@@ -697,6 +732,8 @@ async def run_using_async(
         tags=tags,
         using=using,
         context=app,
+        workspace=workspace_path,
+        verify=verify_specs,
         determinism=determinism,
     )
 
@@ -709,6 +746,8 @@ async def _run_impl_async(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
     context: RuntimeContext,
+    workspace: str | Path | None,
+    verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
 ) -> str:
     minimal_mode = using is None
@@ -726,6 +765,8 @@ async def _run_impl_async(
         raw_using_label=raw_using_label,
         adapter_label=adapter_label,
         context=context,
+        workspace=workspace,
+        verify=verify,
         intuition=intuition,
         determinism=determinism,
     )

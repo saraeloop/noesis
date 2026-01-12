@@ -28,6 +28,8 @@ episode_id = ns.run(
     intuition: bool | Intuition | None = True,
     tags: dict[str, object] | None = None,
     context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
 
@@ -49,6 +51,14 @@ Metadata tags attached to the episode.
 
 <ParamField body="context" type="RuntimeContext" default="None">
 Optional runtime context. If provided, execution bypasses the default session.
+</ParamField>
+
+<ParamField body="workspace" type="str | Path | None" default="None">
+Workspace root to snapshot for verification.
+</ParamField>
+
+<ParamField body="verify" type="VerifySpec | Sequence[VerifySpec] | None" default="None">
+Verification assertions to evaluate against the workspace.
 </ParamField>
 
 **Returns**: Episode ID (e.g., `"ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"`)
@@ -88,6 +98,8 @@ episode_id = ns.solve(
     intuition: bool | Intuition | None = True,
     tags: dict[str, object] | None = None,
     context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
 
@@ -106,6 +118,26 @@ def to_upper(task: str) -> dict:
 
 episode_id = ns.solve("process this", using=to_upper)
 episode_id = ns.solve("process this", using="my.module:adapter_fn")
+```
+
+### Verification helpers
+
+Use these helpers to build verification specs for `verify=...`.
+
+```python
+verify = [
+    ns.file_exists("config.yaml"),
+    ns.file_contains("config.yaml", "enabled: true"),
+    ns.only_modified(["config.yaml"]),
+    ns.no_modifications(),
+]
+
+episode_id = ns.solve(
+    "Update config",
+    using="my.module:adapter_fn",
+    workspace=".",
+    verify=verify,
+)
 ```
 
 ### ns.summary.read()

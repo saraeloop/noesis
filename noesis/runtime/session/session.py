@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, MutableMapping, Optional
 
 from noesis.context import RuntimeContext
 from noesis.interfaces.config import ConfigPort, ConfigSnapshot
 from noesis.intuition import Intuition
+from noesis.verification import VerifyInput, normalize_verify
 
 from .models import SessionConfig, DeterminismConfig
 from .runner_port import RunnerProtocol, SessionRunRequest
@@ -60,10 +62,14 @@ class NoesisSession:
         seed: int = 0,
         intuition: bool | Intuition | None = True,
         tags: Optional[MutableMapping[str, Any]] = None,
+        workspace: str | Path | None = None,
+        verify: "VerifyInput" = None,
         runner: RunnerProtocol | None = None,
     ) -> str:
         """Execute a task either through the built-in core or a supplied runner."""
         merged_tags = self._config.merge_tags(tags)
+        workspace_path = Path(workspace) if workspace is not None else None
+        verify_specs = normalize_verify(verify)
         with self._lock.scoped():
             if runner is not None:
                 request = SessionRunRequest(
@@ -71,6 +77,8 @@ class NoesisSession:
                     seed=seed,
                     intuition=intuition,
                     tags=merged_tags,
+                    workspace=workspace_path,
+                    verify=verify_specs,
                 )
                 return runner.run(request, context=self._context)
 
@@ -82,6 +90,8 @@ class NoesisSession:
                 intuition=intuition,
                 tags=merged_tags,
                 context=self._context,
+                workspace=workspace_path,
+                verify=verify_specs,
                 determinism=self._config.determinism,
             )
 
@@ -93,11 +103,15 @@ class NoesisSession:
         seed: int = 0,
         intuition: bool | Intuition = True,
         tags: Optional[MutableMapping[str, Any]] = None,
+        workspace: str | Path | None = None,
+        verify: "VerifyInput" = None,
     ) -> str:
         """Execute a task using a supplied graph/adapter."""
         from noesis.core import run_using as core_run_using
 
         merged_tags = self._config.merge_tags(tags)
+        workspace_path = Path(workspace) if workspace is not None else None
+        verify_specs = normalize_verify(verify)
         with self._lock.scoped():
             return core_run_using(
                 using=using,
@@ -106,6 +120,8 @@ class NoesisSession:
                 intuition=intuition,
                 tags=merged_tags,
                 context=self._context,
+                workspace=workspace_path,
+                verify=verify_specs,
                 determinism=self._config.determinism,
             )
 
@@ -117,11 +133,15 @@ class NoesisSession:
         seed: int = 0,
         intuition: bool | Intuition = True,
         tags: Optional[MutableMapping[str, Any]] = None,
+        workspace: str | Path | None = None,
+        verify: "VerifyInput" = None,
     ) -> str:
         """Execute a task using a supplied graph/adapter (async)."""
         from noesis.core import run_using_async as core_run_using_async
 
         merged_tags = self._config.merge_tags(tags)
+        workspace_path = Path(workspace) if workspace is not None else None
+        verify_specs = normalize_verify(verify)
         with self._lock.scoped():
             return await core_run_using_async(
                 using=using,
@@ -130,6 +150,8 @@ class NoesisSession:
                 intuition=intuition,
                 tags=merged_tags,
                 context=self._context,
+                workspace=workspace_path,
+                verify=verify_specs,
                 determinism=self._config.determinism,
             )
 
