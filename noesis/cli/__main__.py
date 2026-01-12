@@ -253,14 +253,18 @@ def run(
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
 
-    verify = parse_verify_args(
-        verify_file=str(verify_file) if verify_file else None,
-        verify_file_exists=verify_file_exists,
-        verify_file_contains=verify_file_contains,
-        verify_texts=text,
-        verify_only_modified=verify_only_modified,
-        verify_no_modifications=verify_no_modifications,
-    )
+    try:
+        verify = parse_verify_args(
+            verify_file=str(verify_file) if verify_file else None,
+            verify_file_exists=verify_file_exists,
+            verify_file_contains=verify_file_contains,
+            verify_texts=text,
+            verify_only_modified=verify_only_modified,
+            verify_no_modifications=verify_no_modifications,
+        )
+    except ValueError as exc:
+        sys.stderr.write(f"usage error: {exc}\n")
+        raise typer.Exit(code=2)
     if json_output:
         try:
             import click
@@ -276,11 +280,13 @@ def run(
             raise typer.Exit(code=error_code or 3)
 
     prior_planner = None
+    planner_changed = False
     if planner:
         prior_planner = getattr(getattr(ctx, "config_snapshot", None), "planner_mode", None)
         if hasattr(prior_planner, "value"):
             prior_planner = prior_planner.value
         ctx.ns.set(context=ctx.runtime_context, planner_mode=planner)
+        planner_changed = True
     try:
         episode_id = ctx.ns.run(
             task=task,
@@ -292,7 +298,7 @@ def run(
         sys.stderr.write(f"runner error: {exc}\n")
         raise typer.Exit(code=3)
     finally:
-        if planner and prior_planner:
+        if planner_changed:
             ctx.ns.set(context=ctx.runtime_context, planner_mode=prior_planner)
     summary = ctx.ns.summary.read(episode_id, context=ctx.runtime_context)
     if not isinstance(summary, dict):
@@ -343,8 +349,14 @@ def view(
         if ep_dir.exists():
             vm = build_episode_dashboard(ep_dir, validate=False)
         else:
-            summary = ctx.ns.summary.read(episode_id, context=ctx.runtime_context)
-            events = list(ctx.ns.events.read(episode_id, context=ctx.runtime_context))
+            try:
+                summary = ctx.ns.summary.read(episode_id, context=ctx.runtime_context)
+                events = list(ctx.ns.events.read(episode_id, context=ctx.runtime_context))
+            except Exception as exc:  # noqa: BLE001
+                renderer.echo(f"episode not found: {episode_id}")
+                if not quiet:
+                    renderer.echo(f"  {exc}")
+                raise typer.Exit(code=1)
             vm = build_episode_dashboard_from_payloads(
                 summary=summary,
                 events=events,
@@ -610,8 +622,10 @@ def help(
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
         # Use context with resilient_parsing to skip argument validation for help
-        cmd_ctx = click.Context(cmd, info_name=command, parent=parent_ctx, resilient_parsing=True)
-        help_text = cmd.get_help(cmd_ctx)
+        with parent_ctx:
+            cmd_ctx = click.Context(cmd, info_name=command, parent=parent_ctx, resilient_parsing=True)
+            with cmd_ctx:
+                help_text = cmd.get_help(cmd_ctx)
         renderer.print_command_help(help_text, title=f"noesis {command}")
         return
     renderer.print_help(build_help_screen(ctx.version))
