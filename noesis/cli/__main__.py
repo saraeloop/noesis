@@ -621,47 +621,20 @@ def explain(
 def help(
     command: Optional[str] = typer.Argument(None, help="Command to show help for"),
 ) -> None:
-    import click
-    from typer.main import get_command as get_typer_command
     from noesis.cli.content.help import build_help_screen
 
     options = GlobalOptions()
     ctx = build_context(options, port_specs=[])
-    renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
     if command:
-        group = get_typer_command(app)
-        if isinstance(group, click.Group):
-            parent_ctx = click.Context(group, info_name="noesis")
-            cmd = group.get_command(parent_ctx, command)
-        else:
-            cmd = None
-            parent_ctx = None
-        if not cmd:
-            renderer.print_help(build_help_screen(ctx.version))
-            renderer.echo(f"Unknown command: {command}")
-            raise typer.Exit(code=1)
-        # Build help text; try resilient with no args, then with a dummy arg to satisfy required params
-        help_text = ""
-        for args in ([], ["__placeholder__"]):
-            try:
-                cmd_ctx = cmd.make_context(
-                    command,
-                    args,
-                    parent=parent_ctx,
-                    resilient_parsing=True,
-                    allow_extra_args=True,
-                    allow_interspersed_args=True,
-                )
-                candidate = cmd.get_help(cmd_ctx) or ""
-                if candidate.strip():
-                    help_text = candidate
-                    break
-            except Exception:  # noqa: BLE001
-                continue
-        if not help_text.strip():
-            help_text = f"usage: noesis {command}\n"
-        renderer.print_command_help(help_text, title=f"noesis {command}")
-        return
+        # Delegate to Typer's built-in help rendering for the specific subcommand
+        try:
+            result = app(prog_name="noesis", args=[command, "--help"], standalone_mode=False)
+            if result is not None:
+                return result
+            return
+        except typer.Exit as exc:
+            raise exc
+    renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
     renderer.print_help(build_help_screen(ctx.version))
 
 
