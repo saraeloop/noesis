@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import io
 import json
 import os
 import re
 import sys
+from contextlib import redirect_stdout, redirect_stderr
 
 import typer
 
@@ -621,24 +623,29 @@ def explain(
 def help(
     command: Optional[str] = typer.Argument(None, help="Command to show help for"),
 ) -> None:
-    import click
-    from typer.main import get_command as get_typer_command
     from noesis.cli.content.help import build_help_screen
 
     options = GlobalOptions()
     ctx = build_context(options, port_specs=[])
     if command:
-        group = get_typer_command(app)
-        parent_ctx = click.Context(group, info_name="noesis")
-        sub_cmd = group.get_command(parent_ctx, command)
-        if sub_cmd is None:
+        # Invoke Typer/Click help and capture both stdout and stderr to avoid empty output in CI
+        buf = io.StringIO()
+        try:
+            with redirect_stdout(buf), redirect_stderr(buf):
+                result = app(prog_name="noesis", args=[command, "--help"], standalone_mode=False)
+                if result is not None:
+                    pass
+        except typer.Exit:
+            # Typer uses Exit for control flow; help text is already in the buffer
+            pass
+        output = buf.getvalue()
+        if not output.strip():
+            # Unknown command fallback
             renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        sub_ctx = click.Context(sub_cmd, info_name=command, parent=parent_ctx)
-        help_text = sub_cmd.get_help(sub_ctx)
-        sys.stdout.write(help_text)
+        sys.stdout.write(output)
         return
     renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
     renderer.print_help(build_help_screen(ctx.version))
