@@ -609,10 +609,9 @@ def help(
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        # Use make_context for proper help generation
-        with parent_ctx:
-            cmd_ctx = cmd.make_context(command, [], parent=parent_ctx)
-            help_text = cmd.get_help(cmd_ctx)
+        # Use context with resilient_parsing to skip argument validation for help
+        cmd_ctx = click.Context(cmd, info_name=command, parent=parent_ctx, resilient_parsing=True)
+        help_text = cmd.get_help(cmd_ctx)
         renderer.print_command_help(help_text, title=f"noesis {command}")
         return
     renderer.print_help(build_help_screen(ctx.version))
