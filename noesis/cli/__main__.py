@@ -624,28 +624,28 @@ def help(
     command: Optional[str] = typer.Argument(None, help="Command to show help for"),
 ) -> None:
     from noesis.cli.content.help import build_help_screen
+    from typer.main import get_command as get_typer_command
 
     options = GlobalOptions()
     ctx = build_context(options, port_specs=[])
     if command:
-        # Invoke Typer/Click help and capture both stdout and stderr to avoid empty output in CI
-        buf = io.StringIO()
-        try:
-            with redirect_stdout(buf), redirect_stderr(buf):
-                result = app(prog_name="noesis", args=[command, "--help"], standalone_mode=False)
-                if result is not None:
-                    pass
-        except typer.Exit:
-            # Typer uses Exit for control flow; help text is already in the buffer
-            pass
-        output = buf.getvalue()
-        if not output.strip():
-            # Unknown command fallback
+        # Build a minimal help text without invoking Click directly.
+        group = get_typer_command(app)
+        cmd = group.commands.get(command) if group else None
+        if cmd is None:
             renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        sys.stdout.write(output)
+
+        lines: list[str] = [f"usage: noesis {command}"]
+        for param in getattr(cmd, "params", []):
+            opts = getattr(param, "opts", None) or []
+            if opts:
+                opt_str = ", ".join(opts)
+                help_text = getattr(param, "help", "") or getattr(param, "description", "") or ""
+                lines.append(f"{opt_str}  {help_text}".rstrip())
+        sys.stdout.write("\n".join(lines) + "\n")
         return
     renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
     renderer.print_help(build_help_screen(ctx.version))
