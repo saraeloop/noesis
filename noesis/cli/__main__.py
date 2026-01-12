@@ -639,21 +639,26 @@ def help(
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        # Build help text; try resilient first, then strict as fallback if empty
+        # Build help text. Provide a dummy argument to satisfy required params (e.g., episode_id),
+        # and use resilient_parsing to avoid raising MissingParameter during help generation.
+        dummy_args = ["__placeholder__"]
         help_text = ""
         for resilient in (True, False):
-            cmd_ctx = cmd.make_context(
-                command,
-                [],
-                parent=parent_ctx,
-                resilient_parsing=resilient,
-                allow_extra_args=True,
-                allow_interspersed_args=True,
-            )
-            candidate = cmd.get_help(cmd_ctx)
-            if candidate and candidate.strip():
-                help_text = candidate
-                break
+            try:
+                cmd_ctx = cmd.make_context(
+                    command,
+                    dummy_args,
+                    parent=parent_ctx,
+                    resilient_parsing=resilient,
+                    allow_extra_args=True,
+                    allow_interspersed_args=True,
+                )
+                candidate = cmd.get_help(cmd_ctx)
+                if candidate and candidate.strip():
+                    help_text = candidate
+                    break
+            except Exception:  # noqa: BLE001
+                continue
         if not help_text:
             help_text = f"usage: noesis {command}\n"
         renderer.print_command_help(help_text, title=f"noesis {command}")
