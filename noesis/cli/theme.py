@@ -40,10 +40,10 @@ PHASE_SYMBOLS = {
     "error": "✗",
 }
 
-# Navigation symbols
-NAV_ARROW = "→"
-BULLET = "●"
-DIAMOND = "◆"
+# Navigation symbols (ASCII-first)
+NAV_ARROW = "->"
+BULLET = "*"
+DIAMOND = "*"
 
 # ASCII fallbacks for plain renderer
 STATUS_SYMBOLS_ASCII = {
@@ -122,11 +122,21 @@ def normalize_outcome(
     if isinstance(outcome, str) and outcome:
         return outcome
     if isinstance(status, str) and status:
-        normalized = status.lower()
-        if normalized == "vetoed":
-            return "violated"
-        if normalized == "error":
-            return "error"
+        normalized = status.strip().lower().replace(" ", "_")
+        status_map = {
+            "ok": "success",
+            "success": "success",
+            "audit": "success",
+            "vetoed": "violated",
+            "violated": "violated",
+            "error": "error",
+            "unverified": "success_unverified",
+            "skipped": "success_unverified",
+            "goal_not_achieved": "goal_not_achieved",
+        }
+        mapped = status_map.get(normalized)
+        if mapped:
+            return mapped
     if success is True:
         return "success"
     if success is False:

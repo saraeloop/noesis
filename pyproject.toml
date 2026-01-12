@@ -20,8 +20,10 @@ classifiers = [
 ]
 # Runtime dependencies
 dependencies = [
+  "click>=8.3.0",
   "ruamel.yaml>=0.18",
   "textual>=6.5.0",
+  "typer>=0.21.1",
 ]
 
 [project.optional-dependencies]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from noesis import cli
+from noesis.cli import main as cli_main
 from noesis.cli.content.home import (
     build_home_screen,
     ConfigSnapshot,
@@ -54,7 +54,7 @@ def test_build_home_screen_basic():
     """Home screen builds without crashing with minimal input."""
     screen = build_home_screen("1.0.0")
     assert screen.version == "1.0.0"
-    assert screen.tagline == "observe → govern → replay"
+    assert screen.tagline == "Understanding, made observable."
     assert screen.config.governance_mode == "off"
     assert screen.config.planner_mode == "minimal"
     assert len(screen.next_actions) > 0
@@ -217,13 +217,13 @@ def test_view_dashboard_to_dict_includes_governance(golden_veto_dir):
 def test_cli_events_no_theme_crash(capsys):
     """noesis events should not crash with theme attribute error."""
     # This should not raise "'Console' object has no attribute 'theme'"
-    code = cli.main(["events", "--help"])
+    code = cli_main(["events", "--help"])
     assert code == 0
 
 
 def test_cli_explain_help(capsys):
     """noesis explain --help works."""
-    code = cli.main(["explain", "--help"])
+    code = cli_main(["explain", "--help"])
     out = capsys.readouterr().out
     assert code == 0
     assert "explain" in out.lower() or "episode" in out.lower()
@@ -231,7 +231,7 @@ def test_cli_explain_help(capsys):
 
 def test_cli_home_no_args(capsys):
     """noesis (no args) renders home screen without error."""
-    code = cli.main(["--home"])
+    code = cli_main([])
     out = capsys.readouterr().out
     # Should not crash and should show something
     assert code == 0
@@ -264,7 +264,7 @@ def test_plain_renderer_home_screen():
 
     output = captured.getvalue()
     assert "Noesis" in output
-    assert "governance enforce" in output  # new modern style without =
+    assert "Commands" in output
 
 
 def test_plain_renderer_explain():

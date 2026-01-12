@@ -34,6 +34,7 @@ class RecentEpisode:
     task: str  # truncated task
     duration: str  # e.g., "0.8s"
     outcome: str | None = None
+    success: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class LastEpisodeInfo:
     duration: str
     task: str
     outcome: str | None = None
+    success: bool | None = None
     # Governance veto details (only if vetoed)
     rule_id: str | None = None
     score: float | None = None
@@ -147,8 +149,8 @@ def build_home_screen(
                 description="start a new episode",
             ),
             NextAction(
-                command="noesis help",
-                description="see all commands",
+                command="noesis browse",
+                description="open TUI browser",
             ),
         ]
     else:
@@ -158,8 +160,8 @@ def build_home_screen(
                 description="start a new episode",
             ),
             NextAction(
-                command="noesis ps",
-                description="list recent episodes",
+                command="noesis browse",
+                description="open TUI browser",
             ),
             NextAction(
                 command="noesis help",
@@ -204,7 +206,7 @@ def build_home_screen(
 
     return HomeScreen(
         version=version,
-        tagline="observe → govern → replay",
+        tagline="Understanding, made observable.",
         config=config,
         last_episode=last_episode_info,
         recent_episodes=tuple(recent_episodes),

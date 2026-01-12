@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Iterable, List
 
-from ..view_models import EpisodeDashboardVM, TimelineRowVM
+from ..view_models import EpisodeDashboardVM, TimelineRowVM, build_verification_section
 from ..help_content import HelpScreen, HomeScreen, CommandGroup
 
 from ..formatters import format_ps_rows_for_plain, format_rows_for_plain, format_duration, truncate
@@ -66,7 +66,7 @@ class PlainRenderer:
             )
             badge = outcome_badge(outcome)
             row = dict(row)
-            row["status"] = f"{badge.symbol} {badge.label}"
+            row["status"] = badge.label
             formatted_rows.append(row)
         for line in format_ps_rows_for_plain(formatted_rows):
             print(line)
@@ -231,6 +231,107 @@ class PlainRenderer:
             for suggestion in view.suggestions:
                 print(f"  {suggestion}")
 
+    def print_run_summary(self, episode_id: str, task: str, summary: Dict[str, Any]) -> None:
+        if self.quiet:
+            print(episode_id)
+            return
+        print(f"Episode {episode_id}")
+        print(f"Task: {task}")
+        verification = build_verification_section(summary)
+        print("\nSummary")
+        print(f"  Agent    : {_format_agent_result(summary.get('adapter_result'))}")
+        print(f"  Verify   : {_format_verify_result(verification)}")
+        outcome = outcome_badge(summary.get("outcome"))
+        print(f"  Outcome  : {outcome.label}")
+        if verification.workspace_diff is not None:
+            print(f"  Changed  : {_format_diff_counts(verification.workspace_diff)}")
+        failure = _first_failed_assertion(verification)
+        if failure:
+            print(f"  First failure: {failure}")
+        print(f"\nNext\n  -> noesis view {episode_id}      full details")
+
+    def print_view_compact(self, view: EpisodeDashboardVM) -> None:
+        header = view.header
+        outcome = outcome_badge(view.verification.outcome.status)
+        print(f"{outcome.label}  Episode {header.episode_id}")
+        if header.task:
+            print(f"Task: {header.task}")
+        if header.duration is not None:
+            print(f"Duration: {format_duration(header.duration)}")
+
+        print("\nSummary")
+        print(f"  Agent   : {_format_agent_result(view.verification.adapter_result)}")
+        print(f"  Verify  : {_format_verify_result(view.verification)}")
+        print(f"  Outcome : {outcome.label}")
+
+        self.print_execution_map(view.execution_map, compact=True)
+        _print_changed_files(view)
+
+        if view.verification.assertions:
+            print("\nAssertions")
+            for assertion in view.verification.assertions:
+                status = "PASS" if assertion.passed else "FAIL"
+                detail = _format_assertion_detail(assertion)
+                print(f"  {status} {detail}")
+
+    def print_view_verbose(self, view: EpisodeDashboardVM) -> None:
+        kpis = view.kpis
+        print("\nKPIs")
+        kpi_rows = [
+            ["success%", _format_percent_value(kpis.success_pct)],
+            ["plan_adherence", _format_ratio(kpis.plan_adherence)],
+            ["veto_count", str(kpis.veto_count) if kpis.veto_count is not None else "—"],
+            ["tool_coverage", _format_ratio(kpis.tool_coverage)],
+            ["first_action", kpis.first_action or "—"],
+        ]
+        for line in _render_table(
+            headers=["KPI", "VALUE"],
+            rows=kpi_rows,
+            widths=[_KPI_COLS["label"], _KPI_COLS["value"]],
+            align_right={1},
+        ):
+            print(line)
+
+        if view.phase_breakdown:
+            print("\nPhase Breakdown")
+            phase_rows = [[item.phase, f"{item.ms} ms"] for item in view.phase_breakdown]
+            for line in _render_table(
+                headers=["PHASE", "DURATION"],
+                rows=phase_rows,
+                widths=[_PHASE_COLS["phase"], _PHASE_COLS["duration"]],
+                align_right={1},
+            ):
+                print(line)
+
+        rows = self._filter_timeline(view.timeline_rows, None)
+        print("\nTimeline")
+        if not rows:
+            timeline_rows = [["-", "-", "-", "-", "no events matched"]]
+        else:
+            timeline_rows = [
+                [
+                    row.dt_str,
+                    row.phase,
+                    row.agent,
+                    row.status or "—",
+                    row.summary or "",
+                ]
+                for row in rows
+            ]
+        for line in _render_table(
+            headers=["Δt", "phase", "agent", "status", "summary"],
+            rows=timeline_rows,
+            widths=[
+                _TIMELINE_COLS["dt"],
+                _TIMELINE_COLS["phase"],
+                _TIMELINE_COLS["agent"],
+                _TIMELINE_COLS["status"],
+                _TIMELINE_COLS["summary"],
+            ],
+            align_right={0},
+        ):
+            print(line)
+
     def print_execution_map(self, execution_map, *, compact: bool = False) -> None:
         if self.quiet:
             return
@@ -270,30 +371,41 @@ class PlainRenderer:
         print(f"  first_failure  : {failing or '—'}")
 
     def print_home(self, screen: HomeScreen) -> None:
-        """Render home screen in plain mode - modern ASCII style."""
+        """Render the compact home screen."""
         if self.quiet:
             return
-        from ..theme import section_line_ascii, status_symbol, NAV_ARROW_ASCII
+        from ..theme import NAV_ARROW_ASCII
+
+        print(f"Noesis {screen.version}")
+        print(screen.tagline)
+        print()
+
+        # Primary commands
+        if screen.next_actions:
+            print("Commands")
+            for action in screen.next_actions[:3]:
+                print(f"  {NAV_ARROW_ASCII}  {action.command:<40} {action.description}")
+            print()
+
+    def print_home_details(self, screen: HomeScreen) -> None:
+        """Render the detailed home dashboard sections."""
+        if self.quiet:
+            return
+        from ..theme import section_line_ascii
 
         width = 72
 
-        # Header line with tagline
-        print(f"Noesis {screen.version}  {screen.tagline}")
-        print()
-
-        # Config line
         cfg = screen.config
-        print(f"  governance {cfg.governance_mode}   planner {cfg.planner_mode}   intuition {cfg.intuition_mode}   runs {cfg.runs_dir}")
+        print(f"governance {cfg.governance_mode}   planner {cfg.planner_mode}   intuition {cfg.intuition_mode}   runs {cfg.runs_dir}")
         print()
 
-        # Last episode section
         if screen.last_episode:
             print(section_line_ascii("last", width))
             print()
             last = screen.last_episode
-            outcome = normalize_outcome(last.outcome, status=last.status)
+            outcome = normalize_outcome(last.outcome, status=last.status, success=last.success)
             badge = outcome_badge(outcome)
-            print(f"  {badge.symbol} {badge.label:<16}   {last.episode_id[:12]:<12}   {last.duration}")
+            print(f"  {badge.label:<16}   {last.episode_id[:12]:<12}   {last.duration}")
             print(f"    {truncate(last.task, max_width=60)}")
             if last.status == "VETOED" and last.rule_id:
                 score_str = f"score={last.score:.2f}" if last.score is not None else ""
@@ -302,28 +414,15 @@ class PlainRenderer:
                     print(f"    why    {truncate(last.message, max_width=55)}")
             print()
 
-        # Next actions section
-        if screen.next_actions:
-            print(section_line_ascii("next", width))
-            print()
-            for action in screen.next_actions[:3]:
-                print(f"  {NAV_ARROW_ASCII}  {action.command:<40} {action.description}")
-            print()
-
-        # Recent episodes section
         if screen.recent_episodes:
             print(section_line_ascii("recent", width))
             print()
             for ep in screen.recent_episodes[:5]:
-                outcome = normalize_outcome(ep.outcome, status=ep.status)
+                outcome = normalize_outcome(ep.outcome, status=ep.status, success=ep.success)
                 badge = outcome_badge(outcome)
                 task_display = truncate(ep.task, max_width=40)
-                print(f"  {ep.time_str:<5}  {badge.symbol} {badge.label:<16}  {ep.episode_short:<12}  {task_display}")
+                print(f"  {ep.time_str:<5}  {badge.label:<16}  {ep.episode_short:<12}  {task_display}")
             print()
-
-        # Footer
-        print("-" * width)
-        print(f"help: {screen.footer_hint}")
 
     def print_help(self, screen: HelpScreen) -> None:
         """Render help screen in plain mode."""
@@ -469,6 +568,36 @@ def _format_ratio(value: float | None) -> str:
     return f"{value:.2f}"
 
 
+def _format_agent_result(adapter_result: object) -> str:
+    if adapter_result == "success":
+        return "OK"
+    if adapter_result == "error":
+        return "FAIL"
+    if adapter_result == "skipped":
+        return "SKIPPED"
+    return "UNKNOWN"
+
+
+def _format_verify_result(verification) -> str:
+    total = len(verification.assertions)
+    passed = sum(1 for assertion in verification.assertions if assertion.passed)
+    if verification.passed is True:
+        return f"PASSED ({passed} of {total})" if total else "PASSED"
+    if verification.passed is False:
+        return f"FAILED ({passed} of {total})" if total else "FAILED"
+    if verification.error:
+        return f"ERROR ({verification.error})"
+    if verification.provided is False:
+        return "SKIPPED"
+    return "UNVERIFIED"
+
+
+def _format_diff_counts(diff) -> str:
+    if diff is None:
+        return "—"
+    return f"+ {len(diff.added)} added   ~ {len(diff.modified)} modified   - {len(diff.deleted)} deleted"
+
+
 def _format_changed_files(diff, *, limit: int) -> str:
     entries: list[str] = []
     entries.extend([f"+{path}" for path in sorted(diff.added)])
@@ -487,6 +616,52 @@ def _first_failed_assertion(verification) -> str | None:
             return f"{assertion.name} {target}{reason}"
         return f"{assertion.name}{reason}"
     return None
+
+
+def _format_assertion_detail(assertion) -> str:
+    target = _format_assertion_target(assertion.target)
+    if target:
+        label = f"{assertion.name}({target})"
+    else:
+        label = assertion.name
+    if assertion.reason:
+        label = f"{label} — {assertion.reason}"
+    return label
+
+
+def _print_changed_files(view: EpisodeDashboardVM, *, limit: int = 10) -> None:
+    diff = view.verification.workspace_diff
+    if diff is None:
+        return
+    print("\nChanged Files")
+    category = _change_category(view.verification)
+    label = _change_label(category)
+    for change in _flatten_changes(diff, limit=limit):
+        print(f"  {change:<30}  {label}")
+
+
+def _change_category(verification) -> str:
+    if verification.passed is True:
+        return "expected"
+    if verification.passed is False:
+        return "violation"
+    return "unexpected"
+
+
+def _change_label(category: str) -> str:
+    if category == "expected":
+        return "expected"
+    if category == "violation":
+        return "violation"
+    return "unexpected"
+
+
+def _flatten_changes(diff, *, limit: int) -> list[str]:
+    changes: list[str] = []
+    changes.extend([f"+ {path}" for path in diff.added])
+    changes.extend([f"~ {path}" for path in diff.modified])
+    changes.extend([f"- {path}" for path in diff.deleted])
+    return changes[:limit]
 
 
 def _format_assertion_target(target) -> str | None:

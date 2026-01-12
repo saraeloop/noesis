@@ -12,7 +12,7 @@ from rich.text import Text
 from rich.syntax import Syntax
 
 from .. import formatters
-from ..view_models import EpisodeDashboardVM, TimelineRowVM
+from ..view_models import EpisodeDashboardVM, TimelineRowVM, build_verification_section
 from ..help_content import HelpScreen, HomeScreen
 from ..theme import build_theme_tokens, Breakpoint, detect_breakpoint as _detect_breakpoint, get_box_style, outcome_badge, normalize_outcome
 
@@ -181,7 +181,7 @@ class RichRenderer:
             )
             badge = outcome_badge(outcome)
             style = _safe_style(self.console, badge.style, "white")
-            status_text = Text(f"{badge.symbol} {badge.label}", style=style)
+            status_text = Text(badge.label, style=style)
             table.add_row(
                 row.get("started_at", "")[:20],
                 (row.get("episode_short") or row.get("episode_id") or "")[:10],
@@ -564,29 +564,144 @@ class RichRenderer:
     def print_viewer(self, view: EpisodeDashboardVM, *, grep: str | None = None) -> None:
         self.render_episode_dashboard(view, grep=grep)
 
+    def print_run_summary(self, episode_id: str, task: str, summary: Dict[str, Any]) -> None:
+        if self.quiet:
+            self.console.print(episode_id)
+            return
+        header = Table.grid(padding=(0, 1))
+        header.add_row(Text(f"Episode {episode_id}", style="title"))
+        header.add_row(Text(f"Task: {task}", style="val"))
+        self.console.print(Panel(header, border_style=_safe_style(self.console, "panel", "dim")))
+
+        verification = build_verification_section(summary)
+        agent_line = _format_agent_result(summary.get("adapter_result"))
+        verify_line = _format_verify_result(verification)
+        outcome = outcome_badge(summary.get("outcome"))
+        outcome_line = Text(outcome.label, style=_safe_style(self.console, outcome.style, "val"))
+
+        body = Table.grid(padding=(0, 2))
+        body.add_row(Text("Agent", style="key"), agent_line)
+        body.add_row(Text("Verify", style="key"), verify_line)
+        body.add_row(Text("Outcome", style="key"), outcome_line)
+        if verification.workspace_diff is not None:
+            body.add_row(Text("Changed", style="key"), _format_diff_counts(verification.workspace_diff))
+        self.console.print(body)
+
+        failure = _first_failed_assertion(verification)
+        if failure:
+            self.console.print(Text(f"First failure: {failure}", style="err"))
+
+        self.console.print(Text(f"-> noesis view {episode_id}      full details", style="muted"))
+
+    def print_view_compact(self, view: EpisodeDashboardVM) -> None:
+        header = Table.grid(padding=(0, 1))
+        header.add_row(Text(f"Episode {view.header.episode_id}", style="title"))
+        if view.header.task:
+            header.add_row(Text(f"Task: {view.header.task}", style="val"))
+        if view.header.duration is not None:
+            header.add_row(Text(f"Duration: {formatters.format_duration(view.header.duration)}", style="muted"))
+        outcome = outcome_badge(view.verification.outcome.status)
+        self.console.print(Panel(header, title=outcome.label, border_style=_safe_style(self.console, "panel", "dim")))
+
+        summary_table = Table(title="[title]Summary[/]", box=box.SQUARE, show_header=False, expand=True)
+        summary_table.add_column("key", style=_safe_style(self.console, "key", "cyan"), no_wrap=True)
+        summary_table.add_column("value", style=_safe_style(self.console, "val", "white"))
+        summary_table.add_row("Agent", _format_agent_result(view.verification.adapter_result))
+        summary_table.add_row("Verify", _format_verify_result(view.verification))
+        summary_table.add_row("Outcome", Text(outcome.label, style=_safe_style(self.console, outcome.style, "val")))
+        self.console.print(summary_table)
+
+        self._render_execution_map(view)
+        self._render_changed_files(view)
+        self._render_assertions(view)
+
+    def print_view_verbose(self, view: EpisodeDashboardVM) -> None:
+        bp = detect_breakpoint(self.console)
+        self._render_kpis_and_phases(view, bp)
+        self._render_timeline(view, None, bp)
+
+    def _render_changed_files(self, view: EpisodeDashboardVM) -> None:
+        diff = view.verification.workspace_diff
+        if diff is None:
+            return
+        table = Table(
+            title="[title]Changed Files[/]",
+            show_header=True,
+            header_style="title",
+            box=box.SQUARE,
+            expand=True,
+        )
+        table.add_column("CHANGE", style=_safe_style(self.console, "val", "white"))
+        table.add_column("STATUS", style=_safe_style(self.console, "muted", "dim"))
+
+        category = _change_category(view.verification)
+        label, style = _change_label(category)
+        rows = _flatten_changes(diff, limit=10)
+        if not rows:
+            table.add_row("—", label)
+            self.console.print(table)
+            return
+        for change in rows:
+            table.add_row(change, Text(label, style=style))
+        self.console.print(table)
+
+    def _render_assertions(self, view: EpisodeDashboardVM) -> None:
+        assertions = view.verification.assertions
+        if not assertions:
+            return
+        table = Table(
+            title="[title]Assertions[/]",
+            show_header=True,
+            header_style="title",
+            box=box.SQUARE,
+            expand=True,
+        )
+        table.add_column("RESULT", style=_safe_style(self.console, "val", "white"), no_wrap=True)
+        table.add_column("ASSERTION", style=_safe_style(self.console, "val", "white"))
+        for assertion in assertions:
+            result = "PASS" if assertion.passed else "FAIL"
+            result_style = "ok" if assertion.passed else "err"
+            detail = _format_assertion_detail(assertion)
+            table.add_row(Text(result, style=_safe_style(self.console, result_style, "white")), detail)
+        self.console.print(table)
+
     def print_home(self, screen: HomeScreen) -> None:
-        """Render home screen in Rich mode - modern bubbletea/Charm style."""
+        """Render the compact home screen."""
         if self.quiet:
             return
-        from ..theme import section_line, status_symbol, NAV_ARROW
+        from ..theme import NAV_ARROW
 
-        width = min(self.console.width or 80, 80)
-
-        # Header line: Noēsis v1.0.0 with brand color
         header = Text()
         header.append("Noēsis", style="brand")
         header.append(" ", style="muted")
         header.append(screen.version, style="version")
-        # Right-align tagline
-        tagline = f"  {screen.tagline}"
-        header.append(tagline, style="tagline")
         self.console.print(header)
+        self.console.print(Text(screen.tagline, style="tagline"))
         self.console.print()
 
-        # Config line with subtle styling
+        if screen.next_actions:
+            self.console.print(Text("Commands", style="title"))
+            for action in screen.next_actions[:3]:
+                action_line = Text()
+                action_line.append(f"  {NAV_ARROW}  ", style="nav.arrow")
+                action_line.append(action.command, style="nav.command")
+                padding = max(1, 36 - len(action.command))
+                action_line.append(" " * padding, style="muted")
+                action_line.append(action.description, style="nav.desc")
+                self.console.print(action_line)
+            self.console.print()
+
+    def print_home_details(self, screen: HomeScreen) -> None:
+        """Render the detailed home dashboard sections."""
+        if self.quiet:
+            return
+        from ..theme import section_line
+
+        width = min(self.console.width or 80, 80)
+
         cfg = screen.config
         config_line = Text()
-        config_line.append("  governance ", style="home.config.key")
+        config_line.append("governance ", style="home.config.key")
         config_line.append(cfg.governance_mode, style="home.config.val")
         config_line.append("   planner ", style="home.config.key")
         config_line.append(cfg.planner_mode, style="home.config.val")
@@ -597,19 +712,17 @@ class RichRenderer:
         self.console.print(config_line)
         self.console.print()
 
-        # Last episode section
         if screen.last_episode:
             self.console.print(Text(section_line("last", width), style="separator"))
             self.console.print()
 
             last = screen.last_episode
-            outcome = normalize_outcome(last.outcome, status=last.status)
+            outcome = normalize_outcome(last.outcome, status=last.status, success=last.success)
             badge = outcome_badge(outcome)
             status_style = _safe_style(self.console, badge.style, "val")
 
-            # Status line with symbol
             status_line = Text()
-            status_line.append(f"  {badge.symbol} ", style=status_style)
+            status_line.append("  ", style="muted")
             status_line.append(badge.label, style=status_style)
             status_line.append("   ", style="muted")
             status_line.append(formatters.truncate(last.episode_id, max_width=14), style="accent")
@@ -617,13 +730,11 @@ class RichRenderer:
             status_line.append(last.duration, style="muted")
             self.console.print(status_line)
 
-            # Task description
             task_line = Text()
             task_line.append("    ", style="muted")
             task_line.append(formatters.truncate(last.task, max_width=65), style="val")
             self.console.print(task_line)
 
-            # Veto details
             if last.status == "VETOED" and last.rule_id:
                 self.console.print()
                 rule_line = Text()
@@ -641,44 +752,20 @@ class RichRenderer:
 
             self.console.print()
 
-        # Next actions section
-        if screen.next_actions:
-            self.console.print(Text(section_line("next", width), style="separator"))
-            self.console.print()
-            for action in screen.next_actions[:3]:
-                action_line = Text()
-                action_line.append(f"  {NAV_ARROW}  ", style="nav.arrow")
-                action_line.append(action.command, style="nav.command")
-                # Pad to align descriptions
-                padding = max(1, 40 - len(action.command))
-                action_line.append(" " * padding, style="muted")
-                action_line.append(action.description, style="nav.desc")
-                self.console.print(action_line)
-            self.console.print()
-
-        # Recent episodes section
         if screen.recent_episodes:
             self.console.print(Text(section_line("recent", width), style="separator"))
             self.console.print()
             for ep in screen.recent_episodes[:5]:
-                outcome = normalize_outcome(ep.outcome, status=ep.status)
+                outcome = normalize_outcome(ep.outcome, status=ep.status, success=ep.success)
                 badge = outcome_badge(outcome)
                 status_style = _safe_style(self.console, badge.style, "muted")
                 ep_line = Text()
                 ep_line.append(f"  {ep.time_str}  ", style="muted")
-                ep_line.append(f"{badge.symbol} ", style=status_style)
                 ep_line.append(f"{badge.label:<16}", style=status_style)
                 ep_line.append(f"  {ep.episode_short}  ", style="accent")
                 ep_line.append(formatters.truncate(ep.task, max_width=40), style="muted")
                 self.console.print(ep_line)
             self.console.print()
-
-        # Footer line
-        self.console.print(Text("─" * width, style="separator"))
-        footer = Text()
-        footer.append("help: ", style="muted")
-        footer.append(screen.footer_hint, style="nav.command")
-        self.console.print(footer)
 
     def print_help(self, screen: HelpScreen) -> None:
         """Render help screen in Rich mode."""
@@ -742,7 +829,7 @@ class RichRenderer:
         # Status with symbol (large, prominent)
         status_upper = vm.status.upper()
         status_style = f"status.{status_upper.lower()}"
-        sym = status_symbol(status_upper)
+        sym = status_symbol(status_upper, ascii_mode=True)
         status_line = Text()
         status_line.append(f"  {sym} ", style=_safe_style(self.console, status_style, "val"))
         status_line.append(status_upper, style=_safe_style(self.console, status_style, "val"))
@@ -857,7 +944,7 @@ class RichRenderer:
                     parts.append(step.phase)
             chain_line = Text()
             chain_line.append("  ", style="muted")
-            chain_line.append(" → ".join(parts), style="muted")
+            chain_line.append(" -> ".join(parts), style="muted")
             self.console.print(chain_line)
             self.console.print()
 
@@ -945,6 +1032,77 @@ def _format_assertion_target(target) -> str | None:
     if isinstance(target, str):
         return target
     return None
+
+
+def _format_agent_result(adapter_result: object) -> Text:
+    if adapter_result == "success":
+        return Text("OK", style="ok")
+    if adapter_result == "error":
+        return Text("FAIL", style="err")
+    if adapter_result == "skipped":
+        return Text("SKIPPED", style="warn")
+    return Text("UNKNOWN", style="muted")
+
+
+def _format_verify_result(verification) -> Text:
+    assertions = verification.assertions
+    total = len(assertions)
+    passed = sum(1 for assertion in assertions if assertion.passed)
+    if verification.passed is True:
+        label = f"PASSED ({passed} of {total})" if total else "PASSED"
+        return Text(label, style="ok")
+    if verification.passed is False:
+        label = f"FAILED ({passed} of {total})" if total else "FAILED"
+        return Text(label, style="err")
+    if verification.error:
+        return Text(f"ERROR ({verification.error})", style="err")
+    if verification.provided is False:
+        return Text("SKIPPED", style="warn")
+    return Text("UNVERIFIED", style="warn")
+
+
+def _format_diff_counts(diff) -> Text:
+    if diff is None:
+        return Text("—", style="muted")
+    return Text(
+        f"+ {len(diff.added)} added   ~ {len(diff.modified)} modified   - {len(diff.deleted)} deleted",
+        style="val",
+    )
+
+
+def _change_category(verification) -> str:
+    if verification.passed is True:
+        return "expected"
+    if verification.passed is False:
+        return "violation"
+    return "unexpected"
+
+
+def _change_label(category: str) -> tuple[str, str]:
+    if category == "expected":
+        return ("expected", "ok")
+    if category == "violation":
+        return ("violation", "err")
+    return ("unexpected", "warn")
+
+
+def _flatten_changes(diff, *, limit: int) -> list[str]:
+    changes: list[str] = []
+    changes.extend([f"+ {path}" for path in diff.added])
+    changes.extend([f"~ {path}" for path in diff.modified])
+    changes.extend([f"- {path}" for path in diff.deleted])
+    return changes[:limit]
+
+
+def _format_assertion_detail(assertion) -> Text:
+    target = _format_assertion_target(assertion.target)
+    if target:
+        label = f"{assertion.name}({target})"
+    else:
+        label = assertion.name
+    if assertion.reason:
+        label = f"{label} — {assertion.reason}"
+    return Text(label, style="val")
 
 
 def _safe_style(console: Console, style_name: str, fallback: str = "white") -> str:

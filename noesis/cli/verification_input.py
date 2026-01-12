@@ -51,6 +51,26 @@ def compile_verify_input(
     return normalize_verify(specs)
 
 
+def parse_verify_args(
+    *,
+    verify_file: str | None,
+    verify_file_exists: Sequence[str] | None,
+    verify_file_contains: Sequence[str] | None,
+    verify_texts: Sequence[str] | None,
+    verify_only_modified: Sequence[str] | None,
+    verify_no_modifications: bool,
+) -> tuple[VerifySpec, ...] | None:
+    """Compatibility wrapper for CLI verification parsing."""
+    return compile_verify_input(
+        verify_file=verify_file,
+        verify_file_exists=verify_file_exists,
+        verify_file_contains=verify_file_contains,
+        verify_texts=verify_texts,
+        verify_only_modified=verify_only_modified,
+        verify_no_modifications=verify_no_modifications,
+    )
+
+
 def _compile_flag_specs(
     *,
     verify_file_exists: Sequence[str] | None,

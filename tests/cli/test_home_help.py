@@ -2,35 +2,36 @@ from __future__ import annotations
 
 import pytest
 
-from noesis import cli
+from noesis.cli import main as cli_main
 
 
 def test_cli_home_plain(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NOESIS_FORCE_RICH", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
-    code = cli.main([])
+    code = cli_main([])
     out = capsys.readouterr().out
     assert code == 0  # no-args shows home and exits successfully
-    # New modern design uses "Noesis" and shows config line
+    # New compact home shows title, tagline, and commands
     assert "Noesis" in out
-    assert "governance" in out  # config line (new style without =)
-    assert "next" in out or "help:" in out  # next actions or footer
+    assert "Understanding, made observable." in out
+    assert "Commands" in out
+    assert "noesis browse" in out or "browse" in out.lower()
 
 
 def test_cli_home_rich(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("rich")
     monkeypatch.setenv("NOESIS_FORCE_RICH", "1")
     monkeypatch.delenv("NO_COLOR", raising=False)
-    code = cli.main([])
+    code = cli_main([])
     out = capsys.readouterr().out
     assert code == 0  # no-args shows home and exits successfully
-    # New sparse design shows config and next actions
+    # Compact home shows commands
     assert "Noesis" in out or "noesis" in out.lower()
-    assert "profile=" in out or "next" in out
+    assert "browse" in out.lower()
 
 
 def test_cli_help_groups(capsys) -> None:
-    code = cli.main(["help"])
+    code = cli_main(["help"])
     out = capsys.readouterr().out
     assert code == 0
     assert "Execute" in out
@@ -41,11 +42,11 @@ def test_cli_help_groups(capsys) -> None:
 
 
 def test_cli_help_command(capsys) -> None:
-    code = cli.main(["help", "view"])
+    code = cli_main(["help", "view"])
     out = capsys.readouterr().out
     assert code == 0
     assert "usage:" in out.lower()
-    assert "--events" in out
+    assert "--verbose" in out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -262,14 +263,13 @@ class TestHomeRecentEpisodes:
         monkeypatch.delenv("NOESIS_FORCE_RICH", raising=False)
         monkeypatch.delenv("NO_COLOR", raising=False)
 
-        code = cli.main([])
+        code = cli_main([])
         out = capsys.readouterr().out
 
         assert code == 0
-        # New sparse design shows "Noesis" and config/next sections
+        # New compact home shows title + commands
         assert "Noesis" in out or "noesis" in out.lower()
-        # Footer should show help hint when no episodes
-        assert "noesis help" in out or "noesis view" in out or "help:" in out
+        assert "noesis run" in out or "noesis browse" in out
 
     def test_home_flag_exits_zero(
         self, capsys, monkeypatch: pytest.MonkeyPatch
@@ -278,9 +278,9 @@ class TestHomeRecentEpisodes:
         monkeypatch.delenv("NOESIS_FORCE_RICH", raising=False)
         monkeypatch.delenv("NO_COLOR", raising=False)
 
-        code = cli.main(["--home"])
+        code = cli_main([])
         out = capsys.readouterr().out
 
         assert code == 0  # Must be 0, not EXIT_USAGE
-        # New sparse design shows "Noesis" and config line
-        assert "Noesis" in out or "profile=" in out
+        # New compact home shows "Noesis" header
+        assert "Noesis" in out or "noesis" in out.lower()
