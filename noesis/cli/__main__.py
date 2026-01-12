@@ -621,19 +621,25 @@ def explain(
 def help(
     command: Optional[str] = typer.Argument(None, help="Command to show help for"),
 ) -> None:
+    import click
+    from typer.main import get_command as get_typer_command
     from noesis.cli.content.help import build_help_screen
 
     options = GlobalOptions()
     ctx = build_context(options, port_specs=[])
     if command:
-        # Delegate to Typer's built-in help rendering for the specific subcommand
-        try:
-            result = app(prog_name="noesis", args=[command, "--help"], standalone_mode=False)
-            if result is not None:
-                return result
-            return
-        except typer.Exit as exc:
-            raise exc
+        group = get_typer_command(app)
+        parent_ctx = click.Context(group, info_name="noesis")
+        sub_cmd = group.get_command(parent_ctx, command)
+        if sub_cmd is None:
+            renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
+            renderer.print_help(build_help_screen(ctx.version))
+            renderer.echo(f"Unknown command: {command}")
+            raise typer.Exit(code=1)
+        sub_ctx = click.Context(sub_cmd, info_name=command, parent=parent_ctx)
+        help_text = sub_cmd.get_help(sub_ctx)
+        sys.stdout.write(help_text)
+        return
     renderer = _select_renderer(ctx, json_output=False, quiet=False, force_rich=False)
     renderer.print_help(build_help_screen(ctx.version))
 
