@@ -208,12 +208,6 @@ def _build_run_envelope(
         "capabilities": sorted(set(capabilities)),
         "invocation": invocation,
     }
-    if prompt_for_details and ctx.isatty:
-        try:
-            input("Press Enter to show recent episodes...")
-        except EOFError:
-            return
-        renderer.print_home_details(screen)
 
 
 @app.callback(invoke_without_command=True)
@@ -608,7 +602,9 @@ def help(
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        renderer.print_command_help(cmd.get_help(click.Context(cmd)), title=f"noesis {command}")
+        # Create proper context with info_name for correct help generation
+        cmd_ctx = click.Context(cmd, info_name=command)
+        renderer.print_command_help(cmd.get_help(cmd_ctx), title=f"noesis {command}")
         return
     renderer.print_help(build_help_screen(ctx.version))
 
