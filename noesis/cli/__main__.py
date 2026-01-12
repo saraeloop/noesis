@@ -244,8 +244,9 @@ def home(
     options.normalize()
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    show_details = full or not ctx.isatty or json_output or quiet
-    _render_home(renderer, ctx, show_details=show_details, prompt_for_details=not show_details)
+    # Only show detailed home when explicitly requested via --full
+    show_details = bool(full)
+    _render_home(renderer, ctx, show_details=show_details, prompt_for_details=False)
 
 
 @app.command()
@@ -639,8 +640,15 @@ def help(
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        # Build help text using a resilient context (no args, skips validation)
-        cmd_ctx = click.Context(cmd, info_name=command, parent=parent_ctx, resilient_parsing=True)
+        # Build help text without parsing required args
+        cmd_ctx = click.Context(
+            cmd,
+            info_name=command,
+            parent=parent_ctx,
+            resilient_parsing=True,
+            allow_extra_args=True,
+            allow_interspersed_args=True,
+        )
         help_text = cmd.get_help(cmd_ctx) or ""
         if not help_text.strip():
             help_text = f"usage: noesis {command}\n"
