@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, Protocol
+from pathlib import Path
+from typing import Mapping, Protocol, Sequence
 
 from noesis.context import RuntimeContext
 from noesis.intuition import Intuition
+from noesis.domain.verification import Assertion
 
 __all__ = ["RunnerProtocol", "SessionRunRequest"]
 
@@ -19,6 +21,8 @@ class SessionRunRequest:
     seed: int
     intuition: bool | Intuition | None
     tags: Mapping[str, object]
+    workspace: Path | None = None
+    verify: Sequence[Assertion] | None = None
 
 
 class RunnerProtocol(Protocol):

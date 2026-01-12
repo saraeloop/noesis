@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 from typing import Any, Dict, Optional
 from warnings import warn
 
@@ -19,6 +20,15 @@ from .direction import DirectedIntuition
 from .exceptions import NoesisVeto
 from .io import list_runs, last, paths
 from .api.governed_act import governed_act
+from .verification import (
+    VerifyInput,
+    VerifySpec,
+    file_contains,
+    file_exists,
+    no_modifications,
+    normalize_verify,
+    only_modified,
+)
 
 # Package metadata
 __version__ = "v1.0.0"
@@ -51,8 +61,12 @@ def run(
     intuition: bool | Intuition | None = True,
     tags: Optional[Dict[str, Any]] = None,
     context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
 ) -> str:
     """Execute a task using the default session (planner derived from config)."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_spec = normalize_verify(verify)
     if context is not None:
         from .core import run as core_run
 
@@ -62,12 +76,16 @@ def run(
             intuition=intuition,
             tags=tags,
             context=context,
+            workspace=workspace_path,
+            verify=verify_spec,
         )
     return _current_session().run(
         task,
         seed=seed,
         intuition=intuition,
         tags=tags,
+        workspace=workspace_path,
+        verify=verify_spec,
     )
 
 
@@ -79,8 +97,12 @@ def solve(
     intuition: bool | Intuition | None = True,
     tags: Optional[Dict[str, Any]] = None,
     context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
 ) -> str:
     """Execute a task using an explicit graph/adapter."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_spec = normalize_verify(verify)
     if context is not None:
         from .core import run_using as core_run_using
 
@@ -91,6 +113,8 @@ def solve(
             intuition=intuition,
             tags=tags,
             context=context,
+            workspace=workspace_path,
+            verify=verify_spec,
         )
     return _current_session().solve(
         using=using,
@@ -98,6 +122,8 @@ def solve(
         seed=seed,
         intuition=intuition,
         tags=tags,
+        workspace=workspace_path,
+        verify=verify_spec,
     )
 
 
@@ -109,8 +135,12 @@ async def solve_async(
     intuition: bool | Intuition | None = True,
     tags: Optional[Dict[str, Any]] = None,
     context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
 ) -> str:
     """Execute a task using an explicit graph/adapter (async)."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_spec = normalize_verify(verify)
     if context is not None:
         from .core import solve_async as core_solve_async
 
@@ -121,6 +151,8 @@ async def solve_async(
             intuition=intuition,
             tags=tags,
             context=context,
+            workspace=workspace_path,
+            verify=verify_spec,
         )
     return await _current_session().solve_async(
         using=using,
@@ -128,6 +160,8 @@ async def solve_async(
         seed=seed,
         intuition=intuition,
         tags=tags,
+        workspace=workspace_path,
+        verify=verify_spec,
     )
 
 
@@ -176,6 +210,14 @@ __all__ = (
     "DirectedIntuition",
     "Intuition",
     "NoesisVeto",
+    # Verification helpers
+    "VerifyInput",
+    "VerifySpec",
+    "file_contains",
+    "file_exists",
+    "no_modifications",
+    "normalize_verify",
+    "only_modified",
     # Read/introspection API
     "list_runs",
     "last",
