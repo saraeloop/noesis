@@ -640,16 +640,24 @@ def help(
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        # Build help text without parsing required args
-        cmd_ctx = click.Context(
-            cmd,
-            info_name=command,
-            parent=parent_ctx,
-            resilient_parsing=True,
-            allow_extra_args=True,
-            allow_interspersed_args=True,
-        )
-        help_text = cmd.get_help(cmd_ctx) or ""
+        # Build help text; try resilient with no args, then with a dummy arg to satisfy required params
+        help_text = ""
+        for args in ([], ["__placeholder__"]):
+            try:
+                cmd_ctx = cmd.make_context(
+                    command,
+                    args,
+                    parent=parent_ctx,
+                    resilient_parsing=True,
+                    allow_extra_args=True,
+                    allow_interspersed_args=True,
+                )
+                candidate = cmd.get_help(cmd_ctx) or ""
+                if candidate.strip():
+                    help_text = candidate
+                    break
+            except Exception:  # noqa: BLE001
+                continue
         if not help_text.strip():
             help_text = f"usage: noesis {command}\n"
         renderer.print_command_help(help_text, title=f"noesis {command}")
