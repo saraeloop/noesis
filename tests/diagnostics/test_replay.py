@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -8,6 +9,26 @@ import pytest
 
 from noesis.artifacts import verify_manifest
 from noesis.diagnostics import compare_runs
+
+_PROVIDER_ENV_VARS = (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GOOGLE_API_KEY",
+    "MISTRAL_API_KEY",
+    "COHERE_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _ensure_offline_env() -> None:
+    present = [name for name in _PROVIDER_ENV_VARS if os.getenv(name)]
+    if present:
+        pytest.fail(
+            "Offline replay tests require provider keys unset: "
+            + ", ".join(present)
+            + "."
+        )
 
 
 def _episode_dir(root: Path) -> Path:
@@ -21,6 +42,7 @@ def _episode_dir(root: Path) -> Path:
     [
         Path("tests/golden/deterministic_run"),
         Path("tests/golden/veto_enforce"),
+        Path("tests/golden/llm_real"),
         Path("tests/golden/adr_008/allow_enforce"),
         Path("tests/golden/adr_008/veto_enforce"),
         Path("tests/golden/adr_008/fail_closed_error"),
@@ -59,6 +81,7 @@ def test_compare_runs_surfaces_byte_drift(tmp_path: Path) -> None:
     [
         Path("tests/golden/deterministic_run"),
         Path("tests/golden/veto_enforce"),
+        Path("tests/golden/llm_real"),
         Path("tests/golden/adr_008/allow_enforce"),
         Path("tests/golden/adr_008/veto_enforce"),
         Path("tests/golden/adr_008/fail_closed_error"),
