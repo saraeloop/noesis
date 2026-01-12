@@ -33,6 +33,7 @@ class RecentEpisode:
     status: str  # SUCCESS | VETOED | ERROR | AUDIT
     task: str  # truncated task
     duration: str  # e.g., "0.8s"
+    outcome: str | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class LastEpisodeInfo:
     status: str  # SUCCESS | VETOED | ERROR | AUDIT
     duration: str
     task: str
+    outcome: str | None = None
     # Governance veto details (only if vetoed)
     rule_id: str | None = None
     score: float | None = None

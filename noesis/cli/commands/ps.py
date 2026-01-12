@@ -41,11 +41,13 @@ class PsCommand:
             status = episode_status(summary, None, None)
             label = status_label(status, governance_mode=summary["flags"].get("governance_mode"))
             episode_id = row.get("episode_id", "") or ""
+            outcome = row.get("outcome")
             ps_rows.append(
                 {
                     "episode_id": episode_id,
                     "episode_short": episode_id[:10],
                     "status": label,
+                    "outcome": outcome,
                     "using": (row.get("flags", {}) or {}).get("using", "") or "",
                     "started_at": (row.get("started_at") or "")[:20],
                     "duration": format_duration(row.get("duration_sec")),

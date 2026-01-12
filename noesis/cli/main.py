@@ -15,7 +15,7 @@ from .content.home import build_home_screen, RecentEpisode, LastEpisodeInfo
 from .content.help import build_help_screen
 from .query import episode_status, status_label, iter_events, load_episode_dir
 from .formatters import format_duration
-from .theme import build_theme_tokens
+from .theme import build_theme_tokens, normalize_outcome
 
 
 try:
@@ -114,6 +114,11 @@ def _fetch_recent_episodes(ctx, *, limit: int = 5) -> list[RecentEpisode]:
             }
             status = episode_status(summary, None, None)
             label = status_label(status, governance_mode=summary["flags"].get("governance_mode"))
+            outcome = normalize_outcome(
+                row.get("outcome"),
+                status=row.get("status"),
+                success=row.get("success"),
+            )
 
             # Parse time from started_at (e.g., "2025-01-15T10:30:00" -> "10:30")
             started_at = row.get("started_at") or ""
@@ -128,6 +133,7 @@ def _fetch_recent_episodes(ctx, *, limit: int = 5) -> list[RecentEpisode]:
                     episode_short=episode_id[:12] if len(episode_id) > 12 else (episode_id or "—"),
                     episode_id=episode_id,
                     status=label or "—",
+                    outcome=outcome,
                     task=(task[:50] + "…" if len(task) > 50 else task) or "(no task)",
                     duration=format_duration(row.get("duration_sec")) or "—",
                 )
@@ -168,6 +174,7 @@ def _fetch_last_episode_info(ctx, recent: list[RecentEpisode]) -> LastEpisodeInf
         return LastEpisodeInfo(
             episode_id=last.episode_id,
             status=last.status,
+            outcome=last.outcome,
             duration=last.duration,
             task=last.task,
             rule_id=rule_id,
@@ -179,6 +186,7 @@ def _fetch_last_episode_info(ctx, recent: list[RecentEpisode]) -> LastEpisodeInf
         return LastEpisodeInfo(
             episode_id=last.episode_id,
             status=last.status,
+            outcome=last.outcome,
             duration=last.duration,
             task=last.task,
         )

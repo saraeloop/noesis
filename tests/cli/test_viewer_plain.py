@@ -26,6 +26,8 @@ def test_plain_viewer_output_matches_fixture(demo_run: Path, monkeypatch: pytest
     assert any("using=core.meta" in line for line in normalized)
 
     assert "KPIs" in normalized
+    assert "Execution Map" in normalized
+    assert "Verification" in normalized
     assert any("plan_adherence" in line and "0.00" in line for line in normalized)
     assert any("veto_count" in line and "1" in line for line in normalized)
 

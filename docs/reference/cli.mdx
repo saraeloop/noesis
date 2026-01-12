@@ -88,6 +88,13 @@ echo "Summarize the README" | noesis run --stdin
 | `--dir-min FLOAT` | Override `direction_min_confidence` | None |
 | `--stdin` | Read task prompt from STDIN (or pass `-` as task) | `False` |
 | `-y, --yes` | Assume yes for interactive prompts | `False` |
+| `--workspace PATH` | Workspace root for verification snapshots | None |
+| `--verify-file PATH` | JSON file with verification specs | None |
+| `--verify-file-exists PATH` | Require a file to exist (repeatable) | None |
+| `--verify-file-contains PATH` | Require a file to contain text (repeatable; pair with `--text`) | None |
+| `--text TEXT` | Text for `--verify-file-contains` (repeatable; order matters) | None |
+| `--verify-only-modified PATH` | Allow modifications only within the given path (repeatable) | None |
+| `--verify-no-modifications` | Require no workspace modifications | `False` |
 | `-j, --json` | Emit JSON `{episode_id}` | `False` |
 | `-q, --quiet` | Print only the episode id | `False` |
 
@@ -106,7 +113,37 @@ noesis run "Deploy to staging" --tags '{"env":"staging","team":"platform"}'
 # Quiet / JSON forms
 noesis run "Test task" -q
 noesis run "Test task" -j | jq -r '.episode_id'
+
+# Verification with a workspace
+noesis run "Update config" --workspace . --verify-file verify.json
 ```
+
+**Verification inputs**:
+
+Use `--verify-file` for a stable, portable contract. The file is JSON and contains a list of verification specs.
+
+```json
+[
+  {"name": "file_exists", "path": "config.yaml"},
+  {"name": "file_contains", "path": "config.yaml", "text": "enabled: true"},
+  {"name": "only_modified", "paths": ["config.yaml"]},
+  {"name": "no_modifications"}
+]
+```
+
+Shortcut flags compile into the same list of specs:
+
+```bash
+noesis run "Update config" \
+  --workspace . \
+  --verify-file-exists config.yaml \
+  --verify-file-contains config.yaml --text "enabled: true" \
+  --verify-only-modified config.yaml
+```
+
+Notes:
+
+- `--verify-no-modifications` is mutually exclusive with `--verify-only-modified`.
 
 ### noesis solve
 
@@ -133,6 +170,13 @@ noesis solve ADAPTER "task description" [options]
 | `--tags JSON` | JSON object of tags to attach | None |
 | `--dir-min FLOAT` | Override `direction_min_confidence` | None |
 | `--stdin` | Read task prompt from STDIN (or pass `-` as task) | `False` |
+| `--workspace PATH` | Workspace root for verification snapshots | None |
+| `--verify-file PATH` | JSON file with verification specs | None |
+| `--verify-file-exists PATH` | Require a file to exist (repeatable) | None |
+| `--verify-file-contains PATH` | Require a file to contain text (repeatable; pair with `--text`) | None |
+| `--text TEXT` | Text for `--verify-file-contains` (repeatable; order matters) | None |
+| `--verify-only-modified PATH` | Allow modifications only within the given path (repeatable) | None |
+| `--verify-no-modifications` | Require no workspace modifications | `False` |
 | `-j, --json` | Emit JSON `{episode_id}` | `False` |
 | `-q, --quiet` | Print only the episode id | `False` |
 
@@ -278,6 +322,11 @@ noesis view TARGET [options]
 | `--schema VERSION` | Summary schema to validate against | `auto` |
 | `--fail-on-invalid` | Exit 1 if validation errors are detected | False |
 | `--open` | Print artifact paths | False |
+
+**Output highlights**:
+
+- Execution Map row: `observe → act → verify → outcome` with color-coded status.
+- Verification section: adapter result, outcome, pass/fail, workspace diff summary, and first failing assertion.
 
 **Examples**:
 
