@@ -43,6 +43,7 @@ class EpisodeHeaderVM:
     status_label: str
     started_at: Optional[str]
     duration: Optional[float]
+    task: Optional[str] = None
     governance: GovernanceSummaryVM | None = None
 
 
@@ -147,6 +148,7 @@ class EpisodeDashboardVM:
                 "status_label": self.header.status_label,
                 "started_at": self.header.started_at,
                 "duration": self.header.duration,
+                "task": self.header.task,
                 "governance": {
                     "decision": gov.decision,
                     "rule_id": gov.rule_id,
@@ -251,6 +253,7 @@ def build_episode_dashboard(
     flags = summary.get("flags", {}) if isinstance(summary, dict) else {}
     status_text = status_label(status, governance_mode=flags.get("governance_mode"))
     started_at = summary.get("started_at") if isinstance(summary, dict) else None
+    task = summary.get("task") if isinstance(summary, dict) else None
     duration = duration_seconds(summary, events)
     duration_str = formatters.format_duration(duration)
 
@@ -293,6 +296,7 @@ def build_episode_dashboard(
             status_label=status_text,
             started_at=started_at,
             duration=duration,
+            task=task if isinstance(task, str) else None,
             governance=governance,
         ),
         chips=chips,
@@ -331,6 +335,7 @@ def build_episode_dashboard_from_payloads(
     flags = summary_payload.get("flags", {}) if isinstance(summary_payload, dict) else {}
     status_text = status_label(status, governance_mode=flags.get("governance_mode"))
     started_at = summary_payload.get("started_at") if isinstance(summary_payload, dict) else None
+    task = summary_payload.get("task") if isinstance(summary_payload, dict) else None
     duration = duration_seconds(summary_payload, events_payload)
     duration_str = formatters.format_duration(duration)
 
@@ -372,6 +377,7 @@ def build_episode_dashboard_from_payloads(
             status_label=status_text,
             started_at=started_at,
             duration=duration,
+            task=task if isinstance(task, str) else None,
             governance=governance,
         ),
         chips=chips,

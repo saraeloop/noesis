@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-from .main import main
+from .__main__ import main
 
 __all__ = ["main"]

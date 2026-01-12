@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 
 import noesis as ns
-from noesis import cli
+from noesis.cli import main as cli_main
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 
 
 def test_cli_events_help_mentions_insight(capsys):
-    code = cli.main(["events", "-h"])
+    code = cli_main(["events", "-h"])
     out = capsys.readouterr().out
     assert code == 0
     assert "insight" in out
@@ -19,7 +19,7 @@ def test_cli_events_phase_insight_json(tmp_path, capsys):
     ns.set(runs_dir=str(runs_dir))
 
     episode_id = ns.run(task="CLI insight test", intuition=False)
-    code = cli.main(["events", episode_id, "--phase", "insight", "-j"])
+    code = cli_main(["events", episode_id, "--phase", "insight", "-j"])
     output = capsys.readouterr().out.strip()
 
     assert code == 0
@@ -43,7 +43,7 @@ def test_cli_insight_command(tmp_path, capsys):
     ns.set(runs_dir=str(runs_dir))
 
     episode_id = ns.run(task="CLI insight shortcut", intuition=False)
-    code = cli.main(["insight", episode_id, "-j"])
+    code = cli_main(["insight", episode_id, "-j"])
     output = capsys.readouterr().out.strip()
 
     assert code == 0
@@ -66,7 +66,7 @@ def test_cli_validate_ports_json(tmp_path, capsys):
     runs_dir = tmp_path / "runs"
     ns.set(runs_dir=str(runs_dir))
 
-    code = cli.main(["validate-ports", "--json"])
+    code = cli_main(["validate-ports", "--json"])
     output = capsys.readouterr().out.strip()
 
     assert code == 0
@@ -83,7 +83,7 @@ def test_cli_diagnostics_json(tmp_path, capsys):
 
     ns.set(runs_dir=str(runs_dir), learn_home=str(learn_home))
 
-    code = cli.main(["diagnostics", "--json"])
+    code = cli_main(["diagnostics", "--json"])
     output = capsys.readouterr().out.strip()
 
     assert code == 0
@@ -111,7 +111,7 @@ def test_cli_diagnostics_strict_warn(tmp_path, capsys):
     # remove learn_home after configuration to trigger warn
     learn_home.rmdir()
 
-    code = cli.main(["diagnostics", "--strict"])
+    code = cli_main(["diagnostics", "--strict"])
     capsys.readouterr()
     assert code == 1
 
@@ -124,7 +124,7 @@ def test_cli_diagnostics_checks_filter(tmp_path, capsys):
 
     ns.set(runs_dir=str(runs_dir), learn_home=str(learn_home))
 
-    code = cli.main(["diagnostics", "--json", "--checks", "runs_dir"])
+    code = cli_main(["diagnostics", "--json", "--checks", "runs_dir"])
     output = capsys.readouterr().out.strip()
 
     assert code == 0

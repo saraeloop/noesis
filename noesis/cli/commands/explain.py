@@ -313,7 +313,7 @@ def _render_explain_plain(renderer: OutputRenderer, vm: ExplainVM) -> None:
 
     if vm.causal_chain:
         renderer.echo("")
-        chain_str = " → ".join(
+        chain_str = " -> ".join(
             f"{s.phase}({s.status})" if s.status else s.phase
             for s in vm.causal_chain
         )

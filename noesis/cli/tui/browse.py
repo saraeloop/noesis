@@ -154,8 +154,7 @@ class EpisodeRow:
 
     @property
     def status_symbol(self) -> str:
-        badge = outcome_badge(self.outcome)
-        return badge.symbol
+        return ""
 
     @property
     def status_label(self) -> str:
@@ -226,7 +225,7 @@ class EpisodeDetails(Static):
 
         # Status line with symbol
         status_class = f"outcome-{ep.status_style}"
-        container.mount(Label(f"{ep.status_symbol} {ep.status_label}", classes=status_class))
+        container.mount(Label(f"{ep.status_label}", classes=status_class))
         container.mount(Rule())
 
         # Episode info
@@ -371,7 +370,7 @@ class BrowseApp(App):
         }
         for ep in self._episodes:
             color = style_map.get(ep.status_style, "white")
-            status_display = Text(f"{ep.status_symbol} {ep.status_label}", style=color)
+            status_display = Text(f"{ep.status_label}", style=color)
             task_display = ep.task[:30] + "..." if len(ep.task) > 30 else ep.task
             table.add_row(ep.time_str, status_display, ep.short_id, task_display)
 
