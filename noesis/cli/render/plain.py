@@ -59,7 +59,11 @@ class PlainRenderer:
             return
         formatted_rows = []
         for row in rows:
-            outcome = normalize_outcome(row.get("outcome"), status=row.get("status"))
+            outcome = normalize_outcome(
+                row.get("outcome"),
+                status=row.get("status_raw"),
+                success=row.get("success"),
+            )
             badge = outcome_badge(outcome)
             row = dict(row)
             row["status"] = f"{badge.symbol} {badge.label}"
