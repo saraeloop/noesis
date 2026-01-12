@@ -527,6 +527,11 @@ def diagnostics(
         checks=checks,
     )
     exit_code = DIAGNOSTICS.run(args, ctx, renderer)
+    # Skip additional strict checks in replay mode - replay has its own exit code logic
+    if mode == "replay":
+        if exit_code:
+            raise typer.Exit(code=exit_code)
+        return
     strict_argv = _LAST_ARGV is not None and "--strict" in _LAST_ARGV
     if (strict or strict_argv) and exit_code == 0:
         try:
@@ -595,16 +600,20 @@ def help(
     if command:
         group = get_typer_command(app)
         if isinstance(group, click.Group):
-            cmd = group.get_command(click.Context(group), command)
+            parent_ctx = click.Context(group, info_name="noesis")
+            cmd = group.get_command(parent_ctx, command)
         else:
             cmd = None
+            parent_ctx = None
         if not cmd:
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        # Create proper context with info_name for correct help generation
-        cmd_ctx = click.Context(cmd, info_name=command)
-        renderer.print_command_help(cmd.get_help(cmd_ctx), title=f"noesis {command}")
+        # Use make_context for proper help generation
+        with parent_ctx:
+            cmd_ctx = cmd.make_context(command, [], parent=parent_ctx)
+            help_text = cmd.get_help(cmd_ctx)
+        renderer.print_command_help(help_text, title=f"noesis {command}")
         return
     renderer.print_help(build_help_screen(ctx.version))
 
