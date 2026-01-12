@@ -110,6 +110,21 @@ def _fetch_last_episode_info(ctx, recent: list[RecentEpisode]) -> LastEpisodeInf
     if not recent:
         return None
     last = recent[0]
+    rule_id = None
+    score = None
+    message = None
+    try:
+        events = list(ctx.ns.events.read(last.episode_id, context=ctx.runtime_context))
+        for evt in events:
+            payload = evt.get("payload", {}) if isinstance(evt, dict) else {}
+            # Governance decisions carry veto metadata
+            if evt.get("phase") == "governance":
+                rule_id = payload.get("rule_id") or payload.get("details", {}).get("rule_id")
+                score = payload.get("score")
+                message = payload.get("message") or payload.get("details", {}).get("reason")
+                break
+    except Exception:  # noqa: BLE001
+        pass
     return LastEpisodeInfo(
         episode_id=last.episode_id,
         status=last.status,
@@ -117,6 +132,9 @@ def _fetch_last_episode_info(ctx, recent: list[RecentEpisode]) -> LastEpisodeInf
         task=last.task,
         outcome=last.outcome,
         success=last.success,
+        rule_id=rule_id,
+        score=score,
+        message=message,
     )
 
 
@@ -621,11 +639,14 @@ def help(
             renderer.print_help(build_help_screen(ctx.version))
             renderer.echo(f"Unknown command: {command}")
             raise typer.Exit(code=1)
-        # Use context with resilient_parsing to skip argument validation for help
-        with parent_ctx:
-            cmd_ctx = click.Context(cmd, info_name=command, parent=parent_ctx, resilient_parsing=True)
-            with cmd_ctx:
-                help_text = cmd.get_help(cmd_ctx)
+        # Build a resilient context so required args (e.g., episode_id) do not error
+        cmd_ctx = cmd.make_context(
+            command,
+            [],
+            parent=parent_ctx,
+            resilient_parsing=True,
+        )
+        help_text = cmd.get_help(cmd_ctx)
         renderer.print_command_help(help_text, title=f"noesis {command}")
         return
     renderer.print_help(build_help_screen(ctx.version))
