@@ -7,6 +7,7 @@ from ..view_models import EpisodeDashboardVM, TimelineRowVM
 from ..help_content import HelpScreen, HomeScreen, CommandGroup
 
 from ..formatters import format_ps_rows_for_plain, format_rows_for_plain, format_duration, truncate
+from ..theme import outcome_badge, normalize_outcome
 
 _TIMELINE_COLS = {
     "dt": 8,
@@ -56,7 +57,14 @@ class PlainRenderer:
                 if eid:
                     print(eid)
             return
-        for line in format_ps_rows_for_plain(rows):
+        formatted_rows = []
+        for row in rows:
+            outcome = normalize_outcome(row.get("outcome"), status=row.get("status"))
+            badge = outcome_badge(outcome)
+            row = dict(row)
+            row["status"] = f"{badge.symbol} {badge.label}"
+            formatted_rows.append(row)
+        for line in format_ps_rows_for_plain(formatted_rows):
             print(line)
 
     def print_summary(self, summary: Dict[str, Any]) -> None:
@@ -154,6 +162,9 @@ class PlainRenderer:
             gov_parts.append(f"enforced={str(gov.enforced).lower()}")
             print("  " + " ".join(gov_parts))
 
+        self.print_execution_map(view.execution_map, compact=False)
+        self._print_verification_section(view)
+
         kpis = view.kpis
         print("\nKPIs")
         kpi_rows = [
@@ -216,6 +227,44 @@ class PlainRenderer:
             for suggestion in view.suggestions:
                 print(f"  {suggestion}")
 
+    def print_execution_map(self, execution_map, *, compact: bool = False) -> None:
+        if self.quiet:
+            return
+        phases = execution_map.phases()
+        if compact:
+            parts = [f"{phase.phase}:{phase.status}" for phase in phases]
+            print("Execution: " + " | ".join(parts))
+            return
+        print("\nExecution Map")
+        for phase in phases:
+            print(f"  {phase.phase:<7}: {phase.status}")
+
+    def _print_verification_section(self, view: EpisodeDashboardVM) -> None:
+        verification = view.verification
+        print("\nVerification")
+        print(f"  adapter_result : {verification.adapter_result or '—'}")
+        outcome = verification.outcome.status or "—"
+        if verification.outcome.summary:
+            outcome = f"{outcome} ({verification.outcome.summary})"
+        print(f"  outcome        : {outcome}")
+        passed = "null" if verification.passed is None else str(verification.passed).lower()
+        print(f"  passed         : {passed}")
+        if verification.error:
+            print(f"  error          : {verification.error}")
+        diff = verification.workspace_diff
+        if diff is None:
+            print("  workspace_diff : —")
+            print("  changed_files  : —")
+        else:
+            print(
+                "  workspace_diff : "
+                f"added={len(diff.added)} modified={len(diff.modified)} deleted={len(diff.deleted)}"
+            )
+            changed = _format_changed_files(diff, limit=10)
+            print(f"  changed_files  : {changed or '—'}")
+        failing = _first_failed_assertion(verification)
+        print(f"  first_failure  : {failing or '—'}")
+
     def print_home(self, screen: HomeScreen) -> None:
         """Render home screen in plain mode - modern ASCII style."""
         if self.quiet:
@@ -238,8 +287,9 @@ class PlainRenderer:
             print(section_line_ascii("last", width))
             print()
             last = screen.last_episode
-            sym = status_symbol(last.status, ascii_mode=True)
-            print(f"  {sym} {last.status:<8}   {last.episode_id[:12]:<12}   {last.duration}")
+            outcome = normalize_outcome(last.outcome, status=last.status)
+            badge = outcome_badge(outcome)
+            print(f"  {badge.symbol} {badge.label:<16}   {last.episode_id[:12]:<12}   {last.duration}")
             print(f"    {truncate(last.task, max_width=60)}")
             if last.status == "VETOED" and last.rule_id:
                 score_str = f"score={last.score:.2f}" if last.score is not None else ""
@@ -261,9 +311,10 @@ class PlainRenderer:
             print(section_line_ascii("recent", width))
             print()
             for ep in screen.recent_episodes[:5]:
-                sym = status_symbol(ep.status, ascii_mode=True)
+                outcome = normalize_outcome(ep.outcome, status=ep.status)
+                badge = outcome_badge(outcome)
                 task_display = truncate(ep.task, max_width=40)
-                print(f"  {ep.time_str:<5}  {sym} {ep.status:<8}  {ep.episode_short:<12}  {task_display}")
+                print(f"  {ep.time_str:<5}  {badge.symbol} {badge.label:<16}  {ep.episode_short:<12}  {task_display}")
             print()
 
         # Footer
@@ -412,6 +463,34 @@ def _format_ratio(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.2f}"
+
+
+def _format_changed_files(diff, *, limit: int) -> str:
+    entries: list[str] = []
+    entries.extend([f"+{path}" for path in sorted(diff.added)])
+    entries.extend([f"~{path}" for path in sorted(diff.modified)])
+    entries.extend([f"-{path}" for path in sorted(diff.deleted)])
+    return ", ".join(entries[:limit])
+
+
+def _first_failed_assertion(verification) -> str | None:
+    for assertion in verification.assertions:
+        if assertion.passed:
+            continue
+        target = _format_assertion_target(assertion.target)
+        reason = f": {assertion.reason}" if assertion.reason else ""
+        if target:
+            return f"{assertion.name} {target}{reason}"
+        return f"{assertion.name}{reason}"
+    return None
+
+
+def _format_assertion_target(target) -> str | None:
+    if isinstance(target, tuple):
+        return "[" + ", ".join(target) + "]"
+    if isinstance(target, str):
+        return target
+    return None
 
 
 def _print_section(title: str, items: Iterable[str]) -> None:

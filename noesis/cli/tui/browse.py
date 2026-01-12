@@ -19,8 +19,9 @@ from textual.widgets import (
     Rule,
     Static,
 )
+from rich.text import Text
 
-from ..theme import PHASE_SYMBOLS, status_symbol
+from ..theme import PHASE_SYMBOLS, outcome_badge, normalize_outcome
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +71,22 @@ Screen {
 
 .status-audit {
     color: $warning;
+}
+
+.outcome-ok {
+    color: $success;
+}
+
+.outcome-warn {
+    color: $warning;
+}
+
+.outcome-err {
+    color: $error;
+}
+
+.outcome-muted {
+    color: $text-muted;
 }
 
 .muted {
@@ -127,6 +144,7 @@ class EpisodeRow:
     episode_id: str
     started_at: str
     status: str
+    outcome: str | None
     task: str
     duration: str
 
@@ -136,7 +154,18 @@ class EpisodeRow:
 
     @property
     def status_symbol(self) -> str:
-        return status_symbol(self.status)
+        badge = outcome_badge(self.outcome)
+        return badge.symbol
+
+    @property
+    def status_label(self) -> str:
+        badge = outcome_badge(self.outcome)
+        return badge.label
+
+    @property
+    def status_style(self) -> str:
+        badge = outcome_badge(self.outcome)
+        return badge.style
 
     @property
     def time_str(self) -> str:
@@ -196,8 +225,8 @@ class EpisodeDetails(Static):
         ep = self.episode
 
         # Status line with symbol
-        status_class = f"status-{ep.status.lower()}"
-        container.mount(Label(f"{ep.status_symbol} {ep.status}", classes=status_class))
+        status_class = f"outcome-{ep.status_style}"
+        container.mount(Label(f"{ep.status_symbol} {ep.status_label}", classes=status_class))
         container.mount(Rule())
 
         # Episode info
@@ -306,10 +335,17 @@ class BrowseApp(App):
                 else:
                     status = status.upper()
 
+                outcome = normalize_outcome(
+                    row.get("outcome"),
+                    status=status,
+                    success=row.get("success"),
+                )
+
                 self._episodes.append(EpisodeRow(
                     episode_id=row.get("episode_id", "unknown"),
                     started_at=row.get("started_at", ""),
                     status=status,
+                    outcome=outcome,
                     task=row.get("task", "(no task)"),
                     duration=duration_str,
                 ))
@@ -327,8 +363,15 @@ class BrowseApp(App):
             table.add_row("—", "—", "No episodes found", "—")
             return
 
+        style_map = {
+            "ok": "green",
+            "warn": "yellow",
+            "err": "red",
+            "muted": "grey50",
+        }
         for ep in self._episodes:
-            status_display = f"{ep.status_symbol} {ep.status}"
+            color = style_map.get(ep.status_style, "white")
+            status_display = Text(f"{ep.status_symbol} {ep.status_label}", style=color)
             task_display = ep.task[:30] + "..." if len(ep.task) > 30 else ep.task
             table.add_row(ep.time_str, status_display, ep.short_id, task_display)
 

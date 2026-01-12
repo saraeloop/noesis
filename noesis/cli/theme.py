@@ -88,6 +88,52 @@ def phase_symbol(phase: str) -> str:
     return PHASE_SYMBOLS.get(phase.lower(), "○")
 
 
+@dataclass(frozen=True)
+class OutcomeBadge:
+    """Visual label for a normalized outcome."""
+
+    label: str
+    symbol: str
+    style: str
+
+
+_OUTCOME_BADGES: Mapping[str, OutcomeBadge] = {
+    "success": OutcomeBadge(label="SUCCESS", symbol="●", style="ok"),
+    "success_unverified": OutcomeBadge(label="UNVERIFIED", symbol="●", style="warn"),
+    "goal_not_achieved": OutcomeBadge(label="GOAL NOT ACHIEVED", symbol="●", style="err"),
+    "violated": OutcomeBadge(label="VIOLATED", symbol="●", style="err"),
+    "error": OutcomeBadge(label="ERROR", symbol="●", style="err"),
+}
+
+
+def outcome_badge(outcome: str | None) -> OutcomeBadge:
+    """Return the badge metadata for an outcome."""
+    key = (outcome or "").strip().lower()
+    return _OUTCOME_BADGES.get(key, OutcomeBadge(label="UNKNOWN", symbol="●", style="muted"))
+
+
+def normalize_outcome(
+    outcome: str | None,
+    *,
+    status: str | None = None,
+    success: object | None = None,
+) -> str | None:
+    """Best-effort normalization for legacy rows without outcome."""
+    if isinstance(outcome, str) and outcome:
+        return outcome
+    if isinstance(status, str) and status:
+        normalized = status.lower()
+        if normalized == "vetoed":
+            return "violated"
+        if normalized == "error":
+            return "error"
+    if success is True:
+        return "success"
+    if success is False:
+        return "error"
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BREAKPOINTS
 # ─────────────────────────────────────────────────────────────────────────────

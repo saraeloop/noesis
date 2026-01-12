@@ -79,12 +79,63 @@ class TimelineRowVM:
 
 
 @dataclass(frozen=True)
+class ExecutionPhaseVM:
+    phase: str
+    status: str
+
+
+@dataclass(frozen=True)
+class ExecutionMapVM:
+    observe: ExecutionPhaseVM
+    act: ExecutionPhaseVM
+    verify: ExecutionPhaseVM
+    outcome: ExecutionPhaseVM
+
+    def phases(self) -> tuple[ExecutionPhaseVM, ...]:
+        return (self.observe, self.act, self.verify, self.outcome)
+
+
+@dataclass(frozen=True)
+class OutcomeVM:
+    status: str | None
+    summary: str | None
+
+
+@dataclass(frozen=True)
+class VerificationAssertionVM:
+    name: str
+    target: str | tuple[str, ...] | None
+    passed: bool
+    reason: str | None
+
+
+@dataclass(frozen=True)
+class VerificationDiffVM:
+    added: tuple[str, ...]
+    modified: tuple[str, ...]
+    deleted: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class VerificationSectionVM:
+    adapter_result: str | None
+    outcome: OutcomeVM
+    provided: bool | None
+    passed: bool | None
+    error: str | None
+    assertions: tuple[VerificationAssertionVM, ...]
+    workspace_diff: VerificationDiffVM | None
+
+
+@dataclass(frozen=True)
 class EpisodeDashboardVM:
     header: EpisodeHeaderVM
     chips: EpisodeChipsVM
     kpis: EpisodeKpisVM
     phase_breakdown: List[PhaseLatencyVM]
     timeline_rows: List[TimelineRowVM]
+    execution_map: ExecutionMapVM
+    verification: VerificationSectionVM
     validation_issues: List[str]
     suggestions: List[str]
 
@@ -129,6 +180,36 @@ class EpisodeDashboardVM:
                 }
                 for row in self.timeline_rows
             ],
+            "execution_map": {
+                "observe": {"phase": self.execution_map.observe.phase, "status": self.execution_map.observe.status},
+                "act": {"phase": self.execution_map.act.phase, "status": self.execution_map.act.status},
+                "verify": {"phase": self.execution_map.verify.phase, "status": self.execution_map.verify.status},
+                "outcome": {"phase": self.execution_map.outcome.phase, "status": self.execution_map.outcome.status},
+            },
+            "verification": {
+                "adapter_result": self.verification.adapter_result,
+                "outcome": {
+                    "status": self.verification.outcome.status,
+                    "summary": self.verification.outcome.summary,
+                },
+                "provided": self.verification.provided,
+                "passed": self.verification.passed,
+                "error": self.verification.error,
+                "assertions": [
+                    {
+                        "name": assertion.name,
+                        "target": list(assertion.target) if isinstance(assertion.target, tuple) else assertion.target,
+                        "passed": assertion.passed,
+                        "reason": assertion.reason,
+                    }
+                    for assertion in self.verification.assertions
+                ],
+                "workspace_diff": {
+                    "added": list(self.verification.workspace_diff.added),
+                    "modified": list(self.verification.workspace_diff.modified),
+                    "deleted": list(self.verification.workspace_diff.deleted),
+                } if self.verification.workspace_diff else None,
+            },
             "validation_issues": list(self.validation_issues),
             "suggestions": list(self.suggestions),
         }
@@ -195,6 +276,8 @@ def build_episode_dashboard(
 
     phase_breakdown = _phase_breakdown(summary, events)
     timeline_rows = _build_timeline(events, limit_timeline=limit_timeline)
+    verification = build_verification_section(summary)
+    execution_map = _build_execution_map(summary, state, events, verification)
     validation_issues = _validate_artifacts(
         ep_dir,
         summary=summary,
@@ -216,6 +299,8 @@ def build_episode_dashboard(
         kpis=kpis,
         phase_breakdown=phase_breakdown,
         timeline_rows=timeline_rows,
+        execution_map=execution_map,
+        verification=verification,
         validation_issues=validation_issues,
         suggestions=suggestions,
     )
@@ -271,6 +356,8 @@ def build_episode_dashboard_from_payloads(
 
     phase_breakdown = _phase_breakdown(summary_payload, events_payload)
     timeline_rows = _build_timeline(events_payload, limit_timeline=limit_timeline)
+    verification = build_verification_section(summary_payload)
+    execution_map = _build_execution_map(summary_payload, state, events_payload, verification)
     validation_issues = _validate_payloads(
         summary_payload,
         events_payload,
@@ -291,6 +378,8 @@ def build_episode_dashboard_from_payloads(
         kpis=kpis,
         phase_breakdown=phase_breakdown,
         timeline_rows=timeline_rows,
+        execution_map=execution_map,
+        verification=verification,
         validation_issues=validation_issues,
         suggestions=suggestions,
     )
@@ -442,6 +531,36 @@ def _suggestions(episode_id: str) -> List[str]:
     ]
 
 
+def build_verification_section(summary: Dict[str, Any] | None) -> VerificationSectionVM:
+    payload = summary if isinstance(summary, dict) else {}
+    verification = payload.get("verification", {}) if isinstance(payload.get("verification"), dict) else {}
+    adapter_result = payload.get("adapter_result") if isinstance(payload.get("adapter_result"), str) else None
+    outcome = _parse_outcome(payload.get("outcome"))
+    provided = verification.get("provided")
+    if not isinstance(provided, bool):
+        provided = None
+    passed = verification.get("passed")
+    if not isinstance(passed, bool):
+        passed = None
+    error = verification.get("error") if isinstance(verification.get("error"), str) else None
+    assertions = _parse_assertions(verification.get("assertions"))
+    workspace_diff = _parse_workspace_diff(verification.get("workspace_diff"))
+    return VerificationSectionVM(
+        adapter_result=adapter_result,
+        outcome=outcome,
+        provided=provided,
+        passed=passed,
+        error=error,
+        assertions=assertions,
+        workspace_diff=workspace_diff,
+    )
+
+
+def build_execution_map_from_summary(summary: Dict[str, Any] | None) -> ExecutionMapVM:
+    verification = build_verification_section(summary)
+    return _build_execution_map(summary, None, None, verification)
+
+
 def _success_pct(value: Any) -> Optional[float]:
     if isinstance(value, bool):
         return 100.0 if value else 0.0
@@ -469,6 +588,136 @@ def _coerce_int(value: Any) -> Optional[int]:
     if isinstance(value, float):
         return int(value)
     return None
+
+
+def _build_execution_map(
+    summary: Dict[str, Any] | None,
+    state: Dict[str, Any] | None,
+    events: Sequence[Dict[str, Any]] | None,
+    verification: VerificationSectionVM,
+) -> ExecutionMapVM:
+    observe_status = "OK" if (events or summary) else "UNKNOWN"
+    act_status = _adapter_status(summary)
+    verify_status = _verification_status(verification)
+    outcome_status = _outcome_status(summary, state, events, verification.outcome)
+    return ExecutionMapVM(
+        observe=ExecutionPhaseVM(phase="OBSERVE", status=observe_status),
+        act=ExecutionPhaseVM(phase="ACT", status=act_status),
+        verify=ExecutionPhaseVM(phase="VERIFY", status=verify_status),
+        outcome=ExecutionPhaseVM(phase="OUTCOME", status=outcome_status),
+    )
+
+
+def _adapter_status(summary: Dict[str, Any] | None) -> str:
+    payload = summary if isinstance(summary, dict) else {}
+    adapter_result = payload.get("adapter_result")
+    if adapter_result in {"success", "ok"}:
+        return "OK"
+    if adapter_result == "skipped":
+        return "SKIPPED"
+    if adapter_result == "error":
+        return "ERROR"
+    return "UNKNOWN"
+
+
+def _verification_status(verification: VerificationSectionVM) -> str:
+    if verification.error:
+        return "ERROR"
+    if verification.provided is False:
+        return "SKIPPED"
+    if verification.passed is True:
+        return "PASSED"
+    if verification.passed is False:
+        return "FAILED"
+    if verification.provided is True:
+        return "ERROR"
+    return "SKIPPED"
+
+
+def _outcome_status(
+    summary: Dict[str, Any] | None,
+    state: Dict[str, Any] | None,
+    events: Sequence[Dict[str, Any]] | None,
+    outcome: OutcomeVM,
+) -> str:
+    flags = (summary or {}).get("flags", {}) if isinstance(summary, dict) else {}
+    label = status_label(episode_status(summary, state, events), governance_mode=flags.get("governance_mode"))
+    if label == "VETOED":
+        return "VETOED"
+    if label == "SUCCESS":
+        return "OK"
+    if label == "ERROR":
+        return "ERROR"
+    status = outcome.status
+    if status in {"success", "ok"}:
+        return "OK"
+    if status == "goal_not_achieved":
+        return "FAILED"
+    if status == "success_unverified":
+        return "OK"
+    if status == "error":
+        return "ERROR"
+    return label if label else "UNKNOWN"
+
+
+def _parse_outcome(value: Any) -> OutcomeVM:
+    if isinstance(value, dict):
+        status = value.get("status") if isinstance(value.get("status"), str) else None
+        summary = value.get("summary") if isinstance(value.get("summary"), str) else None
+        return OutcomeVM(status=status, summary=summary)
+    if isinstance(value, str):
+        return OutcomeVM(status=value, summary=None)
+    return OutcomeVM(status=None, summary=None)
+
+
+def _parse_assertions(raw: Any) -> tuple[VerificationAssertionVM, ...]:
+    if not isinstance(raw, list):
+        return ()
+    parsed: list[VerificationAssertionVM] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if not isinstance(name, str):
+            continue
+        target = item.get("target")
+        parsed_target: str | tuple[str, ...] | None
+        if isinstance(target, list) and all(isinstance(entry, str) for entry in target):
+            parsed_target = tuple(target)
+        elif isinstance(target, str):
+            parsed_target = target
+        else:
+            parsed_target = None
+        passed = item.get("passed")
+        if not isinstance(passed, bool):
+            continue
+        reason = item.get("reason") if isinstance(item.get("reason"), str) else None
+        parsed.append(
+            VerificationAssertionVM(
+                name=name,
+                target=parsed_target,
+                passed=passed,
+                reason=reason,
+            )
+        )
+    return tuple(parsed)
+
+
+def _parse_workspace_diff(raw: Any) -> VerificationDiffVM | None:
+    if not isinstance(raw, dict):
+        return None
+    added = raw.get("added")
+    modified = raw.get("modified")
+    deleted = raw.get("deleted")
+    if not all(isinstance(value, list) for value in (added, modified, deleted)):
+        return None
+    if not all(all(isinstance(item, str) for item in value) for value in (added, modified, deleted)):
+        return None
+    return VerificationDiffVM(
+        added=tuple(added),
+        modified=tuple(modified),
+        deleted=tuple(deleted),
+    )
 
 
 def _validate_artifacts(

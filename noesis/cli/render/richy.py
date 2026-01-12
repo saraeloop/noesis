@@ -14,7 +14,7 @@ from rich.syntax import Syntax
 from .. import formatters
 from ..view_models import EpisodeDashboardVM, TimelineRowVM
 from ..help_content import HelpScreen, HomeScreen
-from ..theme import build_theme_tokens, Breakpoint, detect_breakpoint as _detect_breakpoint, get_box_style
+from ..theme import build_theme_tokens, Breakpoint, detect_breakpoint as _detect_breakpoint, get_box_style, outcome_badge, normalize_outcome
 
 
 def detect_breakpoint(console: Console) -> Breakpoint:
@@ -169,16 +169,19 @@ class RichRenderer:
         )
         table.add_column("STARTED_AT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=20)
         table.add_column("EPISODE", style=_safe_style(self.console, "accent", "bright_cyan"), no_wrap=True, max_width=12)
-        table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=8)
+        table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=16)
         table.add_column("USING", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=14)
         table.add_column("DURATION", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
         for row in rows:
             status = row.get("status", "")
-            style = _status_style(status)
+            outcome = normalize_outcome(row.get("outcome"), status=status)
+            badge = outcome_badge(outcome)
+            style = _safe_style(self.console, badge.style, "white")
+            status_text = Text(f"{badge.symbol} {badge.label}", style=style)
             table.add_row(
                 row.get("started_at", "")[:20],
                 (row.get("episode_short") or row.get("episode_id") or "")[:10],
-                Text(status, style=style),
+                status_text,
                 row.get("using", ""),
                 row.get("duration", ""),
             )
@@ -258,6 +261,36 @@ class RichRenderer:
         src = json.dumps(data, indent=2, ensure_ascii=False)
         self.console.print(Syntax(src, "json", word_wrap=True))
 
+    def print_execution_map(self, execution_map, *, compact: bool = False) -> None:
+        if self.quiet:
+            return
+        phases = execution_map.phases()
+        if not compact:
+            table = Table(
+                show_header=True,
+                header_style="title",
+                box=box.SQUARE,
+                expand=True,
+            )
+            for phase in phases:
+                table.add_column(
+                    phase.phase,
+                    justify="center",
+                    style=_safe_style(self.console, "key", "cyan"),
+                    no_wrap=True,
+                )
+            row = [Text(phase.status, style=_execution_status_style(phase.status)) for phase in phases]
+            table.add_row(*row)
+            self.console.print(table)
+            return
+        line = Text()
+        for idx, phase in enumerate(phases):
+            if idx:
+                line.append(" | ", style="muted")
+            line.append(f"{phase.phase}: ", style="muted")
+            line.append(phase.status, style=_execution_status_style(phase.status))
+        self.console.print(line)
+
     def _filter_timeline(self, rows: Iterable[TimelineRowVM], grep: str | None) -> list[TimelineRowVM]:
         if not grep:
             return list(rows)
@@ -274,6 +307,8 @@ class RichRenderer:
         bp = detect_breakpoint(self.console)
         
         self._render_header(vm)
+        self._render_execution_map(vm)
+        self._render_verification(vm)
         self._render_kpis_and_phases(vm, bp)
         self._render_timeline(vm, grep, bp)
         self._render_suggestions(vm, bp)
@@ -316,6 +351,73 @@ class RichRenderer:
 
         border_style = _safe_style(self.console, "panel", "dim")
         self.console.print(Panel(header_body, border_style=border_style))
+
+    def _render_execution_map(self, vm: EpisodeDashboardVM) -> None:
+        execution_map = vm.execution_map
+        table = Table(
+            title="[title]Execution Map[/]",
+            show_header=True,
+            header_style="title",
+            box=box.SQUARE,
+            expand=True,
+        )
+        for phase in execution_map.phases():
+            table.add_column(
+                phase.phase,
+                justify="center",
+                style=_safe_style(self.console, "key", "cyan"),
+                no_wrap=True,
+            )
+        row = [
+            Text(phase.status, style=_execution_status_style(phase.status))
+            for phase in execution_map.phases()
+        ]
+        table.add_row(*row)
+        self.console.print(table)
+
+    def _render_verification(self, vm: EpisodeDashboardVM) -> None:
+        verification = vm.verification
+        table = Table(
+            title="[title]Verification[/]",
+            show_header=False,
+            box=box.SQUARE,
+            expand=True,
+        )
+        table.add_column("key", style=_safe_style(self.console, "key", "cyan"), no_wrap=True)
+        table.add_column("value", style=_safe_style(self.console, "val", "white"))
+
+        adapter_result = verification.adapter_result or "—"
+        table.add_row("adapter_result", Text(adapter_result, style=_execution_status_style(adapter_result)))
+        outcome = verification.outcome.status or "—"
+        if verification.outcome.summary:
+            outcome = f"{outcome} ({verification.outcome.summary})"
+        table.add_row("outcome", Text(outcome, style=_execution_status_style(verification.outcome.status or "")))
+        passed = "null" if verification.passed is None else str(verification.passed).lower()
+        if verification.passed is None:
+            passed_style = "muted"
+        elif verification.passed:
+            passed_style = _execution_status_style("passed")
+        else:
+            passed_style = _execution_status_style("failed")
+        table.add_row("passed", Text(passed, style=passed_style))
+        if verification.error:
+            table.add_row("error", Text(verification.error, style="err"))
+
+        diff = verification.workspace_diff
+        if diff is None:
+            table.add_row("workspace_diff", "—")
+            table.add_row("changed_files", "—")
+        else:
+            table.add_row(
+                "workspace_diff",
+                f"added={len(diff.added)} modified={len(diff.modified)} deleted={len(diff.deleted)}",
+            )
+            changed = _format_changed_files(diff, limit=10) or "—"
+            table.add_row("changed_files", changed)
+
+        failure = _first_failed_assertion(verification) or "—"
+        table.add_row("first_failure", failure)
+        self.console.print(table)
 
     def _render_kpis_and_phases(self, vm: EpisodeDashboardVM, bp: Breakpoint) -> None:
         """Render KPIs and phase breakdown with adaptive layout."""
@@ -497,13 +599,14 @@ class RichRenderer:
             self.console.print()
 
             last = screen.last_episode
-            status_style = f"status.{last.status.lower()}"
-            sym = status_symbol(last.status)
+            outcome = normalize_outcome(last.outcome, status=last.status)
+            badge = outcome_badge(outcome)
+            status_style = _safe_style(self.console, badge.style, "val")
 
             # Status line with symbol
             status_line = Text()
-            status_line.append(f"  {sym} ", style=_safe_style(self.console, status_style, "val"))
-            status_line.append(last.status, style=_safe_style(self.console, status_style, "val"))
+            status_line.append(f"  {badge.symbol} ", style=status_style)
+            status_line.append(badge.label, style=status_style)
             status_line.append("   ", style="muted")
             status_line.append(formatters.truncate(last.episode_id, max_width=14), style="accent")
             status_line.append("   ", style="muted")
@@ -554,12 +657,13 @@ class RichRenderer:
             self.console.print(Text(section_line("recent", width), style="separator"))
             self.console.print()
             for ep in screen.recent_episodes[:5]:
-                sym = status_symbol(ep.status)
-                status_style = f"status.{ep.status.lower()}"
+                outcome = normalize_outcome(ep.outcome, status=ep.status)
+                badge = outcome_badge(outcome)
+                status_style = _safe_style(self.console, badge.style, "muted")
                 ep_line = Text()
                 ep_line.append(f"  {ep.time_str}  ", style="muted")
-                ep_line.append(f"{sym} ", style=_safe_style(self.console, status_style, "muted"))
-                ep_line.append(f"{ep.status:<8}", style=_safe_style(self.console, status_style, "muted"))
+                ep_line.append(f"{badge.symbol} ", style=status_style)
+                ep_line.append(f"{badge.label:<16}", style=status_style)
                 ep_line.append(f"  {ep.episode_short}  ", style="accent")
                 ep_line.append(formatters.truncate(ep.task, max_width=40), style="muted")
                 self.console.print(ep_line)
@@ -784,6 +888,17 @@ def _status_style(label: str) -> str:
     return "muted"
 
 
+def _execution_status_style(label: str) -> str:
+    normalized = str(label).lower()
+    if normalized in {"ok", "passed", "success"}:
+        return "ok"
+    if normalized in {"skipped", "unverified", "success_unverified"}:
+        return "warn"
+    if normalized in {"failed", "error", "vetoed", "goal_not_achieved"}:
+        return "err"
+    return "muted"
+
+
 def _format_chip(label: str, value: str | None) -> str:
     return f"{label}:{value}" if value else ""
 
@@ -798,6 +913,34 @@ def _format_ratio(value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.2f}"
+
+
+def _format_changed_files(diff, *, limit: int) -> str:
+    entries: list[str] = []
+    entries.extend([f"+{path}" for path in sorted(diff.added)])
+    entries.extend([f"~{path}" for path in sorted(diff.modified)])
+    entries.extend([f"-{path}" for path in sorted(diff.deleted)])
+    return ", ".join(entries[:limit])
+
+
+def _first_failed_assertion(verification) -> str | None:
+    for assertion in verification.assertions:
+        if assertion.passed:
+            continue
+        target = _format_assertion_target(assertion.target)
+        reason = f": {assertion.reason}" if assertion.reason else ""
+        if target:
+            return f"{assertion.name} {target}{reason}"
+        return f"{assertion.name}{reason}"
+    return None
+
+
+def _format_assertion_target(target) -> str | None:
+    if isinstance(target, tuple):
+        return "[" + ", ".join(target) + "]"
+    if isinstance(target, str):
+        return target
+    return None
 
 
 def _safe_style(console: Console, style_name: str, fallback: str = "white") -> str:
@@ -816,5 +959,3 @@ def _phase_style(console: Console, phase: str) -> str:
     except Exception:  # noqa: BLE001 - rich raises errors for missing styles
         return "val"
     return style_name
-
-

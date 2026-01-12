@@ -31,6 +31,8 @@ def test_rich_viewer_output_contains_tables(demo_run: Path) -> None:
 
     output = console.export_text()
     assert "KPIs" in output
+    assert "Execution Map" in output
+    assert "Verification" in output
     assert "Timeline" in output
     assert "┌" in output and "┐" in output, "expected table borders in rich output"
     # Check column headers exist (spacing may vary due to column widths)
