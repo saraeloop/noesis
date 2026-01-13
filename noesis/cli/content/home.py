@@ -176,7 +176,7 @@ def build_home_screen(
         footer_hint = "noesis help"
 
     # Legacy quick start (for backward compat with old renderers)
-    quick_start_names = ["run", "ps", "view"]
+    quick_start_names = ["ps", "view"]
     quick_start = tuple(
         QuickStartItem(
             command=(

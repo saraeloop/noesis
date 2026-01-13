@@ -105,3 +105,76 @@ def test_run_json_cli_version_unsupported(tmp_path, capsys) -> None:
         assert code == 3
         assert out == ""
         assert "unsupported cli version" in err
+
+
+def test_run_json_envelope_graceful_degradation(tmp_path) -> None:
+    """Test that envelope builder handles missing optional fields gracefully.
+
+    ADR-011 requires the Go UI to degrade gracefully if summary fields are missing.
+    This test verifies the envelope builder doesn't crash with minimal input.
+    """
+    from noesis.cli.__main__ import _build_run_envelope
+
+    episode_dir = tmp_path / "ep_test"
+    episode_dir.mkdir()
+    (episode_dir / "summary.json").write_text("{}")
+    (episode_dir / "manifest.json").write_text("{}")
+
+    # Minimal summary - only required fields
+    minimal_summary = {
+        "schema_version": "1.3.0",
+        "episode_id": "ep_test",
+        "outcome": "success",
+        "adapter_result": "success",
+        # No duration_sec, no verification block
+    }
+
+    envelope = _build_run_envelope(
+        episode_id="ep_test",
+        episode_dir=episode_dir,
+        summary=minimal_summary,
+        workspace=None,
+        verify_provided=False,
+        argv=["noesis", "run", "test"],
+    )
+
+    # Required envelope fields are present
+    assert envelope["cli"]["schema_version"] == "cli/1.0"
+    assert envelope["episode_id"] == "ep_test"
+    assert envelope["episode_dir"] == str(episode_dir)
+    assert envelope["outcome"] == "success"
+    assert envelope["adapter_result"] == "success"
+    assert "artifacts" in envelope
+    assert "capabilities" in envelope
+    assert "invocation" in envelope
+
+    # Verification block is present but with None values (graceful degradation)
+    assert envelope["verification"]["provided"] is None
+    assert envelope["verification"]["passed"] is None
+    assert envelope["verification"]["error"] is None
+
+
+def test_run_json_envelope_unknown_outcome_warning(tmp_path, capsys) -> None:
+    """Test that unknown outcomes emit a warning to stderr."""
+    from noesis.cli.__main__ import _build_run_envelope
+
+    episode_dir = tmp_path / "ep_test"
+    episode_dir.mkdir()
+
+    summary_with_bad_outcome = {
+        "schema_version": "1.3.0",
+        "outcome": "unknown_outcome",  # Not in ADR-010
+        "adapter_result": "success",
+    }
+
+    _build_run_envelope(
+        episode_id="ep_test",
+        episode_dir=episode_dir,
+        summary=summary_with_bad_outcome,
+        workspace=None,
+        verify_provided=False,
+        argv=["noesis", "run", "test"],
+    )
+
+    captured = capsys.readouterr()
+    assert "warning: unexpected outcome 'unknown_outcome'" in captured.err

@@ -67,7 +67,6 @@ class CommandSpec:
 # COMMAND IMPORTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-from .commands.run import COMMAND as RUN_COMMAND
 from .commands.solve import COMMAND as SOLVE_COMMAND
 from .commands.list import COMMAND as LIST_COMMAND
 from .commands.show import COMMAND as SHOW_COMMAND
@@ -92,15 +91,6 @@ from .commands.help import COMMAND as HELP_COMMAND
 
 REGISTRY: Dict[str, CommandSpec] = {
     # ── Execute ──────────────────────────────────────────────────────────────
-    "run": CommandSpec(
-        cmd=RUN_COMMAND,
-        meta=CommandMeta(
-            group="execute",
-            one_liner="Run a baseline episode (no adapter)",
-            examples=('noesis run "Summarize this repo"',),
-            show_on_home=True,
-        ),
-    ),
     "solve": CommandSpec(
         cmd=SOLVE_COMMAND,
         meta=CommandMeta(
