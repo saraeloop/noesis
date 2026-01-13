@@ -249,17 +249,19 @@ def _build_run_envelope(
 def _build_view_envelope(
     *,
     episode_id: str,
-    episode_dir: Path,
+    episode_dir_path: Path | None,
     dashboard: dict,
 ) -> dict[str, object]:
     """Build the cli/1.1 ViewResult envelope per ADR-012."""
     artifacts: dict[str, str] = {}
-    for name in ("summary.json", "events.jsonl", "state.json", "manifest.json"):
-        path = episode_dir / name
-        if path.exists():
-            key = name.split(".")[0]
-            artifacts[key] = name
-
+    episode_dir_str: str | None = None
+    if episode_dir_path is not None and episode_dir_path.exists():
+        episode_dir_str = str(episode_dir_path)
+        for name in ("summary.json", "events.jsonl", "state.json", "manifest.json"):
+            path = episode_dir_path / name
+            if path.exists():
+                key = name.split(".")[0]
+                artifacts[key] = name
     return {
         "cli": {
             "schema_version": _CLI_SCHEMA_VERSION,
@@ -267,7 +269,7 @@ def _build_view_envelope(
             "compat_max": _CLI_COMPAT_MAX,
         },
         "episode_id": episode_id,
-        "episode_dir": str(episode_dir),
+        "episode_dir": episode_dir_str,
         "artifacts": artifacts,
         "dashboard": dashboard,
     }
@@ -470,7 +472,7 @@ def view(
     if json_output:
         envelope = _build_view_envelope(
             episode_id=vm.header.episode_id if vm.header else episode_id,
-            episode_dir=ep_dir,
+            episode_dir_path=ep_dir if ep_dir.exists() else None,
             dashboard=vm.to_dict(),
         )
         sys.stdout.write(json.dumps(envelope) + "\n")
@@ -503,6 +505,7 @@ def ps(
                 "status_raw": row.get("status"),
                 "success": row.get("success"),
                 "outcome": row.get("outcome"),
+                "using": (row.get("flags", {}) or {}).get("using", "") or "",
                 "task": row.get("task") or "",
                 "started_at": (row.get("started_at") or "")[:20],
                 "duration": format_duration(row.get("duration_sec")),
