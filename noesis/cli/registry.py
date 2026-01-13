@@ -81,7 +81,6 @@ from .commands.migrate import COMMAND as MIGRATE_COMMAND
 from .commands.view import COMMAND as VIEW_COMMAND
 from .commands.browse import COMMAND as BROWSE_COMMAND
 from .commands.artifacts import COMMAND as ARTIFACTS_COMMAND
-from .commands.ps import COMMAND as PS_COMMAND
 from .commands.help import COMMAND as HELP_COMMAND
 
 
@@ -100,15 +99,6 @@ REGISTRY: Dict[str, CommandSpec] = {
         ),
     ),
     # ── Observe ──────────────────────────────────────────────────────────────
-    "ps": CommandSpec(
-        cmd=PS_COMMAND,
-        meta=CommandMeta(
-            group="observe",
-            one_liner="Show a compact table of recent episodes",
-            examples=("noesis ps", "noesis ps --limit 10"),
-            show_on_home=True,
-        ),
-    ),
     "view": CommandSpec(
         cmd=VIEW_COMMAND,
         meta=CommandMeta(

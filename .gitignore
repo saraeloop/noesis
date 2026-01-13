@@ -8,7 +8,7 @@ dist/
 build/
 .eggs/
 runs/
-artifacts/
+/artifacts/
 !docs/runs/
 !docs/runs/README.md
 .noesis/

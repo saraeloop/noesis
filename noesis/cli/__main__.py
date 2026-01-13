@@ -43,7 +43,7 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
-_CLI_SCHEMA_VERSION = "cli/1.0"
+_CLI_SCHEMA_VERSION = "cli/1.1"
 _CLI_COMPAT_MIN = "cli/1.0"
 _CLI_COMPAT_MAX = "cli/1.x"
 _CLI_VERSION_RE = re.compile(r"^cli/(?P<major>\d+)\.(?P<minor>\d+|x)$")
@@ -246,6 +246,73 @@ def _build_run_envelope(
     }
 
 
+def _build_view_envelope(
+    *,
+    episode_id: str,
+    episode_dir: Path,
+    dashboard: dict,
+) -> dict[str, object]:
+    """Build the cli/1.1 ViewResult envelope per ADR-012."""
+    artifacts: dict[str, str] = {}
+    for name in ("summary.json", "events.jsonl", "state.json", "manifest.json"):
+        path = episode_dir / name
+        if path.exists():
+            key = name.split(".")[0]
+            artifacts[key] = name
+
+    return {
+        "cli": {
+            "schema_version": _CLI_SCHEMA_VERSION,
+            "compat_min": _CLI_COMPAT_MIN,
+            "compat_max": _CLI_COMPAT_MAX,
+        },
+        "episode_id": episode_id,
+        "episode_dir": str(episode_dir),
+        "artifacts": artifacts,
+        "dashboard": dashboard,
+    }
+
+
+def _build_ps_envelope(
+    *,
+    episodes: list[dict],
+    limit: int,
+    offset: int = 0,
+) -> dict[str, object]:
+    """Build the cli/1.1 PsResult envelope per ADR-012."""
+    return {
+        "cli": {
+            "schema_version": _CLI_SCHEMA_VERSION,
+            "compat_min": _CLI_COMPAT_MIN,
+            "compat_max": _CLI_COMPAT_MAX,
+        },
+        "episodes": episodes,
+        "total_count": len(episodes),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def _build_events_envelope(
+    *,
+    episode_id: str,
+    events: list[dict],
+    phase_filter: str | None = None,
+) -> dict[str, object]:
+    """Build the cli/1.1 EventsResult envelope per ADR-012."""
+    return {
+        "cli": {
+            "schema_version": _CLI_SCHEMA_VERSION,
+            "compat_min": _CLI_COMPAT_MIN,
+            "compat_max": _CLI_COMPAT_MAX,
+        },
+        "episode_id": episode_id,
+        "events": events,
+        "filters": {"phase": phase_filter},
+        "event_count": len(events),
+    }
+
+
 @app.callback(invoke_without_command=True)
 def home(
     typer_ctx: typer.Context,
@@ -401,7 +468,12 @@ def view(
                 validate=False,
             )
     if json_output:
-        renderer.json(vm.to_dict())
+        envelope = _build_view_envelope(
+            episode_id=vm.header.episode_id if vm.header else episode_id,
+            episode_dir=ep_dir,
+            dashboard=vm.to_dict(),
+        )
+        sys.stdout.write(json.dumps(envelope) + "\n")
         return
     renderer.print_view_compact(vm)
     if verbose:
@@ -437,7 +509,8 @@ def ps(
             }
         )
     if json_output:
-        renderer.json(ps_rows)
+        envelope = _build_ps_envelope(episodes=ps_rows, limit=limit)
+        sys.stdout.write(json.dumps(envelope) + "\n")
         return
     renderer.print_ps(ps_rows, quiet=quiet)
 
@@ -470,17 +543,47 @@ def events(
         help="Filter by phase (start/observe/plan/act/reflect/insight/terminate/error)",
     ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress banner"),
-    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output (JSONL streaming)"),
+    envelope: bool = typer.Option(False, "--envelope", help="JSON envelope output (single object, per ADR-012)"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
     port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
 ) -> None:
+    options = GlobalOptions(quiet=quiet, json=json_output or envelope, force_rich=force_rich)
+    ctx = build_context(options, port_specs=port or [])
+
+    # Read events (shared by envelope and JSONL modes)
+    try:
+        all_events = list(ctx.ns.events.read(episode_id, context=ctx.runtime_context))
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(f"error: {exc}\n")
+        raise typer.Exit(code=1)
+
+    # Apply phase filter if specified
+    if phase:
+        all_events = [e for e in all_events if e.get("phase") == phase]
+
+    # Envelope mode: single JSON envelope per ADR-012
+    if envelope:
+        result = _build_events_envelope(
+            episode_id=episode_id,
+            events=all_events,
+            phase_filter=phase,
+        )
+        sys.stdout.write(json.dumps(result) + "\n")
+        return
+
+    # JSONL streaming mode: one compact JSON line per event (backward compat)
+    if json_output:
+        for event in all_events:
+            sys.stdout.write(json.dumps(event, separators=(",", ":")) + "\n")
+        return
+
+    # Human-readable output: delegate to argparse command
     from argparse import Namespace
     from noesis.cli.commands.events import COMMAND as EVENTS
 
-    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
-    ctx = build_context(options, port_specs=port or [])
-    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    args = Namespace(episode_id=episode_id, phase=phase, quiet=quiet, json=json_output)
+    renderer = _select_renderer(ctx, json_output=False, quiet=quiet, force_rich=force_rich)
+    args = Namespace(episode_id=episode_id, phase=phase, quiet=quiet, json=False)
     exit_code = EVENTS.run(args, ctx, renderer)
     if exit_code:
         raise typer.Exit(code=exit_code)
