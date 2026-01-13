@@ -250,6 +250,7 @@ def _build_view_envelope(
     *,
     episode_id: str,
     episode_dir: Path | None,
+    episode_dir: Path,
     dashboard: dict,
 ) -> dict[str, object]:
     """Build the cli/1.1 ViewResult envelope per ADR-012."""
@@ -262,6 +263,11 @@ def _build_view_envelope(
             if path.exists():
                 key = name.split(".")[0]
                 artifacts[key] = name
+    for name in ("summary.json", "events.jsonl", "state.json", "manifest.json"):
+        path = episode_dir / name
+        if path.exists():
+            key = name.split(".")[0]
+            artifacts[key] = name
 
     return {
         "cli": {
@@ -271,6 +277,7 @@ def _build_view_envelope(
         },
         "episode_id": episode_id,
         "episode_dir": episode_dir_str,
+        "episode_dir": str(episode_dir),
         "artifacts": artifacts,
         "dashboard": dashboard,
     }
@@ -474,6 +481,7 @@ def view(
         envelope = _build_view_envelope(
             episode_id=vm.header.episode_id if vm.header else episode_id,
             episode_dir=ep_dir if ep_dir.exists() else None,
+            episode_dir=ep_dir,
             dashboard=vm.to_dict(),
         )
         sys.stdout.write(json.dumps(envelope) + "\n")
