@@ -40,7 +40,7 @@ def test_run_json_envelope_and_artifacts(tmp_path, capsys) -> None:
         payload = json.loads(lines[0])
 
         cli = payload["cli"]
-        assert cli["schema_version"] == "cli/1.0"
+        assert cli["schema_version"] == "cli/1.1"
         assert cli["compat_min"] == "cli/1.0"
         assert cli["compat_max"] == "cli/1.x"
 
@@ -74,7 +74,7 @@ def test_run_json_cli_version_forward(tmp_path, capsys) -> None:
         assert code == 0
         assert err == ""
         payload = json.loads(out)
-        assert payload["cli"]["schema_version"] == "cli/1.0"
+        assert payload["cli"]["schema_version"] == "cli/1.1"
 
 
 def test_run_json_cli_version_invalid(tmp_path, capsys) -> None:
@@ -139,7 +139,7 @@ def test_run_json_envelope_graceful_degradation(tmp_path) -> None:
     )
 
     # Required envelope fields are present
-    assert envelope["cli"]["schema_version"] == "cli/1.0"
+    assert envelope["cli"]["schema_version"] == "cli/1.1"
     assert envelope["episode_id"] == "ep_test"
     assert envelope["episode_dir"] == str(episode_dir)
     assert envelope["outcome"] == "success"
