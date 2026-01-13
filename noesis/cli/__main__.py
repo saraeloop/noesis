@@ -49,6 +49,9 @@ _CLI_COMPAT_MAX = "cli/1.x"
 _CLI_VERSION_RE = re.compile(r"^cli/(?P<major>\d+)\.(?P<minor>\d+|x)$")
 _LAST_ARGV: list[str] | None = None
 
+# Valid outcome values per ADR-010 (verification layer)
+_VALID_OUTCOMES = frozenset({"success", "success_unverified", "goal_not_achieved", "error"})
+
 
 def _select_renderer(ctx, *, json_output: bool, quiet: bool, force_rich: bool):
     if json_output or quiet or os.environ.get("NO_COLOR"):
@@ -185,6 +188,19 @@ def _build_run_envelope(
     verify_provided: bool,
     argv: list[str],
 ) -> dict[str, object]:
+    """Build the cli/1.0 RunResult envelope per ADR-011.
+
+    The Go UI MUST use this envelope for artifact paths.
+    Scanning the filesystem is forbidden for run boundary integration.
+
+    Required fields: cli, episode_id, episode_dir, artifacts, outcome, adapter_result, capabilities
+    Optional fields: verification, invocation
+    """
+    # Validate outcome against ADR-010 (defense-in-depth)
+    outcome = summary.get("outcome")
+    if outcome and outcome not in _VALID_OUTCOMES:
+        sys.stderr.write(f"warning: unexpected outcome '{outcome}' in summary\n")
+
     verification = summary.get("verification") if isinstance(summary.get("verification"), dict) else {}
     capabilities: list[str] = ["execution_map"]
     if isinstance(verification, dict):
@@ -218,7 +234,7 @@ def _build_run_envelope(
         "episode_dir": str(episode_dir),
         "artifacts": artifacts,
         "summary_schema_version": summary.get("schema_version", SUMMARY_SCHEMA_VERSION),
-        "outcome": summary.get("outcome"),
+        "outcome": outcome,
         "adapter_result": summary.get("adapter_result"),
         "verification": {
             "provided": verification.get("provided"),
