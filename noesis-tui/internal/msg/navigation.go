@@ -9,6 +9,8 @@ const (
 	ScreenDetail
 	ScreenEvents
 	ScreenRun
+	ScreenProof
+	ScreenBrowse
 )
 
 // String returns the screen name.
@@ -22,6 +24,10 @@ func (s Screen) String() string {
 		return "events"
 	case ScreenRun:
 		return "run"
+	case ScreenProof:
+		return "proof"
+	case ScreenBrowse:
+		return "browse"
 	default:
 		return "unknown"
 	}

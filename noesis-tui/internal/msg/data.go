@@ -1,6 +1,9 @@
 package msg
 
-import "noesis.dev/tui/internal/cli"
+import (
+	"noesis.dev/tui/internal/cli"
+	"noesis.dev/tui/internal/ui/proof"
+)
 
 // EpisodesLoaded is sent when episode list data has been fetched.
 type EpisodesLoaded struct {
@@ -25,6 +28,26 @@ type EventsLoaded struct {
 // RunComplete is sent when a run has finished.
 type RunComplete struct {
 	Result *cli.RunResult
+}
+
+// AgentSummary describes observed agent activity.
+type AgentSummary struct {
+	Name        string
+	EventCount  int
+	PhaseCounts map[string]int
+}
+
+// AgentSummaryLoaded is sent when agent summary data has been fetched.
+type AgentSummaryLoaded struct {
+	EpisodeID string
+	Agents    []AgentSummary
+}
+
+// ProofLoaded is sent when proof data has been fetched.
+type ProofLoaded struct {
+	EpisodeID     string
+	Proof         *proof.Proof
+	WorkspaceDiff *cli.WorkspaceDiff
 }
 
 // Error is sent when an operation fails.
