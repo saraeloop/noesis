@@ -8,6 +8,7 @@ import (
 	"noesis.dev/tui/internal/cli"
 	"noesis.dev/tui/internal/msg"
 	"noesis.dev/tui/internal/style"
+	"noesis.dev/tui/internal/ui/dashboard"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -71,6 +72,10 @@ func (d *Detail) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 			return d, func() tea.Msg {
 				return msg.NavigateTo{Screen: msg.ScreenEvents, Payload: d.episodeID}
 			}
+		case "p":
+			return d, func() tea.Msg {
+				return msg.NavigateTo{Screen: msg.ScreenProof, Payload: d.episodeID}
+			}
 		}
 	}
 
@@ -106,7 +111,7 @@ func (d *Detail) viewDashboard() string {
 	}
 
 	header := d.renderHeader()
-	help := style.HelpBar.Render("e: events • ↑/↓: scroll • esc: back • q: quit")
+	help := style.HelpBar.Render("p: proof • e: events • ↑/↓: scroll • esc: back • q: quit")
 
 	headerHeight := lipgloss.Height(header)
 	helpHeight := lipgloss.Height(help)
@@ -161,20 +166,7 @@ func (d *Detail) renderDashboard() string {
 	if d.dashboard == nil {
 		return ""
 	}
-
-	sections := []string{
-		d.renderExecutionMap(),
-		"",
-		d.renderVerification(),
-		"",
-		d.renderKPIs(),
-		"",
-		d.renderPhaseBreakdown(),
-		"",
-		d.renderTimeline(),
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return dashboard.RenderDashboard(d.dashboard)
 }
 
 func (d *Detail) renderExecutionMap() string {

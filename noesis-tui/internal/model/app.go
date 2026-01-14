@@ -21,6 +21,8 @@ type App struct {
 	detail *Detail
 	events *Events
 	run    *Run
+	proof  *ProofModel
+	browse *Browse
 
 	// Shared state
 	client    *cli.Client
@@ -107,6 +109,14 @@ func (a *App) View() string {
 		if a.run != nil {
 			content = a.run.View()
 		}
+	case msg.ScreenProof:
+		if a.proof != nil {
+			content = a.proof.View()
+		}
+	case msg.ScreenBrowse:
+		if a.browse != nil {
+			content = a.browse.View()
+		}
 	}
 
 	// Add error display if present
@@ -148,6 +158,15 @@ func (a *App) navigateTo(screen msg.Screen, payload interface{}) (tea.Model, tea
 		a.run = NewRun(a.client)
 		a.run.SetSize(a.width, a.height)
 		return a, a.run.Init()
+	case msg.ScreenProof:
+		episodeID, _ := payload.(string)
+		a.proof = NewProofModel(a.client, episodeID)
+		a.proof.SetSize(a.width, a.height)
+		return a, a.proof.Init()
+	case msg.ScreenBrowse:
+		a.browse = NewBrowse(a.client)
+		a.browse.SetSize(a.width, a.height)
+		return a, a.browse.Init()
 	}
 
 	return a, nil
@@ -177,6 +196,14 @@ func (a *App) propagateSize(m tea.WindowSizeMsg) {
 		if a.run != nil {
 			a.run.SetSize(m.Width, m.Height)
 		}
+	case msg.ScreenProof:
+		if a.proof != nil {
+			a.proof.SetSize(m.Width, m.Height)
+		}
+	case msg.ScreenBrowse:
+		if a.browse != nil {
+			a.browse.SetSize(m.Width, m.Height)
+		}
 	}
 }
 
@@ -205,6 +232,18 @@ func (a *App) delegateToScreen(m tea.Msg) (tea.Model, tea.Cmd) {
 		if a.run != nil {
 			model, cmd := a.run.Update(m)
 			a.run = model.(*Run)
+			return a, cmd
+		}
+	case msg.ScreenProof:
+		if a.proof != nil {
+			model, cmd := a.proof.Update(m)
+			a.proof = model.(*ProofModel)
+			return a, cmd
+		}
+	case msg.ScreenBrowse:
+		if a.browse != nil {
+			model, cmd := a.browse.Update(m)
+			a.browse = model.(*Browse)
 			return a, cmd
 		}
 	}
