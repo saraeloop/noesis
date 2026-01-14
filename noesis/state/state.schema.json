@@ -32,6 +32,17 @@
     "plan": { "$ref": "#/$defs/plan" },
     "memory": { "$ref": "#/$defs/memory" },
     "outcomes": { "$ref": "#/$defs/outcomes" },
+    "process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "run_index"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "run_index": { "type": "integer", "minimum": 1 },
+        "kind": { "type": "string" }
+      }
+    },
     "links": {
       "type": "object",
       "additionalProperties": false,
