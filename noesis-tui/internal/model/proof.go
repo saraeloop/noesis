@@ -517,6 +517,9 @@ func (p *ProofModel) verdictReason() string {
 	if p.proof == nil {
 		return "No proof available."
 	}
+	if strings.TrimSpace(p.proof.Reason) != "" {
+		return p.proof.Reason
+	}
 	if p.proof.Governance == proof.GovernanceViolated || p.proof.Governance == proof.GovernanceVetoed {
 		if p.proof.PolicyBreach != nil {
 			return fmt.Sprintf("Governance breach (%s)", *p.proof.PolicyBreach)
@@ -725,12 +728,27 @@ func (p *ProofModel) completedLabel() string {
 func (p *ProofModel) renderFullProof(width int) string {
 	sections := []string{
 		p.renderVerdictPanel(width),
+		p.renderChangesPanel(width),
 		p.renderVerificationPanel(width),
 		p.renderGovernancePanel(width),
 		p.renderEvidencePanel(width),
 		p.renderReplayPanel(width),
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (p *ProofModel) renderChangesPanel(width int) string {
+	body := p.renderDiffLines()
+	if body == "" {
+		body = style.MutedText.Render("No workspace diff captured.")
+	}
+	if p.isScopeBreach() {
+		body = lipgloss.JoinVertical(lipgloss.Left,
+			style.ErrorText.Render("OUT OF SCOPE"),
+			body,
+		)
+	}
+	return renderStatusPanel("Changes", body, width, p.proof.Governance)
 }
 
 func (p *ProofModel) renderVerdictPanel(width int) string {
@@ -804,7 +822,11 @@ func (p *ProofModel) renderObservedAgents() string {
 	lines := make([]string, 0, len(p.proof.Agents))
 	for _, agent := range p.proof.Agents {
 		phaseSummary := formatPhaseCounts(agent.PhaseCounts)
-		line := fmt.Sprintf("%s  %s", agent.Name, style.MutedText.Render(phaseSummary))
+		last := ""
+		if agent.LastSummary != "" {
+			last = " • last: " + truncate(agent.LastSummary, 48)
+		}
+		line := fmt.Sprintf("%s  %s%s", agent.Name, style.MutedText.Render(phaseSummary), style.MutedText.Render(last))
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
@@ -855,6 +877,20 @@ func isGovernanceAssertion(name string) bool {
 	default:
 		return false
 	}
+}
+
+func (p *ProofModel) isScopeBreach() bool {
+	return p.proof.Governance == proof.GovernanceViolated || p.proof.Governance == proof.GovernanceVetoed || len(p.governanceViolations()) > 0
+}
+
+func truncate(value string, max int) string {
+	if max <= 0 || len(value) <= max {
+		return value
+	}
+	if max < 4 {
+		return value[:max]
+	}
+	return value[:max-3] + "..."
 }
 
 func evidenceStatusLabel(status string) string {

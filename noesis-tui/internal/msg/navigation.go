@@ -11,6 +11,7 @@ const (
 	ScreenRun
 	ScreenProof
 	ScreenBrowse
+	ScreenChanges
 )
 
 // String returns the screen name.
@@ -28,6 +29,8 @@ func (s Screen) String() string {
 		return "proof"
 	case ScreenBrowse:
 		return "browse"
+	case ScreenChanges:
+		return "changes"
 	default:
 		return "unknown"
 	}

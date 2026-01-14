@@ -9,6 +9,7 @@ import (
 	"noesis.dev/tui/internal/cli"
 	"noesis.dev/tui/internal/msg"
 	"noesis.dev/tui/internal/style"
+	"noesis.dev/tui/internal/ui/proof"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -18,17 +19,20 @@ import (
 
 // Home is the home dashboard screen model.
 type Home struct {
-	list     list.Model
-	spinner  spinner.Model
-	loading  bool
-	episodes []cli.EpisodeRow
-	stats    episodeStats
-	agents   []msg.AgentSummary
-	client   *cli.Client
-	runsDir  string
-	width    int
-	height   int
-	tabIndex int // 0 = runs, 1 = agents
+	list      list.Model
+	spinner   spinner.Model
+	loading   bool
+	episodes  []cli.EpisodeRow
+	filtered  []cli.EpisodeRow
+	stats     episodeStats
+	agents    []msg.AgentSummary
+	reasons   map[string]string
+	client    *cli.Client
+	runsDir   string
+	width     int
+	height    int
+	tabIndex  int // 0 = runs, 1 = agents
+	filterIdx int
 }
 
 // episodeStats holds computed statistics about episodes.
@@ -87,6 +91,32 @@ func (i episodeItem) FilterValue() string {
 	return i.episode.EpisodeID + " " + i.episode.Task
 }
 
+const heroLogoWide = `
+███    ██  ██████  ███████ ███████ ██ ███████ 
+████   ██ ██    ██ ██      ██      ██ ██      
+██ ██  ██ ██    ██ █████   ███████ ██ ███████ 
+██  ██ ██ ██    ██ ██           ██ ██      ██ 
+██   ████  ██████  ███████ ███████ ██ ███████ 
+                                             
+`
+
+const heroLogoCompact = `
+███ ████ ███
+█ █ █    █  
+█ █ █ ██ ███
+█ █ █  █ █  
+███ ████ ███
+`
+
+var filterLabels = []string{
+	"ALL",
+	"NEEDS_ATTENTION",
+	"VERIFIED",
+	"UNVERIFIED",
+	"FAILED",
+	"VIOLATED",
+}
+
 // NewHome creates a new Home model.
 func NewHome(client *cli.Client) *Home {
 	// Create list with custom styling
@@ -119,6 +149,7 @@ func NewHome(client *cli.Client) *Home {
 		client:   client,
 		runsDir:  client.RunsDir,
 		tabIndex: 0,
+		reasons:  map[string]string{},
 	}
 }
 
@@ -141,19 +172,31 @@ func (h *Home) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 	case msg.EpisodesLoaded:
 		h.loading = false
 		h.episodes = m.Episodes
+		h.filtered = h.applyFilter(m.Episodes)
 		h.stats = computeStats(m.Episodes)
-		items := make([]list.Item, len(m.Episodes))
-		for i, ep := range m.Episodes {
+		items := make([]list.Item, len(h.filtered))
+		for i, ep := range h.filtered {
 			items[i] = episodeItem{episode: ep}
 		}
 		h.list.SetItems(items)
+		cmds := []tea.Cmd{}
 		if len(m.Episodes) > 0 {
-			return h, h.fetchAgentSummary(m.Episodes[0].EpisodeID)
+			cmds = append(cmds, h.fetchAgentSummary(m.Episodes[0].EpisodeID))
 		}
-		return h, nil
+		if prefetch := h.prefetchReasons(); prefetch != nil {
+			cmds = append(cmds, prefetch)
+		}
+		if len(cmds) == 0 {
+			return h, nil
+		}
+		return h, tea.Batch(cmds...)
 
 	case msg.AgentSummaryLoaded:
 		h.agents = m.Agents
+		return h, nil
+
+	case msg.ProofReasonLoaded:
+		h.reasons[m.EpisodeID] = m.Reason
 		return h, nil
 
 	case msg.Error:
@@ -165,6 +208,23 @@ func (h *Home) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 			return h, nil
 		}
 		switch m.String() {
+		case "f":
+			h.filterIdx = (h.filterIdx + 1) % len(filterLabels)
+			h.filtered = h.applyFilter(h.episodes)
+			items := make([]list.Item, len(h.filtered))
+			for i, ep := range h.filtered {
+				items[i] = episodeItem{episode: ep}
+			}
+			h.list.SetItems(items)
+			return h, nil
+		case "d":
+			selected := h.list.SelectedItem()
+			if selected != nil {
+				ep := selected.(episodeItem).episode
+				return h, func() tea.Msg {
+					return msg.NavigateTo{Screen: msg.ScreenChanges, Payload: ep.EpisodeID}
+				}
+			}
 		case "1":
 			h.tabIndex = 0
 			return h, nil
@@ -250,7 +310,7 @@ func (h *Home) viewDashboard() string {
 	header := h.renderHeader()
 	hero := h.renderHero(contentWidth)
 	tabs := h.renderTabs()
-	help := style.HelpBar.Render("1/2: tabs  enter: view  b: browse  p: proof  e: events  n: run  r: refresh  /: filter  q: quit")
+	help := style.HelpBar.Render("1/2: tabs  enter: view  d: diff  b: browse  p: proof  e: events  f: filter  r: refresh  /: filter  q: quit")
 
 	headerH := lipgloss.Height(header)
 	heroH := lipgloss.Height(hero)
@@ -283,28 +343,28 @@ func (h *Home) renderHeader() string {
 
 func (h *Home) renderHero(width int) string {
 	title := style.BrandStyle.Render("noesis")
-	logo := strings.Join([]string{
-		" _   _  ____  _____  ____ ___ ___ ",
-		"| \\ | |/ __ \\| ____|/ ___|_ _/ _ \\",
-		"|  \\| | |  | |  _|  \\___ \\| | | | |",
-		"| |\\  | |__| | |___  ___) | | |_| |",
-		"|_| \\_|\\____/|_____| |____/___\\___/",
-	}, "\n")
-	logo = style.InfoText.Render(logo)
+	rawLogo := selectHeroLogo(width)
+	logo := style.InfoText.Render(rawLogo)
+	logo = lipgloss.Place(width, lipgloss.Height(rawLogo), lipgloss.Center, lipgloss.Center, logo)
 	tagline := style.MutedText.Render("Understanding, made observable.")
 	version := style.DimText.Render("v0.1.0")
-	subtitle := style.MutedText.Render("Agentic AI Framework")
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
 		logo,
 		tagline,
 		version,
-		subtitle,
 	)
 
 	panel := style.Panel.Copy().Width(width)
 	panel = panel.BorderForeground(style.AccentColor)
 	return panel.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", content))
+}
+
+func selectHeroLogo(width int) string {
+	if width > 0 && width < 70 {
+		return strings.TrimRight(heroLogoCompact, "\n")
+	}
+	return strings.TrimRight(heroLogoWide, "\n")
 }
 
 func (h *Home) renderTabs() string {
@@ -329,11 +389,17 @@ func (h *Home) renderBody(width, height int) string {
 }
 
 func (h *Home) renderRunsPanel(width, height int) string {
-	sectionTitle := style.Subtitle.Render("Recent Episodes")
+	attention := h.renderNeedsAttention(width)
+	sectionTitle := style.Subtitle.Render("Recent Runs (" + filterLabels[h.filterIdx] + ")")
 
 	if len(h.episodes) == 0 {
 		empty := style.MutedText.Render("No episodes yet. Press 'n' to start a new run.")
-		return lipgloss.JoinVertical(lipgloss.Left, sectionTitle, "", empty)
+		return lipgloss.JoinVertical(lipgloss.Left, attention, "", sectionTitle, "", empty)
+	}
+
+	if len(h.filtered) == 0 {
+		empty := style.MutedText.Render("No runs match the current filter.")
+		return lipgloss.JoinVertical(lipgloss.Left, attention, "", sectionTitle, "", empty)
 	}
 
 	listHeight := height - 2
@@ -341,7 +407,7 @@ func (h *Home) renderRunsPanel(width, height int) string {
 		listHeight = 4
 	}
 	h.list.SetSize(width-4, listHeight)
-	return lipgloss.JoinVertical(lipgloss.Left, sectionTitle, "", h.list.View())
+	return lipgloss.JoinVertical(lipgloss.Left, attention, "", sectionTitle, "", h.list.View())
 }
 
 func (h *Home) renderAgentsPanel(width, height int) string {
@@ -414,6 +480,120 @@ func (h *Home) fetchAgentSummary(episodeID string) tea.Cmd {
 	}
 }
 
+func (h *Home) prefetchReasons() tea.Cmd {
+	attention := h.needsAttentionEpisodes()
+	maxItems := 5
+	if len(attention) < maxItems {
+		maxItems = len(attention)
+	}
+	cmds := make([]tea.Cmd, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		ep := attention[i]
+		if _, ok := h.reasons[ep.EpisodeID]; ok {
+			continue
+		}
+		cmds = append(cmds, h.fetchProofReason(ep.EpisodeID))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (h *Home) fetchProofReason(episodeID string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := h.client.ViewEpisode(context.Background(), episodeID)
+		if err != nil {
+			return msg.Error{Err: err}
+		}
+		p := proof.NewProofFromViewResult(result)
+		return msg.ProofReasonLoaded{
+			EpisodeID: episodeID,
+			Reason:    p.Reason,
+		}
+	}
+}
+
+func (h *Home) renderNeedsAttention(width int) string {
+	title := style.Subtitle.Render("Needs attention")
+	attention := h.needsAttentionEpisodes()
+	if len(attention) == 0 {
+		return lipgloss.JoinVertical(lipgloss.Left, title, style.MutedText.Render("No runs need attention."))
+	}
+
+	maxItems := 3
+	if width < 70 {
+		maxItems = 2
+	}
+	if len(attention) < maxItems {
+		maxItems = len(attention)
+	}
+
+	lines := make([]string, 0, maxItems)
+	for i := 0; i < maxItems; i++ {
+		ep := attention[i]
+		reason := h.reasons[ep.EpisodeID]
+		if reason == "" {
+			reason = "Reason: —"
+		} else {
+			reason = "Reason: " + truncate(reason, 60)
+		}
+		line := fmt.Sprintf("%s %s  %s  %s  %s",
+			statusBadge(ep),
+			ep.EpisodeShort,
+			truncate(ep.Task, 32),
+			ep.StartedAt,
+			style.MutedText.Render(reason),
+		)
+		lines = append(lines, line)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, title, strings.Join(lines, "\n"))
+}
+
+func (h *Home) needsAttentionEpisodes() []cli.EpisodeRow {
+	var attention []cli.EpisodeRow
+	for _, ep := range h.episodes {
+		if isNeedsAttention(ep) {
+			attention = append(attention, ep)
+		}
+	}
+	return attention
+}
+
+func (h *Home) applyFilter(episodes []cli.EpisodeRow) []cli.EpisodeRow {
+	label := filterLabels[h.filterIdx]
+	if label == "ALL" {
+		return episodes
+	}
+	filtered := make([]cli.EpisodeRow, 0, len(episodes))
+	for _, ep := range episodes {
+		switch label {
+		case "NEEDS_ATTENTION":
+			if isNeedsAttention(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "VERIFIED":
+			if isVerified(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "UNVERIFIED":
+			if isUnverified(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "FAILED":
+			if isFailed(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "VIOLATED":
+			if isViolated(ep) {
+				filtered = append(filtered, ep)
+			}
+		}
+	}
+	return filtered
+}
+
 func summarizeAgents(rows []cli.TimelineRow) []msg.AgentSummary {
 	agents := map[string]*msg.AgentSummary{}
 	for _, row := range rows {
@@ -472,4 +652,46 @@ func computeStats(episodes []cli.EpisodeRow) episodeStats {
 	stats.NeedsAttention = stats.Failed + stats.Violated + stats.Unknown
 
 	return stats
+}
+
+func statusBadge(ep cli.EpisodeRow) string {
+	outcome := ep.OutcomeOrDefault()
+	badge := style.GetOutcomeBadge(outcome)
+	symbol := style.StatusSymbol(strings.ToUpper(badge.Style))
+
+	var symbolStyle lipgloss.Style
+	switch badge.Style {
+	case "ok":
+		symbolStyle = style.StatusSuccess
+	case "warn":
+		symbolStyle = style.StatusAudit
+	case "err":
+		symbolStyle = style.StatusVetoed
+	default:
+		symbolStyle = style.StatusPending
+	}
+
+	return symbolStyle.Render(symbol)
+}
+
+func isNeedsAttention(ep cli.EpisodeRow) bool {
+	outcome := strings.ToLower(ep.OutcomeOrDefault())
+	return outcome == "violated" || outcome == "goal_not_achieved" || outcome == "error" || outcome == "success_unverified"
+}
+
+func isVerified(ep cli.EpisodeRow) bool {
+	return strings.ToLower(ep.OutcomeOrDefault()) == "success"
+}
+
+func isUnverified(ep cli.EpisodeRow) bool {
+	return strings.ToLower(ep.OutcomeOrDefault()) == "success_unverified"
+}
+
+func isFailed(ep cli.EpisodeRow) bool {
+	outcome := strings.ToLower(ep.OutcomeOrDefault())
+	return outcome == "goal_not_achieved" || outcome == "error"
+}
+
+func isViolated(ep cli.EpisodeRow) bool {
+	return strings.ToLower(ep.OutcomeOrDefault()) == "violated"
 }
