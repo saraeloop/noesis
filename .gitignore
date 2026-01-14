@@ -62,3 +62,12 @@ CLAUDE.md
 # internal folders
 internals/adr/
 images/
+
+# noesis-tui build output
+/noesis-tui/noesis-tui
+/noesis-tui/*.exe
+/noesis-tui/*.out
+# noesis-tui build output
+/noesis-tui/noesis-tui
+/noesis-tui/*.exe
+/noesis-tui/*.out
