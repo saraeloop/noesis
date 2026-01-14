@@ -310,7 +310,7 @@ func (h *Home) viewDashboard() string {
 	header := h.renderHeader()
 	hero := h.renderHero(contentWidth)
 	tabs := h.renderTabs()
-	help := style.HelpBar.Render("1/2: tabs  enter: view  d: diff  b: browse  p: proof  e: events  f: filter  r: refresh  q: quit")
+	help := style.HelpBar.Render("1/2: tabs  enter: view  b: browse  p: proof  e: events  n: run  r: refresh  /: filter  q: quit")
 
 	headerH := lipgloss.Height(header)
 	heroH := lipgloss.Height(hero)
