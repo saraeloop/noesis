@@ -37,6 +37,7 @@ type Proof struct {
 	Duration  *float64
 	Outcome   *string
 	Agents    []ObservedAgent
+	Reason    string
 
 	Verification string
 	Governance   string
@@ -55,6 +56,8 @@ type ObservedAgent struct {
 	Name        string
 	EventCount  int
 	PhaseCounts map[string]int
+	LastPhase   string
+	LastSummary string
 }
 
 // NewProofFromViewResult derives a Proof model from a CLI view result.
@@ -116,6 +119,7 @@ func NewProofFromViewResult(v *cli.ViewResult) *Proof {
 	}
 
 	p.TrustVerdict = trustVerdict(p.Governance, p.Verification)
+	p.Reason = deriveProofReason(p, verification)
 	return p
 }
 
@@ -139,6 +143,8 @@ func observedAgentsFromTimeline(rows []cli.TimelineRow) []ObservedAgent {
 		if phase != "" {
 			agent.PhaseCounts[phase]++
 		}
+		agent.LastPhase = phase
+		agent.LastSummary = strings.TrimSpace(row.Summary)
 	}
 
 	out := make([]ObservedAgent, 0, len(agents))
@@ -149,6 +155,31 @@ func observedAgentsFromTimeline(rows []cli.TimelineRow) []ObservedAgent {
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+func deriveProofReason(p *Proof, verification cli.Verification) string {
+	if p.Governance == GovernanceViolated || p.Governance == GovernanceVetoed {
+		if p.PolicyBreach != nil && strings.TrimSpace(*p.PolicyBreach) != "" {
+			return fmt.Sprintf("Governance breach (%s)", *p.PolicyBreach)
+		}
+		return "Governance policy violated."
+	}
+	if verificationFailed(verification) {
+		for _, assertion := range verification.Assertions {
+			if assertion.Passed {
+				continue
+			}
+			if assertion.Reason != nil && strings.TrimSpace(*assertion.Reason) != "" {
+				return *assertion.Reason
+			}
+			return assertion.Name
+		}
+		return "Verification failed."
+	}
+	if verification.Provided == nil || !*verification.Provided {
+		return "No verification was provided."
+	}
+	return "Assertions passed for this run."
 }
 
 func verificationFailed(v cli.Verification) bool {

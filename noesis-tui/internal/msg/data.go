@@ -43,6 +43,18 @@ type AgentSummaryLoaded struct {
 	Agents    []AgentSummary
 }
 
+// ProofReasonLoaded is sent when a proof reason has been fetched.
+type ProofReasonLoaded struct {
+	EpisodeID string
+	Reason    string
+}
+
+// ChangesLoaded is sent when diff data has been fetched.
+type ChangesLoaded struct {
+	EpisodeID string
+	Diff      *cli.WorkspaceDiff
+}
+
 // ProofLoaded is sent when proof data has been fetched.
 type ProofLoaded struct {
 	EpisodeID     string

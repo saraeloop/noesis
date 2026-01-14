@@ -115,6 +115,13 @@ func (b *Browse) Update(m tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch m.String() {
+		case "d":
+			if b.list.SelectedItem() != nil {
+				ep := b.list.SelectedItem().(episodeBrowseItem).episode
+				return b, func() tea.Msg {
+					return msg.NavigateTo{Screen: msg.ScreenChanges, Payload: ep.EpisodeID}
+				}
+			}
 		case "p":
 			if b.list.SelectedItem() != nil {
 				ep := b.list.SelectedItem().(episodeBrowseItem).episode
@@ -355,6 +362,7 @@ type browseKeyMap struct {
 	Filter key.Binding
 	Proof  key.Binding
 	Events key.Binding
+	Diff   key.Binding
 }
 
 func newBrowseKeyMap() browseKeyMap {
@@ -375,16 +383,20 @@ func newBrowseKeyMap() browseKeyMap {
 			key.WithKeys("e"),
 			key.WithHelp("e", "events"),
 		),
+		Diff: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "diff"),
+		),
 	}
 }
 
 func (k browseKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Back, k.Filter, k.Proof, k.Events}
+	return []key.Binding{k.Back, k.Filter, k.Proof, k.Diff}
 }
 
 func (k browseKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Back, k.Filter},
-		{k.Proof, k.Events},
+		{k.Proof, k.Diff},
 	}
 }

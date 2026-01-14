@@ -17,12 +17,13 @@ type App struct {
 	prevScreen msg.Screen
 
 	// Screen models
-	home   *Home
-	detail *Detail
-	events *Events
-	run    *Run
-	proof  *ProofModel
-	browse *Browse
+	home    *Home
+	detail  *Detail
+	events  *Events
+	run     *Run
+	proof   *ProofModel
+	browse  *Browse
+	changes *Changes
 
 	// Shared state
 	client    *cli.Client
@@ -117,6 +118,10 @@ func (a *App) View() string {
 		if a.browse != nil {
 			content = a.browse.View()
 		}
+	case msg.ScreenChanges:
+		if a.changes != nil {
+			content = a.changes.View()
+		}
 	}
 
 	// Add error display if present
@@ -167,6 +172,11 @@ func (a *App) navigateTo(screen msg.Screen, payload interface{}) (tea.Model, tea
 		a.browse = NewBrowse(a.client)
 		a.browse.SetSize(a.width, a.height)
 		return a, a.browse.Init()
+	case msg.ScreenChanges:
+		episodeID, _ := payload.(string)
+		a.changes = NewChanges(a.client, episodeID)
+		a.changes.SetSize(a.width, a.height)
+		return a, a.changes.Init()
 	}
 
 	return a, nil
@@ -203,6 +213,10 @@ func (a *App) propagateSize(m tea.WindowSizeMsg) {
 	case msg.ScreenBrowse:
 		if a.browse != nil {
 			a.browse.SetSize(m.Width, m.Height)
+		}
+	case msg.ScreenChanges:
+		if a.changes != nil {
+			a.changes.SetSize(m.Width, m.Height)
 		}
 	}
 }
@@ -244,6 +258,12 @@ func (a *App) delegateToScreen(m tea.Msg) (tea.Model, tea.Cmd) {
 		if a.browse != nil {
 			model, cmd := a.browse.Update(m)
 			a.browse = model.(*Browse)
+			return a, cmd
+		}
+	case msg.ScreenChanges:
+		if a.changes != nil {
+			model, cmd := a.changes.Update(m)
+			a.changes = model.(*Changes)
 			return a, cmd
 		}
 	}
