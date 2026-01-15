@@ -527,9 +527,15 @@ def ps(
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
     layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
     registry = FileProcessRegistry(layout.processes_dir)
-    processes = sorted(registry.list(), key=lambda item: item.last_seen_at, reverse=True)
+    processes = registry.list()
+    if process:
+        target = process.strip()
+        processes = [
+            item for item in processes if item.process_id == target or item.process_name == target
+        ]
+    processes = sorted(processes, key=lambda item: item.last_seen_at, reverse=True)[:limit]
     ps_rows: list[dict[str, object]] = []
-    for record in processes[:limit]:
+    for record in processes:
         ps_rows.append(
             {
                 "process_id": record.process_id,
