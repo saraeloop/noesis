@@ -81,6 +81,7 @@ class NoesisSession:
                     workspace=workspace_path,
                     process=process,
                     verify=verify_specs,
+                    process_name=process,
                 )
                 return runner.run(request, context=self._context)
 
