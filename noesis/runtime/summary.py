@@ -109,7 +109,10 @@ def finalize_summary(
     summary["adapter_result"] = adapter_result
     summary["outcome"] = outcome
     summary["verification"] = verification
-    if process_id and process_name:
+    # Prefer structured process block; fall back to legacy fields only if missing.
+    if process:
+        summary["process"] = process
+    elif process_id and process_name:
         summary["process"] = {
             "id": process_id,
             "name": process_name,
