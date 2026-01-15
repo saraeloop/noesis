@@ -422,12 +422,8 @@ def _bootstrap_episode(
     ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_fn())
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
     verify_specs = normalize_verify(verify)
-<<<<<<< HEAD
-    identity = derive_process_identity(workspace_identity=str(layout.root.parent), process_name=process_name)
-=======
     workspace_identity_path = workspace_path or Path(cfg.runs_dir).expanduser().resolve().parent
     identity = derive_process_identity(workspace_identity=str(workspace_identity_path), process_name=process_name)
->>>>>>> aee34c3 (fix(process): normalize process arg across API/core/session; restore CLI ps/runs + legacy layout migration)
     factory = context.require("process_registry_factory", "process_registry_factory/1.0")
     process_service = ProcessRegistryService(factory.create(layout))
     process_record = process_service.get_or_create(identity, kind="oneshot")

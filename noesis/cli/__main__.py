@@ -380,7 +380,6 @@ def run(
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
     port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
-    process: Optional[str] = typer.Option(None, "--process", help="Process name to associate the run with"),
 ) -> None:
     options = GlobalOptions(verbose=verbose, quiet=quiet, json=json_output, force_rich=force_rich)
     options.normalize()
@@ -428,7 +427,6 @@ def run(
             workspace=str(workspace) if workspace else None,
             process=process,
             verify=verify,
-            process=process,
         )
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"runner error: {exc}\n")
@@ -527,72 +525,6 @@ def ps(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-<<<<<<< HEAD
-    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
-    rows = _filter_runs_by_process(rows, process)
-    ps_rows = []
-    for row in rows:
-        episode_id = row.get("episode_id", "") or ""
-        process_block = row.get("process") if isinstance(row.get("process"), dict) else {}
-        ps_rows.append(
-            {
-                "episode_id": episode_id,
-                "episode_short": episode_id[:10],
-                "status": row.get("status") or "",
-                "status_raw": row.get("status"),
-                "success": row.get("success"),
-                "outcome": row.get("outcome"),
-                "using": (row.get("flags", {}) or {}).get("using", "") or "",
-                "task": row.get("task") or "",
-                "started_at": (row.get("started_at") or "")[:20],
-                "duration": format_duration(row.get("duration_sec")),
-                "process_id": process_block.get("id", ""),
-                "process_name": process_block.get("name", ""),
-                "process_run_index": process_block.get("run_index"),
-            }
-        )
-    if json_output:
-        envelope = _build_ps_envelope(episodes=ps_rows, limit=limit)
-        sys.stdout.write(json.dumps(envelope) + "\n")
-        return
-    renderer.print_ps(ps_rows, quiet=quiet)
-
-
-@app.command()
-def runs(
-    limit: int = typer.Option(20, "--limit", help="Number of episodes to show"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
-    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
-    force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
-    port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
-    process: Optional[str] = typer.Option(None, "--process", help="Filter episodes by process id or name"),
-) -> None:
-    """Process-aware listing of recent runs (episodes)."""
-    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
-    ctx = build_context(options, port_specs=port or [])
-    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
-    rows = _filter_runs_by_process(rows, process)
-    ps_rows = []
-    for row in rows:
-        episode_id = row.get("episode_id", "") or ""
-        process_block = row.get("process") if isinstance(row.get("process"), dict) else {}
-        ps_rows.append(
-            {
-                "episode_id": episode_id,
-                "episode_short": episode_id[:10],
-                "status": row.get("status") or "",
-                "status_raw": row.get("status"),
-                "success": row.get("success"),
-                "outcome": row.get("outcome"),
-                "using": (row.get("flags", {}) or {}).get("using", "") or "",
-                "task": row.get("task") or "",
-                "started_at": (row.get("started_at") or "")[:20],
-                "duration": format_duration(row.get("duration_sec")),
-                "process_id": process_block.get("id", ""),
-                "process_name": process_block.get("name", ""),
-                "process_run_index": process_block.get("run_index"),
-=======
     layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
     registry = FileProcessRegistry(layout.processes_dir)
     processes = sorted(registry.list(), key=lambda item: item.last_seen_at, reverse=True)
@@ -607,7 +539,6 @@ def runs(
                 "last_seen_at": record.last_seen_at.isoformat(),
                 "active_run_id": record.active_run_id,
                 "last_run_outcome": record.last_run_outcome,
->>>>>>> aee34c3 (fix(process): normalize process arg across API/core/session; restore CLI ps/runs + legacy layout migration)
             }
         )
     if json_output:

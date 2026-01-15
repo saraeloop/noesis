@@ -64,7 +64,6 @@ def run(
     workspace: str | Path | None = None,
     process: str | None = None,
     verify: VerifyInput = None,
-    process: str | None = None,
 ) -> str:
     """Execute a task using the default session (planner derived from config)."""
     workspace_path = Path(workspace) if workspace is not None else None
@@ -89,11 +88,7 @@ def run(
         tags=tags,
         workspace=workspace_path,
         verify=verify_spec,
-<<<<<<< HEAD
-        process_name=process,
-=======
         process=process,
->>>>>>> aee34c3 (fix(process): normalize process arg across API/core/session; restore CLI ps/runs + legacy layout migration)
     )
 
 
