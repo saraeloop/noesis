@@ -51,6 +51,10 @@ def finalize_summary(
     using_label: Optional[str],
     tags: Optional[Dict[str, Any]],
     intuition: Optional[Intuition],
+    process_id: str | None = None,
+    process_name: str | None = None,
+    process_kind: str | None = None,
+    process_run_index: int | None = None,
     schema_version: str,
     config: ConfigSnapshot,
     ports: Dict[str, str],
@@ -105,6 +109,13 @@ def finalize_summary(
     summary["adapter_result"] = adapter_result
     summary["outcome"] = outcome
     summary["verification"] = verification
+    if process_id and process_name:
+        summary["process"] = {
+            "id": process_id,
+            "name": process_name,
+            "run_index": process_run_index,
+            "kind": process_kind,
+        }
 
     metrics_bucket = summary.setdefault("metrics", {})
     summary.setdefault("insight", {})["metrics"] = insight_metrics.to_mapping()

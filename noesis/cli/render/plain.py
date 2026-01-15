@@ -53,22 +53,11 @@ class PlainRenderer:
     def print_ps(self, rows: Iterable[Dict[str, str]], *, quiet: bool = False) -> None:
         if quiet or self.quiet:
             for row in rows:
-                eid = row.get("episode_id")
-                if eid:
-                    print(eid)
+                process_id = row.get("process_id")
+                if process_id:
+                    print(process_id)
             return
-        formatted_rows = []
-        for row in rows:
-            outcome = normalize_outcome(
-                row.get("outcome"),
-                status=row.get("status_raw"),
-                success=row.get("success"),
-            )
-            badge = outcome_badge(outcome)
-            row = dict(row)
-            row["status"] = badge.label
-            formatted_rows.append(row)
-        for line in format_ps_rows_for_plain(formatted_rows):
+        for line in format_ps_rows_for_plain(rows):
             print(line)
 
     def print_summary(self, summary: Dict[str, Any]) -> None:

@@ -36,6 +36,8 @@ from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
 from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
+from .infrastructure.process_registry import FileProcessRegistry
+from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
 from .infrastructure.verification import FileSystemFileReader
 from .interfaces.observability import RuntimeEventBus
@@ -117,6 +119,12 @@ def _load_graph(source: GraphSource) -> Any:
     return load_graph(source)
 
 
+def _workspace_identity(workspace: Path | str | None) -> str:
+    if workspace is None:
+        return str(Path.cwd().resolve())
+    return str(Path(workspace).expanduser().resolve())
+
+
 # Public API
 
 def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
@@ -139,6 +147,7 @@ def solve(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
@@ -151,6 +160,7 @@ def solve(
         tags=tags,
         context=app,
         workspace=workspace,
+        process=process,
         verify=verify,
         determinism=determinism,
     )
@@ -165,6 +175,7 @@ async def solve_async(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
@@ -177,6 +188,7 @@ async def solve_async(
         tags=tags,
         context=app,
         workspace=workspace,
+        process=process,
         verify=verify,
         determinism=determinism,
     )
@@ -204,6 +216,10 @@ class _EpisodeRuntime:
     state_path: Path
     adapter_label: str
     raw_using_label: str
+    process_id: str
+    process_name: str
+    process_kind: ProcessKind
+    process_run_index: int
     determinism: "_DeterminismConfig | None"
     now_fn: Callable[[], str]
     run_clock: RuntimeClock | None
@@ -322,6 +338,10 @@ def _finalize_episode(
         using_label=setup.raw_using_label,
         tags=tags,
         intuition=setup.intuition_impl,
+        process_id=setup.process_id,
+        process_name=setup.process_name,
+        process_kind=setup.process_kind,
+        process_run_index=setup.process_run_index,
         schema_version=SCHEMA_VERSION,
         config=setup.cfg,
         ports=setup.port_versions,
@@ -383,6 +403,7 @@ def _bootstrap_episode(
     adapter_label: str,
     context: RuntimeContext,
     workspace: str | Path | None,
+    process: str | None,
     verify: VerifyInput,
     intuition: bool | Intuition,
     determinism: "_DeterminismConfig | None",
@@ -451,6 +472,10 @@ def _bootstrap_episode(
         state_path=state_path,
         adapter_label=adapter_label,
         raw_using_label=raw_using_label,
+        process_id=process_record.process_id,
+        process_name=process_record.process_name,
+        process_kind=process_record.kind,
+        process_run_index=process_record.run_index,
         determinism=determinism,
         now_fn=now_fn,
         run_clock=run_clock,
@@ -574,6 +599,7 @@ def _run_impl(
     using: Optional[GraphSource],
     context: RuntimeContext,
     workspace: str | Path | None,
+    process: str | None,
     verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
     process_name: str | None = None,
@@ -594,6 +620,7 @@ def _run_impl(
         adapter_label=adapter_label,
         context=context,
         workspace=workspace,
+        process=process,
         verify=verify,
         intuition=intuition,
         determinism=determinism,
@@ -707,6 +734,7 @@ def run(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
     process_name: str | None = None,
@@ -722,6 +750,7 @@ def run(
         using=None,
         context=app,
         workspace=workspace_path,
+        process=process,
         verify=verify_specs,
         determinism=determinism,
         process_name=process_name,
@@ -737,6 +766,7 @@ def run_using(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
     process_name: str | None = None,
@@ -752,6 +782,7 @@ def run_using(
         using=using,
         context=app,
         workspace=workspace_path,
+        process=process,
         verify=verify_specs,
         determinism=determinism,
         process_name=process_name,
@@ -767,6 +798,7 @@ async def run_using_async(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
     process_name: str | None = None,
@@ -782,6 +814,7 @@ async def run_using_async(
         using=using,
         context=app,
         workspace=workspace_path,
+        process=process,
         verify=verify_specs,
         determinism=determinism,
         process_name=process_name,
@@ -797,6 +830,7 @@ async def _run_impl_async(
     using: Optional[GraphSource],
     context: RuntimeContext,
     workspace: str | Path | None,
+    process: str | None,
     verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
     process_name: str | None = None,
@@ -817,6 +851,7 @@ async def _run_impl_async(
         adapter_label=adapter_label,
         context=context,
         workspace=workspace,
+        process=process,
         verify=verify,
         intuition=intuition,
         determinism=determinism,

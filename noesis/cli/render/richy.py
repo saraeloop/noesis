@@ -155,9 +155,9 @@ class RichRenderer:
     def print_ps(self, rows: list[dict[str, str]], *, quiet: bool = False) -> None:
         if quiet or self.quiet:
             for row in rows:
-                eid = row.get("episode_id")
-                if eid:
-                    self.console.print(eid)
+                process_id = row.get("process_id")
+                if process_id:
+                    self.console.print(process_id)
             return
 
         table = Table(
@@ -167,27 +167,19 @@ class RichRenderer:
             expand=True,
             pad_edge=False,
         )
-        table.add_column("STARTED_AT", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=20)
-        table.add_column("EPISODE", style=_safe_style(self.console, "accent", "bright_cyan"), no_wrap=True, max_width=12)
-        table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=16)
-        table.add_column("USING", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=14)
-        table.add_column("DURATION", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
+        table.add_column("LAST_SEEN", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=20)
+        table.add_column("PROCESS", style=_safe_style(self.console, "accent", "bright_cyan"), no_wrap=True, max_width=26)
+        table.add_column("STATUS", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=10)
+        table.add_column("KIND", style=_safe_style(self.console, "muted", "dim"), no_wrap=True, max_width=10)
+        table.add_column("OUTCOME", style=_safe_style(self.console, "val", "white"), no_wrap=True, max_width=18)
         for row in rows:
-            status = row.get("status", "")
-            outcome = normalize_outcome(
-                row.get("outcome"),
-                status=row.get("status_raw"),
-                success=row.get("success"),
-            )
-            badge = outcome_badge(outcome)
-            style = _safe_style(self.console, badge.style, "white")
-            status_text = Text(badge.label, style=style)
+            status_text = Text(row.get("status", ""), style=_safe_style(self.console, "val", "white"))
             table.add_row(
-                row.get("started_at", "")[:20],
-                (row.get("episode_short") or row.get("episode_id") or "")[:10],
+                row.get("last_seen_at", "")[:20],
+                (row.get("process_name") or row.get("process_id") or "")[:26],
                 status_text,
-                row.get("using", ""),
-                row.get("duration", ""),
+                row.get("kind", ""),
+                row.get("last_run_outcome", "") or "",
             )
         self.console.print(table)
 

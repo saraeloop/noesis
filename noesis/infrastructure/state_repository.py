@@ -73,6 +73,10 @@ class RuntimeStateRepository(StateRepository):
             started_at=ctx.started_at,
             tags=ctx.tags,
             adapter_label=ctx.adapter_label,
+            process_id=ctx.process_id,
+            process_name=ctx.process_name,
+            process_kind=ctx.process_kind,
+            process_run_index=ctx.process_run_index,
             intuition_mode=ctx.intuition_mode,
         )
         _write_state(path, state)

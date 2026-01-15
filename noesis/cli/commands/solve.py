@@ -25,6 +25,7 @@ class SolveCommand:
         parser.add_argument("--stdin", action="store_true", help="Read task prompt from STDIN")
         parser.add_argument("--no-intuition", action="store_true", help="Disable intuition entirely")
         parser.add_argument("--workspace", help="Workspace root for verification snapshots")
+        parser.add_argument("--process", help="Process label for grouping runs")
         parser.add_argument("--verify-file", help="JSON file of verification specs")
         parser.add_argument("--verify-file-exists", action="append", help="Require a file to exist (repeatable)")
         parser.add_argument(
@@ -66,6 +67,7 @@ class SolveCommand:
         tags = parse_tags(args.tags)
         task = read_task(args.task, use_stdin=args.stdin)
         workspace = Path(args.workspace).expanduser() if args.workspace else None
+        process = args.process
         verify = compile_verify_input(
             verify_file=args.verify_file,
             verify_file_exists=args.verify_file_exists,
@@ -83,6 +85,7 @@ class SolveCommand:
             tags=tags,
             context=ctx.runtime_context,
             workspace=workspace,
+            process=process,
             verify=verify,
         )
 

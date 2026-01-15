@@ -283,19 +283,19 @@ def _build_view_envelope(
 
 def _build_ps_envelope(
     *,
-    episodes: list[dict],
+    processes: list[dict],
     limit: int,
     offset: int = 0,
 ) -> dict[str, object]:
-    """Build the cli/1.1 PsResult envelope per ADR-012."""
+    """Build the cli/1.1 PsResult envelope."""
     return {
         "cli": {
             "schema_version": _CLI_SCHEMA_VERSION,
             "compat_min": _CLI_COMPAT_MIN,
             "compat_max": _CLI_COMPAT_MAX,
         },
-        "episodes": episodes,
-        "total_count": len(episodes),
+        "processes": processes,
+        "total_count": len(processes),
         "limit": limit,
         "offset": offset,
     }
@@ -365,6 +365,7 @@ def home(
 def run(
     task: str = typer.Argument(..., help="Task prompt"),
     workspace: Optional[Path] = typer.Option(None, "--workspace", help="Workspace root for verification"),
+    process: Optional[str] = typer.Option(None, "--process", help="Process label for grouping runs"),
     verify_file: Optional[Path] = typer.Option(None, "--verify-file", help="JSON file of verification specs"),
     verify_file_exists: Optional[list[str]] = typer.Option(None, "--verify-file-exists", help="Require file exists"),
     verify_file_contains: Optional[list[str]] = typer.Option(None, "--verify-file-contains", help="Require file contains text"),
@@ -424,6 +425,7 @@ def run(
             task=task,
             context=ctx.runtime_context,
             workspace=str(workspace) if workspace else None,
+            process=process,
             verify=verify,
             process=process,
         )
@@ -514,7 +516,7 @@ def view(
 
 @app.command()
 def ps(
-    limit: int = typer.Option(20, "--limit", help="Number of episodes to show"),
+    limit: int = typer.Option(20, "--limit", help="Number of processes to show"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
@@ -591,10 +593,39 @@ def runs(
             }
         )
     if json_output:
-        envelope = _build_ps_envelope(episodes=ps_rows, limit=limit)
+        envelope = _build_ps_envelope(processes=ps_rows, limit=limit)
         sys.stdout.write(json.dumps(envelope) + "\n")
         return
     renderer.print_ps(ps_rows, quiet=quiet)
+
+
+@app.command()
+def runs(
+    process: str = typer.Option(..., "--process", help="Process name or id"),
+    limit: int = typer.Option(20, "--limit", help="Number of runs to show"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
+    force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
+    port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+) -> None:
+    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
+    ctx = build_context(options, port_specs=port or [])
+    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
+    registry = FileProcessRegistry(ctx.config_snapshot.runs_dir / "processes")
+    record = registry.get(process) or registry.get_by_name(process)
+    if record is None:
+        renderer.echo(f"unknown process: {process}")
+        raise typer.Exit(code=1)
+    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    filtered = []
+    for row in rows:
+        process_meta = row.get("process") or {}
+        if process_meta.get("id") == record.process_id:
+            filtered.append(row)
+    if json_output:
+        sys.stdout.write(json.dumps(filtered) + "\n")
+        return
+    renderer.print_list(filtered, quiet=quiet)
 
 
 @app.command()

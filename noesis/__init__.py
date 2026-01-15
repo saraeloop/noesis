@@ -62,6 +62,7 @@ def run(
     tags: Optional[Dict[str, Any]] = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     process: str | None = None,
 ) -> str:
@@ -78,6 +79,7 @@ def run(
             tags=tags,
             context=context,
             workspace=workspace_path,
+            process=process,
             verify=verify_spec,
             process_name=process,
         )
@@ -87,6 +89,7 @@ def run(
         intuition=intuition,
         tags=tags,
         workspace=workspace_path,
+        process=process,
         verify=verify_spec,
         process_name=process,
     )
@@ -101,6 +104,7 @@ def solve(
     tags: Optional[Dict[str, Any]] = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
 ) -> str:
     """Execute a task using an explicit graph/adapter."""
@@ -117,6 +121,7 @@ def solve(
             tags=tags,
             context=context,
             workspace=workspace_path,
+            process=process,
             verify=verify_spec,
         )
     return _current_session().solve(
@@ -126,6 +131,7 @@ def solve(
         intuition=intuition,
         tags=tags,
         workspace=workspace_path,
+        process=process,
         verify=verify_spec,
     )
 
@@ -139,6 +145,7 @@ async def solve_async(
     tags: Optional[Dict[str, Any]] = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
 ) -> str:
     """Execute a task using an explicit graph/adapter (async)."""
@@ -155,6 +162,7 @@ async def solve_async(
             tags=tags,
             context=context,
             workspace=workspace_path,
+            process=process,
             verify=verify_spec,
         )
     return await _current_session().solve_async(
@@ -164,6 +172,7 @@ async def solve_async(
         intuition=intuition,
         tags=tags,
         workspace=workspace_path,
+        process=process,
         verify=verify_spec,
     )
 
