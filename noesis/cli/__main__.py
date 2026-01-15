@@ -226,7 +226,7 @@ def _build_run_envelope(
     if workspace is not None:
         invocation["workspace"] = str(workspace)
 
-    return {
+    envelope = {
         "cli": {
             "schema_version": _CLI_SCHEMA_VERSION,
             "compat_min": _CLI_COMPAT_MIN,
@@ -246,6 +246,10 @@ def _build_run_envelope(
         "capabilities": sorted(set(capabilities)),
         "invocation": invocation,
     }
+    process_block = summary.get("process")
+    if isinstance(process_block, dict):
+        envelope["process"] = process_block
+    return envelope
 
 
 def _build_view_envelope(
@@ -295,6 +299,25 @@ def _build_ps_envelope(
         "limit": limit,
         "offset": offset,
     }
+
+
+def _filter_runs_by_process(rows: list[dict], process: str | None) -> list[dict]:
+    """Return rows whose process id or name matches the requested process."""
+    if not process:
+        return rows
+    target = process.strip()
+    if not target:
+        return rows
+    filtered: list[dict] = []
+    for row in rows:
+        proc = row.get("process") if isinstance(row, dict) else None
+        if not isinstance(proc, dict):
+            continue
+        pid = str(proc.get("id") or "")
+        pname = str(proc.get("name") or proc.get("process_name") or "")
+        if target in {pid, pname}:
+            filtered.append(row)
+    return filtered
 
 
 def _build_events_envelope(
@@ -355,6 +378,7 @@ def run(
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
     port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+    process: Optional[str] = typer.Option(None, "--process", help="Process name to associate the run with"),
 ) -> None:
     options = GlobalOptions(verbose=verbose, quiet=quiet, json=json_output, force_rich=force_rich)
     options.normalize()
@@ -401,6 +425,7 @@ def run(
             context=ctx.runtime_context,
             workspace=str(workspace) if workspace else None,
             verify=verify,
+            process=process,
         )
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"runner error: {exc}\n")
@@ -494,14 +519,17 @@ def ps(
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
     port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+    process: Optional[str] = typer.Option(None, "--process", help="Filter episodes by process id or name"),
 ) -> None:
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
     rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    rows = _filter_runs_by_process(rows, process)
     ps_rows = []
     for row in rows:
         episode_id = row.get("episode_id", "") or ""
+        process_block = row.get("process") if isinstance(row.get("process"), dict) else {}
         ps_rows.append(
             {
                 "episode_id": episode_id,
@@ -514,6 +542,52 @@ def ps(
                 "task": row.get("task") or "",
                 "started_at": (row.get("started_at") or "")[:20],
                 "duration": format_duration(row.get("duration_sec")),
+                "process_id": process_block.get("id", ""),
+                "process_name": process_block.get("name", ""),
+                "process_run_index": process_block.get("run_index"),
+            }
+        )
+    if json_output:
+        envelope = _build_ps_envelope(episodes=ps_rows, limit=limit)
+        sys.stdout.write(json.dumps(envelope) + "\n")
+        return
+    renderer.print_ps(ps_rows, quiet=quiet)
+
+
+@app.command()
+def runs(
+    limit: int = typer.Option(20, "--limit", help="Number of episodes to show"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
+    force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
+    port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+    process: Optional[str] = typer.Option(None, "--process", help="Filter episodes by process id or name"),
+) -> None:
+    """Process-aware listing of recent runs (episodes)."""
+    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
+    ctx = build_context(options, port_specs=port or [])
+    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
+    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    rows = _filter_runs_by_process(rows, process)
+    ps_rows = []
+    for row in rows:
+        episode_id = row.get("episode_id", "") or ""
+        process_block = row.get("process") if isinstance(row.get("process"), dict) else {}
+        ps_rows.append(
+            {
+                "episode_id": episode_id,
+                "episode_short": episode_id[:10],
+                "status": row.get("status") or "",
+                "status_raw": row.get("status"),
+                "success": row.get("success"),
+                "outcome": row.get("outcome"),
+                "using": (row.get("flags", {}) or {}).get("using", "") or "",
+                "task": row.get("task") or "",
+                "started_at": (row.get("started_at") or "")[:20],
+                "duration": format_duration(row.get("duration_sec")),
+                "process_id": process_block.get("id", ""),
+                "process_name": process_block.get("name", ""),
+                "process_run_index": process_block.get("run_index"),
             }
         )
     if json_output:

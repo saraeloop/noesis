@@ -65,6 +65,7 @@ class NoesisSession:
         workspace: str | Path | None = None,
         verify: "VerifyInput" = None,
         runner: RunnerProtocol | None = None,
+        process_name: str | None = None,
     ) -> str:
         """Execute a task either through the built-in core or a supplied runner."""
         merged_tags = self._config.merge_tags(tags)
@@ -79,6 +80,7 @@ class NoesisSession:
                     tags=merged_tags,
                     workspace=workspace_path,
                     verify=verify_specs,
+                    process_name=process_name,
                 )
                 return runner.run(request, context=self._context)
 
@@ -93,6 +95,7 @@ class NoesisSession:
                 workspace=workspace_path,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process_name,
             )
 
     def solve(

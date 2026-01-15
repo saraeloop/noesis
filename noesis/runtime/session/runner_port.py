@@ -23,6 +23,7 @@ class SessionRunRequest:
     tags: Mapping[str, object]
     workspace: Path | None = None
     verify: Sequence[Assertion] | None = None
+    process_name: str | None = None
 
 
 class RunnerProtocol(Protocol):

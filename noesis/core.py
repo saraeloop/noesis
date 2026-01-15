@@ -302,6 +302,15 @@ def _finalize_episode(
     outcome: str,
     verification: Dict[str, object | None],
 ) -> None:
+    process_block: Dict[str, object] | None = None
+    if setup.episode_ctx.process_id:
+        process_block = {
+            "id": setup.episode_ctx.process_id,
+            "name": setup.episode_ctx.process_name,
+            "kind": setup.episode_ctx.process_kind,
+            "run_index": setup.episode_ctx.process_run_index,
+        }
+
     _finalize_summary(
         run_dir=setup.ctx.run_dir,
         episode_id=setup.ctx.episode_id,
@@ -319,6 +328,7 @@ def _finalize_episode(
         adapter_result=adapter_result,
         outcome=outcome,
         verification=verification,
+        process=process_block,
     )
 
     persist_episode_memory(run_dir=setup.ctx.run_dir, context=setup.runtime_context)
@@ -376,6 +386,7 @@ def _bootstrap_episode(
     verify: VerifyInput,
     intuition: bool | Intuition,
     determinism: "_DeterminismConfig | None",
+    process_name: str | None = None,
 ) -> _EpisodeRuntime:
     config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
     cfg = config_port.get()
@@ -390,9 +401,8 @@ def _bootstrap_episode(
     run_clock, now_fn = _init_clock(determinism)
     ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_fn())
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
-    workspace_path = Path(workspace) if workspace is not None else None
     verify_specs = normalize_verify(verify)
-    identity = derive_process_identity(workspace_identity=str(layout.root.parent))
+    identity = derive_process_identity(workspace_identity=str(layout.root.parent), process_name=process_name)
     factory = context.require("process_registry_factory", "process_registry_factory/1.0")
     process_service = ProcessRegistryService(factory.create(layout))
     process_record = process_service.get_or_create(identity, kind="oneshot")
@@ -566,6 +576,7 @@ def _run_impl(
     workspace: str | Path | None,
     verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
+    process_name: str | None = None,
 ) -> str:
     minimal_mode = using is None
     raw_using_label: Optional[str]
@@ -586,6 +597,7 @@ def _run_impl(
         verify=verify,
         intuition=intuition,
         determinism=determinism,
+        process_name=process_name,
     )
 
     return _run_episode(setup=setup, task=task, seed=seed, tags=tags, using=using)
@@ -697,6 +709,7 @@ def run(
     workspace: str | Path | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
+    process_name: str | None = None,
 ) -> str:
     app = context or get_context()
     workspace_path = Path(workspace) if workspace is not None else None
@@ -711,6 +724,7 @@ def run(
         workspace=workspace_path,
         verify=verify_specs,
         determinism=determinism,
+        process_name=process_name,
     )
 
 
@@ -725,6 +739,7 @@ def run_using(
     workspace: str | Path | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
+    process_name: str | None = None,
 ) -> str:
     app = context or get_context()
     workspace_path = Path(workspace) if workspace is not None else None
@@ -739,6 +754,7 @@ def run_using(
         workspace=workspace_path,
         verify=verify_specs,
         determinism=determinism,
+        process_name=process_name,
     )
 
 
@@ -753,6 +769,7 @@ async def run_using_async(
     workspace: str | Path | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
+    process_name: str | None = None,
 ) -> str:
     app = context or get_context()
     workspace_path = Path(workspace) if workspace is not None else None
@@ -767,6 +784,7 @@ async def run_using_async(
         workspace=workspace_path,
         verify=verify_specs,
         determinism=determinism,
+        process_name=process_name,
     )
 
 
@@ -781,6 +799,7 @@ async def _run_impl_async(
     workspace: str | Path | None,
     verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
+    process_name: str | None = None,
 ) -> str:
     minimal_mode = using is None
     raw_using_label: Optional[str]
@@ -801,6 +820,7 @@ async def _run_impl_async(
         verify=verify,
         intuition=intuition,
         determinism=determinism,
+        process_name=process_name,
     )
 
     return await _run_episode_async(setup=setup, task=task, seed=seed, tags=tags, using=using)
