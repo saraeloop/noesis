@@ -133,20 +133,28 @@ class DiagnosticsCommand:
 
     def _check_runs_dir(self, path: Path) -> CheckResult:
         layout = resolve_noesis_paths(workspace=None, runs_dir=path)
-        expanded = layout.episodes_dir.expanduser()
-        if not expanded.exists():
-            return CheckResult("runs_dir", "warn", f"{expanded} (missing)")
-        if not expanded.is_dir():
-            return CheckResult("runs_dir", "error", f"{expanded} is not a directory")
+        expanded_runs = path.expanduser()
+        expanded_episodes = layout.episodes_dir.expanduser()
+
+        if not expanded_runs.exists():
+            return CheckResult("runs_dir", "warn", f"{expanded_runs} (missing)")
+        if not expanded_runs.is_dir():
+            return CheckResult("runs_dir", "error", f"{expanded_runs} is not a directory")
+
+        # Ensure the canonical episodes directory is also available/writable
+        if not expanded_episodes.exists():
+            return CheckResult("runs_dir", "warn", f"{expanded_episodes} (missing episodes dir)")
+        if not expanded_episodes.is_dir():
+            return CheckResult("runs_dir", "error", f"{expanded_episodes} is not a directory")
         try:
-            _, _, free = shutil.disk_usage(expanded)
+            _, _, free = shutil.disk_usage(expanded_episodes)
         except Exception:
             free = None
-        if not os.access(expanded, os.W_OK):
-            return CheckResult("runs_dir", "warn", f"{expanded} not writable")
+        if not os.access(expanded_episodes, os.W_OK):
+            return CheckResult("runs_dir", "warn", f"{expanded_episodes} not writable")
         if free is not None and free < 50 * 1024 * 1024:
-            return CheckResult("runs_dir", "warn", f"{expanded} low free space ({free} bytes)")
-        return CheckResult("runs_dir", "ok", str(expanded))
+            return CheckResult("runs_dir", "warn", f"{expanded_episodes} low free space ({free} bytes)")
+        return CheckResult("runs_dir", "ok", f"{expanded_runs} (episodes: {expanded_episodes})")
 
     def _check_learn_home(self, path: Path) -> CheckResult:
         expanded = path.expanduser()
