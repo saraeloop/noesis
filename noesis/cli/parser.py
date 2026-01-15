@@ -41,7 +41,7 @@ def build_parser(formatter_class: type[argparse.HelpFormatter]) -> tuple[argpars
         "  run       baseline episode\n"
         "  solve     adapter episode\n"
         "  list      recent runs\n"
-        "  ps        compact runs table\n"
+        "  ps        compact processes table\n"
         "  show      episode summary\n"
         "  view      timeline + governance report\n"
         "  events    stream events\n"

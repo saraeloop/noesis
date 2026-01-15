@@ -196,6 +196,10 @@ class NoesisState:
     started_at: str
     tags: Dict[str, Any]
     adapter_label: str
+    process_id: str | None = None
+    process_name: str | None = None
+    process_kind: str | None = None
+    process_run_index: int | None = None
     intuition_mode: "IntuitionMode" = field(default_factory=_default_intuition_mode)
     plan_steps: List[PlanStep] = field(default_factory=list)
     plan_rationale: Optional[str] = None
@@ -291,7 +295,7 @@ class NoesisState:
         self.links = {k: v for k, v in links.items() if v}
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "version": STATE_VERSION,
             "state_schema_version": STATE_SCHEMA_VERSION,
             "episode": {
@@ -322,6 +326,14 @@ class NoesisState:
             },
             "links": self.links,
         }
+        if self.process_id and self.process_name:
+            payload["process"] = {
+                "id": self.process_id,
+                "name": self.process_name,
+                "run_index": self.process_run_index,
+                "kind": self.process_kind,
+            }
+        return payload
 
     @property
     def plan(self) -> "_PlanView":
@@ -370,6 +382,10 @@ def create_state(
     started_at: str,
     tags: Dict[str, Any],
     adapter_label: str,
+    process_id: str | None = None,
+    process_name: str | None = None,
+    process_kind: str | None = None,
+    process_run_index: int | None = None,
     intuition_mode: "IntuitionMode | None" = None,
 ) -> NoesisState:
     """Factory to instantiate a state with immutable metadata."""
@@ -382,5 +398,9 @@ def create_state(
         started_at=started_at,
         tags=tags,
         adapter_label=adapter_label,
+        process_id=process_id,
+        process_name=process_name,
+        process_kind=process_kind,
+        process_run_index=process_run_index,
         intuition_mode=intuition_mode,
     )

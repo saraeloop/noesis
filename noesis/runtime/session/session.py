@@ -63,6 +63,7 @@ class NoesisSession:
         intuition: bool | Intuition | None = True,
         tags: Optional[MutableMapping[str, Any]] = None,
         workspace: str | Path | None = None,
+        process: str | None = None,
         verify: "VerifyInput" = None,
         runner: RunnerProtocol | None = None,
     ) -> str:
@@ -78,6 +79,7 @@ class NoesisSession:
                     intuition=intuition,
                     tags=merged_tags,
                     workspace=workspace_path,
+                    process=process,
                     verify=verify_specs,
                 )
                 return runner.run(request, context=self._context)
@@ -91,6 +93,7 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
+                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
             )
@@ -104,6 +107,7 @@ class NoesisSession:
         intuition: bool | Intuition = True,
         tags: Optional[MutableMapping[str, Any]] = None,
         workspace: str | Path | None = None,
+        process: str | None = None,
         verify: "VerifyInput" = None,
     ) -> str:
         """Execute a task using a supplied graph/adapter."""
@@ -121,6 +125,7 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
+                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
             )
@@ -134,6 +139,7 @@ class NoesisSession:
         intuition: bool | Intuition = True,
         tags: Optional[MutableMapping[str, Any]] = None,
         workspace: str | Path | None = None,
+        process: str | None = None,
         verify: "VerifyInput" = None,
     ) -> str:
         """Execute a task using a supplied graph/adapter (async)."""
@@ -151,6 +157,7 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
+                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
             )

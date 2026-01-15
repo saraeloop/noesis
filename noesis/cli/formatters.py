@@ -42,14 +42,14 @@ def format_rows_for_plain(rows: Iterable[Dict[str, str]]) -> List[str]:
 
 def format_ps_rows_for_plain(rows: Iterable[Dict[str, str]]) -> List[str]:
     lines: List[str] = []
-    header = f"{'STARTED_AT':>20}  {'EPISODE':10}  {'STATUS':16}  {'USING':12}  DURATION"
+    header = f"{'LAST_SEEN':>20}  {'PROCESS':24}  {'STATUS':10}  {'KIND':10}  OUTCOME"
     lines.append(header)
     lines.append("-" * len(header))
     for row in rows:
-        started = truncate((row.get("started_at", "") or "")[:20], max_width=20)
-        episode = truncate((row.get("episode_short") or row.get("episode_id") or "")[:10], max_width=10)
-        status = truncate(row.get("status", "")[:16], max_width=16)
-        using = truncate(row.get("using", "")[:12], max_width=12)
-        duration = row.get("duration", "")
-        lines.append(f"{started:>20}  {episode:10}  {status:16}  {using:12}  {duration}")
+        last_seen = truncate((row.get("last_seen_at", "") or "")[:20], max_width=20)
+        process = truncate((row.get("process_name") or row.get("process_id") or "")[:24], max_width=24)
+        status = truncate((row.get("status") or "")[:10], max_width=10)
+        kind = truncate((row.get("kind") or "")[:10], max_width=10)
+        outcome = row.get("last_run_outcome") or ""
+        lines.append(f"{last_seen:>20}  {process:24}  {status:10}  {kind:10}  {outcome}")
     return lines

@@ -105,6 +105,7 @@ def list_runs(
             "duration_sec": s.get("duration_sec"),
             "status": s.get("status"),
             "outcome": s.get("outcome"),
+            "process": s.get("process"),
             "manifest": manifest_meta,
             "manifest_status": manifest_status,
         })

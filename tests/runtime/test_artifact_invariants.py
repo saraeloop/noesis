@@ -197,7 +197,9 @@ def test_artifact_invariants_hello_and_veto(tmp_path: Path) -> None:
         from tutorials import hello_episode
 
         assert hello_episode.main() == 0
-        episodes = [p for p in runs_dir.iterdir() if p.is_dir() and p.name != "_episodes"]
+        episodes = [
+            p for p in runs_dir.iterdir() if p.is_dir() and p.name not in {"_episodes", "processes"}
+        ]
         assert episodes, "hello_episode did not emit an episode"
         latest_run = max(episodes, key=lambda p: p.stat().st_mtime)
         _validate_run(latest_run)
