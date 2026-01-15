@@ -103,6 +103,9 @@ def finalize_summary(
         ports=ports,
     ).__dict__
 
+    if process:
+        summary["process"] = process
+
     summary["adapter_result"] = adapter_result
     summary["outcome"] = outcome
     summary["verification"] = verification
