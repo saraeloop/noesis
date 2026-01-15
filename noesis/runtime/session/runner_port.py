@@ -24,6 +24,7 @@ class SessionRunRequest:
     workspace: Path | None = None
     process: str | None = None
     verify: Sequence[Assertion] | None = None
+    process_name: str | None = None
 
 
 class RunnerProtocol(Protocol):

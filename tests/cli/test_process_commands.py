@@ -25,7 +25,10 @@ def test_ps_and_runs_filter_by_process(tmp_path, capsys) -> None:
         assert run_code == 0
         capsys.readouterr()
 
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        from noesis.runtime.paths import resolve_noesis_paths
+
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+        episode_dirs = list(layout.episodes_dir.glob("ep_*"))
         assert len(episode_dirs) == 1
         episode_id = episode_dirs[0].name
 

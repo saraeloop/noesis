@@ -93,9 +93,9 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
-                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     def solve(
@@ -125,9 +125,9 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
-                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     async def solve_async(
@@ -157,9 +157,9 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
-                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     def with_ports(self, **ports: tuple[Any, str]) -> "NoesisSession":

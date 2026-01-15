@@ -14,6 +14,7 @@ from noesis.cli.viewer import load_episode_view
 from noesis.cli.view_models import build_episode_dashboard
 from noesis.runtime.artifacts.manifest import compute_sha256
 from noesis.runtime.normalization import normalize_using
+from noesis.runtime.paths import resolve_noesis_paths
 from noesis.trace.schema import events_schema_path
 
 
@@ -40,7 +41,8 @@ def _tutorial_context(tmp_path: Path) -> Path:
     os.environ["NOESIS_LEARN_HOME"] = str(learn_dir)
     os.chdir(tmp_path)
     try:
-        yield runs_dir
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+        yield layout.episodes_dir
     finally:
         os.chdir(original_cwd)
         os.environ.clear()
@@ -193,13 +195,11 @@ def _validate_run(run_dir: Path) -> None:
 
 
 def test_artifact_invariants_hello_and_veto(tmp_path: Path) -> None:
-    with _tutorial_context(tmp_path) as runs_dir:
+    with _tutorial_context(tmp_path) as episodes_dir:
         from tutorials import hello_episode
 
         assert hello_episode.main() == 0
-        episodes = [
-            p for p in runs_dir.iterdir() if p.is_dir() and p.name not in {"_episodes", "processes"}
-        ]
+        episodes = [p for p in episodes_dir.iterdir() if p.is_dir() and p.name.startswith("ep_")]
         assert episodes, "hello_episode did not emit an episode"
         latest_run = max(episodes, key=lambda p: p.stat().st_mtime)
         _validate_run(latest_run)
@@ -217,11 +217,11 @@ def test_artifact_invariants_hello_and_veto(tmp_path: Path) -> None:
     if not os.getenv("OPENAI_API_KEY"):
         pytest.skip("OPENAI_API_KEY not set for guarded_langgraph tutorial")
 
-    with _tutorial_context(tmp_path / "guarded") as runs_dir:
+    with _tutorial_context(tmp_path / "guarded") as episodes_dir:
         from tutorials import guarded_langgraph
 
         assert guarded_langgraph.main() == 0
-        episodes = [p for p in runs_dir.iterdir() if p.is_dir() and p.name != "_episodes"]
+        episodes = [p for p in episodes_dir.iterdir() if p.is_dir() and p.name.startswith("ep_")]
         assert episodes, "guarded_langgraph did not emit episodes"
         veto_runs = []
         for episode_dir in episodes:

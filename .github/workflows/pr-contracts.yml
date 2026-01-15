@@ -69,6 +69,9 @@ jobs:
 
       - name: Pre-release dry run
         run: uv run python scripts/pre_release.py --check-all
+        env:
+          NOESIS_RUNS_DIR: ./.noesis-ci/smoke-runs
+          NOESIS_LEARN_HOME: ./.noesis-ci/state
 
       - name: Upload pre-release summary
         if: always()
@@ -76,7 +79,7 @@ jobs:
         with:
           name: prerelease-summary-${{ matrix.python }}
           path: |
-            .noesis/prerelease
+            .noesis-ci/prerelease
           if-no-files-found: ignore
 
   post-summary-comment:
@@ -168,6 +171,9 @@ jobs:
         if: needs.determine-changes.outputs.contracts == 'true'
       - run: uv run python scripts/pre_release.py --check-all
         if: needs.determine-changes.outputs.contracts == 'true'
+        env:
+          NOESIS_RUNS_DIR: ./.noesis-ci/smoke-runs
+          NOESIS_LEARN_HOME: ./.noesis-ci/state
 
   docs-build:
     name: "docs: check (Mintlify)"

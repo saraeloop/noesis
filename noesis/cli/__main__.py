@@ -24,6 +24,8 @@ from noesis.cli.formatters import format_duration
 from noesis.cli.query import load_episode_dir
 from noesis.cli.content.home import build_home_screen, RecentEpisode, LastEpisodeInfo
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
+from noesis.runtime.paths import resolve_noesis_paths
+from noesis.infrastructure.layout_migration import migrate_layout
 from noesis.infrastructure.process_registry import FileProcessRegistry
 
 
@@ -225,7 +227,7 @@ def _build_run_envelope(
     if workspace is not None:
         invocation["workspace"] = str(workspace)
 
-    return {
+    envelope = {
         "cli": {
             "schema_version": _CLI_SCHEMA_VERSION,
             "compat_min": _CLI_COMPAT_MIN,
@@ -245,6 +247,10 @@ def _build_run_envelope(
         "capabilities": sorted(set(capabilities)),
         "invocation": invocation,
     }
+    process_block = summary.get("process")
+    if isinstance(process_block, dict):
+        envelope["process"] = process_block
+    return envelope
 
 
 def _build_view_envelope(
@@ -294,6 +300,25 @@ def _build_ps_envelope(
         "limit": limit,
         "offset": offset,
     }
+
+
+def _filter_runs_by_process(rows: list[dict], process: str | None) -> list[dict]:
+    """Return rows whose process id or name matches the requested process."""
+    if not process:
+        return rows
+    target = process.strip()
+    if not target:
+        return rows
+    filtered: list[dict] = []
+    for row in rows:
+        proc = row.get("process") if isinstance(row, dict) else None
+        if not isinstance(proc, dict):
+            continue
+        pid = str(proc.get("id") or "")
+        pname = str(proc.get("name") or proc.get("process_name") or "")
+        if target in {pid, pname}:
+            filtered.append(row)
+    return filtered
 
 
 def _build_events_envelope(
@@ -415,8 +440,11 @@ def run(
         raise typer.Exit(code=3)
 
     if json_output:
-        runs_dir = ctx.config_snapshot.runs_dir
-        episode_dir = Path(runs_dir).expanduser().resolve() / episode_id
+        layout = resolve_noesis_paths(
+            workspace=workspace.expanduser().resolve() if workspace else None,
+            runs_dir=ctx.config_snapshot.runs_dir,
+        )
+        episode_dir = layout.episodes_dir / episode_id
         envelope = _build_run_envelope(
             episode_id=episode_id,
             episode_dir=episode_dir,
@@ -492,23 +520,25 @@ def ps(
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
     port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+    process: Optional[str] = typer.Option(None, "--process", help="Filter episodes by process id or name"),
 ) -> None:
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    registry = FileProcessRegistry(ctx.config_snapshot.runs_dir / "processes")
+    layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+    registry = FileProcessRegistry(layout.processes_dir)
     processes = sorted(registry.list(), key=lambda item: item.last_seen_at, reverse=True)
     ps_rows: list[dict[str, object]] = []
-    for process in processes[:limit]:
+    for record in processes[:limit]:
         ps_rows.append(
             {
-                "process_id": process.process_id,
-                "process_name": process.process_name,
-                "kind": process.kind,
-                "status": process.status,
-                "last_seen_at": process.last_seen_at.isoformat(),
-                "active_run_id": process.active_run_id,
-                "last_run_outcome": process.last_run_outcome,
+                "process_id": record.process_id,
+                "process_name": record.process_name,
+                "kind": record.kind,
+                "status": record.status,
+                "last_seen_at": record.last_seen_at.isoformat(),
+                "active_run_id": record.active_run_id,
+                "last_run_outcome": record.last_run_outcome,
             }
         )
     if json_output:
@@ -530,17 +560,8 @@ def runs(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    registry = FileProcessRegistry(ctx.config_snapshot.runs_dir / "processes")
-    record = registry.get(process) or registry.get_by_name(process)
-    if record is None:
-        renderer.echo(f"unknown process: {process}")
-        raise typer.Exit(code=1)
     rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
-    filtered = []
-    for row in rows:
-        process_meta = row.get("process") or {}
-        if process_meta.get("id") == record.process_id:
-            filtered.append(row)
+    filtered = _filter_runs_by_process(rows, process)
     if json_output:
         sys.stdout.write(json.dumps(filtered) + "\n")
         return
@@ -563,7 +584,8 @@ def browse(
         renderer.echo(f"Textual not available: {exc}")
         raise typer.Exit(code=1)
     episodes = ctx.ns.list_runs(limit=50, context=ctx.runtime_context)
-    run_browse(episodes, ctx.config_snapshot.runs_dir)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+    run_browse(episodes, episode_roots=layout.episode_roots())
 
 
 @app.command()
@@ -748,6 +770,31 @@ def diagnostics(
                 pass
     if exit_code:
         raise typer.Exit(code=exit_code)
+
+
+@app.command("migrate-layout")
+def migrate_layout_cmd(
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
+    force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
+    port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+) -> None:
+    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
+    ctx = build_context(options, port_specs=port or [])
+    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+    result = migrate_layout(layout)
+    if json_output:
+        renderer.json(result.to_dict())
+        return
+    renderer.banner("Noesis layout migration")
+    renderer.echo(f"root      : {layout.root}")
+    renderer.echo(f"episodes  : {result.episodes_copied}")
+    renderer.echo(f"processes : {result.processes_copied}")
+    if result.warnings:
+        renderer.echo("warnings  :")
+        for warning in result.warnings:
+            renderer.echo(f"  - {warning}")
 
 
 @app.command()

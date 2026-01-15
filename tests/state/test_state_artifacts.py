@@ -4,6 +4,7 @@ from pathlib import Path
 import noesis as ns
 from noesis.episode import EpisodeIndex
 from noesis.context import get_config_port
+from noesis.runtime.paths import resolve_noesis_paths
 
 
 def test_state_artifact_written(tmp_path) -> None:
@@ -13,7 +14,8 @@ def test_state_artifact_written(tmp_path) -> None:
         runs_dir = tmp_path / "runs"
         ns.set(runs_dir=str(runs_dir))
         episode = ns.run(task="hello state", intuition=False)
-        state_path = runs_dir / episode / "state.json"
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+        state_path = layout.episodes_dir / episode / "state.json"
         assert state_path.exists(), "state.json not persisted"
 
         payload = json.loads(state_path.read_text(encoding="utf-8"))

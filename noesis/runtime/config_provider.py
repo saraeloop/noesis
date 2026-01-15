@@ -75,7 +75,16 @@ def create_runtime_context(
 ) -> RuntimeContext:
     cfg_port = config_port or EnvTomlConfig()
     context = RuntimeContext(config_port=cfg_port)
-    for name, (provider, api) in (ports or {}).items():
+    merged_ports = dict(ports or {})
+    if "layout" not in merged_ports:
+        from noesis.infrastructure.layout import FileSystemLayoutResolver
+
+        merged_ports["layout"] = (FileSystemLayoutResolver(), "layout/1.0")
+    if "process_registry_factory" not in merged_ports:
+        from noesis.infrastructure.process_registry import FileProcessRegistryFactory
+
+        merged_ports["process_registry_factory"] = (FileProcessRegistryFactory(), "process_registry_factory/1.0")
+    for name, (provider, api) in merged_ports.items():
         context.register(name, provider, api=api)
     return context
 

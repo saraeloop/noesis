@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from pathlib import Path
 
 import noesis as ns
 from noesis.cli import main as cli_main
+from noesis.runtime.paths import resolve_noesis_paths
 
 
 @contextmanager
@@ -15,6 +17,11 @@ def _preserve_config():
         yield
     finally:
         ns.set(**snapshot)
+
+
+def _episode_dirs(runs_dir: Path) -> list[Path]:
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+    return list(layout.episodes_dir.glob("ep_*"))
 
 
 def test_view_json_envelope(tmp_path, capsys) -> None:
@@ -29,7 +36,7 @@ def test_view_json_envelope(tmp_path, capsys) -> None:
         assert run_code == 0
 
         # Get the episode ID from the runs directory
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         assert len(episode_dirs) == 1
         episode_id = episode_dirs[0].name
 
@@ -122,7 +129,7 @@ def test_events_json_envelope(tmp_path, capsys) -> None:
         capsys.readouterr()
 
         # Get episode ID
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         assert len(episode_dirs) == 1
         episode_id = episode_dirs[0].name
 
@@ -164,7 +171,7 @@ def test_events_json_streaming_preserved(tmp_path, capsys) -> None:
         capsys.readouterr()
 
         # Get episode ID
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         episode_id = episode_dirs[0].name
 
         # Test events --json (JSONL mode)
@@ -195,7 +202,7 @@ def test_events_envelope_with_phase_filter(tmp_path, capsys) -> None:
         cli_main(["run", "events filter test", "--json"])
         capsys.readouterr()
 
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         episode_id = episode_dirs[0].name
 
         # Test events --envelope --phase start

@@ -4,6 +4,7 @@ from pathlib import Path
 import noesis as ns
 from noesis.learn import maybe_emit_learn_event
 from noesis.context import get_config_port
+from noesis.runtime.paths import resolve_noesis_paths
 
 
 def _direction_events(policy_id: str, policy_version: str | None = None) -> list[dict]:
@@ -52,8 +53,11 @@ def test_learn_auto_apply_gate(tmp_path):
         events = _direction_events(policy_id, policy_version="1.0")
         metrics = _metrics()
 
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+        layout.episodes_dir.mkdir(parents=True, exist_ok=True)
+
         for idx in range(2):
-            run_dir = runs_dir / f"ep_{idx}"
+            run_dir = layout.episodes_dir / f"ep_{idx}"
             run_dir.mkdir(parents=True)
             result = maybe_emit_learn_event(
                 run_dir=run_dir,
@@ -75,7 +79,7 @@ def test_learn_auto_apply_gate(tmp_path):
         assert history_entry["status"] == "applied"
         assert history_entry["revert_handle"]["previous"] == 0.3
 
-        learn_log = list((runs_dir / "ep_1" / "learn.jsonl").read_text(encoding="utf-8").splitlines())
+        learn_log = list((layout.episodes_dir / "ep_1" / "learn.jsonl").read_text(encoding="utf-8").splitlines())
         assert learn_log, "expected learn log for applied proposal"
         record = json.loads(learn_log[-1])
         assert record["schema_version"] == "learn/1.0"

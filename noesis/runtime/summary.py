@@ -61,6 +61,7 @@ def finalize_summary(
     adapter_result: str,
     outcome: str,
     verification: Dict[str, object | None],
+    process: Dict[str, object] | None = None,
 ) -> None:
     snapshot = config
     events = read_events(run_dir)
@@ -101,6 +102,9 @@ def finalize_summary(
         tags=tags or {},
         ports=ports,
     ).__dict__
+
+    if process:
+        summary["process"] = process
 
     summary["adapter_result"] = adapter_result
     summary["outcome"] = outcome

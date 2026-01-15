@@ -78,8 +78,8 @@ def run(
             tags=tags,
             context=context,
             workspace=workspace_path,
-            process=process,
             verify=verify_spec,
+            process_name=process,
         )
     return _current_session().run(
         task,
@@ -87,8 +87,8 @@ def run(
         intuition=intuition,
         tags=tags,
         workspace=workspace_path,
-        process=process,
         verify=verify_spec,
+        process=process,
     )
 
 
@@ -118,7 +118,7 @@ def solve(
             tags=tags,
             context=context,
             workspace=workspace_path,
-            process=process,
+            process_name=process,
             verify=verify_spec,
         )
     return _current_session().solve(
@@ -159,7 +159,7 @@ async def solve_async(
             tags=tags,
             context=context,
             workspace=workspace_path,
-            process=process,
+            process_name=process,
             verify=verify_spec,
         )
     return await _current_session().solve_async(

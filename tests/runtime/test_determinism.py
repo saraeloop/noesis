@@ -6,6 +6,7 @@ from uuid import UUID
 from noesis.diagnostics import compare_runs
 from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
 from noesis.runtime.session import SessionBuilder
+from noesis.runtime.paths import resolve_noesis_paths
 from noesis.interfaces.config import ConfigSnapshot, PlannerMode
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
@@ -122,8 +123,13 @@ def _build_session(
     return builder
 
 
+def _episode_dir(root: Path, episode: str) -> Path:
+    layout = resolve_noesis_paths(workspace=None, runs_dir=root)
+    return layout.episodes_dir / episode
+
+
 def _bytes(root: Path, episode: str, fname: str) -> bytes:
-    return (root / episode / fname).read_bytes()
+    return (_episode_dir(root, episode) / fname).read_bytes()
 
 
 def _strip_timestamps_recursive(obj: dict) -> None:
@@ -153,7 +159,7 @@ def _normalized_events(root: Path, episode: str) -> list[dict]:
       - nested timestamp-like fields
       - snapshot payloads that embed full state/history debug context
     """
-    path = root / episode / "events.jsonl"
+    path = _episode_dir(root, episode) / "events.jsonl"
     events: list[dict] = []
     for line in path.read_text().splitlines():
         evt = json.loads(line)
@@ -181,7 +187,7 @@ def _normalized_events(root: Path, episode: str) -> list[dict]:
 
 def _normalized_state(root: Path, episode: str) -> dict:
     """Normalize state by stripping purely observational timestamp fields."""
-    path = root / episode / "state.json"
+    path = _episode_dir(root, episode) / "state.json"
     state = json.loads(path.read_text())
     # Strip timestamps that may drift due to instrumentation timing
     if "episode" in state:
@@ -196,7 +202,7 @@ def _normalized_state(root: Path, episode: str) -> dict:
 
 def _normalized_manifest(root: Path, episode: str) -> dict:
     """Normalize manifest by stripping purely observational fields."""
-    path = root / episode / "manifest.json"
+    path = _episode_dir(root, episode) / "manifest.json"
     manifest = json.loads(path.read_text())
     # Strip timestamps that may drift due to instrumentation timing
     manifest.pop("created_at", None)
@@ -287,8 +293,8 @@ def test_prompts_jsonl_is_deterministic_under_config(tmp_path: Path) -> None:
     episode_a = session_a.run("Deterministic prompt provenance", intuition=False)
     episode_b = session_b.run("Deterministic prompt provenance", intuition=False)
 
-    path_a = run_a_root / episode_a / "prompts.jsonl"
-    path_b = run_b_root / episode_b / "prompts.jsonl"
+    path_a = _episode_dir(run_a_root, episode_a) / "prompts.jsonl"
+    path_b = _episode_dir(run_b_root, episode_b) / "prompts.jsonl"
     assert path_a.exists() and path_b.exists()
 
     assert path_a.read_bytes() == path_b.read_bytes(), "prompts.jsonl drifted under determinism"
@@ -299,8 +305,8 @@ def test_prompts_jsonl_is_deterministic_under_config(tmp_path: Path) -> None:
     assert events_a == events_b, "events.jsonl drifted structurally"
 
     # No extra files in either run directory
-    files_a = sorted(p.name for p in (run_a_root / episode_a).iterdir())
-    files_b = sorted(p.name for p in (run_b_root / episode_b).iterdir())
+    files_a = sorted(p.name for p in _episode_dir(run_a_root, episode_a).iterdir())
+    files_b = sorted(p.name for p in _episode_dir(run_b_root, episode_b).iterdir())
     assert files_a == files_b
 
 
@@ -336,8 +342,8 @@ def test_governance_veto_run_is_deterministic(tmp_path: Path) -> None:
     episode_a = session_a.run(task, intuition=False)
     episode_b = session_b.run(task, intuition=False)
 
-    path_a = run_a_root / episode_a
-    path_b = run_b_root / episode_b
+    path_a = _episode_dir(run_a_root, episode_a)
+    path_b = _episode_dir(run_b_root, episode_b)
 
     result = compare_runs(path_a, path_b)
     assert not result.is_drift, f"replay drifted: {result.mismatches}"

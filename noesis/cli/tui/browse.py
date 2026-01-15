@@ -288,12 +288,12 @@ class BrowseApp(App):
     def __init__(
         self,
         episodes: list[dict[str, Any]] | None = None,
-        runs_dir: Path | None = None,
+        episode_roots: tuple[Path, ...] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._raw_episodes = episodes or []
-        self._runs_dir = runs_dir
+        self._episode_roots = episode_roots or ()
         self._episodes: list[EpisodeRow] = []
 
     def compose(self) -> ComposeResult:
@@ -419,11 +419,16 @@ class BrowseApp(App):
         events: list[TimelineEvent] = []
         governance: dict[str, Any] | None = None
 
-        if not self._runs_dir:
+        if not self._episode_roots:
             return events, governance
 
-        ep_dir = self._runs_dir / episode_id
-        if not ep_dir.exists():
+        ep_dir = None
+        for root in self._episode_roots:
+            candidate = root / episode_id
+            if candidate.exists():
+                ep_dir = candidate
+                break
+        if ep_dir is None:
             return events, governance
 
         # Load events
@@ -485,7 +490,7 @@ class BrowseApp(App):
         self.notify("↑↓ Navigate | Enter View | e Events | r Refresh | q Quit")
 
 
-def run_browse(episodes: list[dict[str, Any]], runs_dir: Path | None = None) -> None:
+def run_browse(episodes: list[dict[str, Any]], episode_roots: tuple[Path, ...] | None = None) -> None:
     """Run the browse TUI."""
-    app = BrowseApp(episodes=episodes, runs_dir=runs_dir)
+    app = BrowseApp(episodes=episodes, episode_roots=episode_roots)
     app.run()

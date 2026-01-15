@@ -168,5 +168,4 @@ class EnvTomlConfig(ConfigPort):
 
     @staticmethod
     def _ensure_directories(config: RuntimeConfig) -> None:
-        config.runs_dir.expanduser().mkdir(parents=True, exist_ok=True)
         config.learn_home.expanduser().mkdir(parents=True, exist_ok=True)
