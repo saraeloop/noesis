@@ -26,6 +26,7 @@ from noesis.cli.content.home import build_home_screen, RecentEpisode, LastEpisod
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 from noesis.runtime.paths import resolve_noesis_paths
 from noesis.infrastructure.layout_migration import migrate_layout
+from noesis.infrastructure.process_registry import FileProcessRegistry
 
 
 try:  # pragma: no cover - optional Rich import
@@ -526,6 +527,7 @@ def ps(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
+<<<<<<< HEAD
     rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
     rows = _filter_runs_by_process(rows, process)
     ps_rows = []
@@ -590,6 +592,22 @@ def runs(
                 "process_id": process_block.get("id", ""),
                 "process_name": process_block.get("name", ""),
                 "process_run_index": process_block.get("run_index"),
+=======
+    layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+    registry = FileProcessRegistry(layout.processes_dir)
+    processes = sorted(registry.list(), key=lambda item: item.last_seen_at, reverse=True)
+    ps_rows: list[dict[str, object]] = []
+    for record in processes[:limit]:
+        ps_rows.append(
+            {
+                "process_id": record.process_id,
+                "process_name": record.process_name,
+                "kind": record.kind,
+                "status": record.status,
+                "last_seen_at": record.last_seen_at.isoformat(),
+                "active_run_id": record.active_run_id,
+                "last_run_outcome": record.last_run_outcome,
+>>>>>>> aee34c3 (fix(process): normalize process arg across API/core/session; restore CLI ps/runs + legacy layout migration)
             }
         )
     if json_output:
@@ -611,17 +629,8 @@ def runs(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    registry = FileProcessRegistry(ctx.config_snapshot.runs_dir / "processes")
-    record = registry.get(process) or registry.get_by_name(process)
-    if record is None:
-        renderer.echo(f"unknown process: {process}")
-        raise typer.Exit(code=1)
     rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
-    filtered = []
-    for row in rows:
-        process_meta = row.get("process") or {}
-        if process_meta.get("id") == record.process_id:
-            filtered.append(row)
+    filtered = _filter_runs_by_process(rows, process)
     if json_output:
         sys.stdout.write(json.dumps(filtered) + "\n")
         return

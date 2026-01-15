@@ -95,10 +95,13 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
-                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+<<<<<<< HEAD
                 process_name=process_name,
+=======
+                process_name=process,
+>>>>>>> aee34c3 (fix(process): normalize process arg across API/core/session; restore CLI ps/runs + legacy layout migration)
             )
 
     def solve(
@@ -128,9 +131,9 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
-                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     async def solve_async(
@@ -160,9 +163,9 @@ class NoesisSession:
                 tags=merged_tags,
                 context=self._context,
                 workspace=workspace_path,
-                process=process,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     def with_ports(self, **ports: tuple[Any, str]) -> "NoesisSession":

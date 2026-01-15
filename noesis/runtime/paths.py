@@ -59,11 +59,15 @@ def resolve_noesis_root(*, workspace: Path, runs_dir: Path) -> Path:
     if runs_dir.name == ".noesis":
         return runs_dir
     candidate = runs_dir / ".noesis"
+    # Prefer an explicit runs_dir even if it does not yet exist.
     if candidate.exists():
         return candidate
-    if runs_dir.exists() and (runs_dir / "episodes").exists():
-        return runs_dir
-    return workspace / ".noesis"
+    if runs_dir.exists():
+        if (runs_dir / "episodes").exists():
+            return runs_dir
+        return candidate
+    # runs_dir missing: treat it as authoritative and create under it
+    return candidate
 
 
 def legacy_episode_roots(
