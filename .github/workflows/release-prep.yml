@@ -51,6 +51,9 @@ jobs:
 
       - name: Execute pre-release checks
         run: python scripts/pre_release.py --check-all --execute
+        env:
+          NOESIS_RUNS_DIR: ./.noesis-ci/smoke-runs
+          NOESIS_LEARN_HOME: ./.noesis-ci/state
 
       - name: Upload pre-release artifacts
         if: always()
@@ -58,6 +61,6 @@ jobs:
         with:
           name: prerelease-logs
           path: |
-            .noesis/prerelease
+            .noesis-ci/prerelease
             coverage.xml
           if-no-files-found: ignore

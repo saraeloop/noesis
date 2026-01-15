@@ -172,7 +172,10 @@ def _bootstrap_runtime(
     cfg: Any,
 ) -> _GovernedActRuntime:
     ids = _mint_episode_ids(request.seed, determinism)
-    run_dir = _begin_episode(cfg.runs_dir, ids.episode_id)
+    layout_port = context.require("layout", "layout/1.0")
+    layout = layout_port.resolve(workspace=None, runs_dir=cfg.runs_dir)
+    layout_port.ensure(layout)
+    run_dir = _begin_episode(layout.episodes_dir, ids.episode_id)
     clock, now_fn = _init_clock(determinism)
     started_at = now_fn()
     adapter_label = _resolve_adapter_label(request.kind, request.payload)

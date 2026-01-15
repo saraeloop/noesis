@@ -9,12 +9,17 @@ from noesis.trace.summary import SUMMARY_FILE, read_summary as _read_summary
 from noesis.trace.schema import EVENTS_SCHEMA_VERSION, SUMMARY_SCHEMA_VERSION
 from noesis.cli.viewer_time import parse_iso
 from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
+from noesis.runtime.paths import resolve_noesis_paths, find_episode_dir
 
 STATE_FILE = "state.json"
 
 
 def load_episode_dir(episode_id: str, runs_dir: Path) -> Path:
-    return runs_dir.expanduser() / episode_id
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+    found = find_episode_dir(episode_id, layout)
+    if found:
+        return found
+    return layout.episodes_dir / episode_id
 
 
 def read_summary(ep_dir: Path) -> Optional[Dict[str, Any]]:

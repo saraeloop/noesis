@@ -22,6 +22,7 @@ from .trace.events import EVENTS_FILE, read_events
 from .trace.summary import SUMMARY_FILE, read_summary
 from .runtime.artifacts.manifest import MANIFEST_FILE_NAME, compute_sha256
 from .context import RuntimeContext, get_config_snapshot
+from .runtime.paths import resolve_noesis_paths, find_episode_dir
 
 
 def _config_snapshot(context: RuntimeContext | None):
@@ -75,39 +76,44 @@ def list_runs(
         - flags
         - success metric (if available)
     """
-    base = _config_snapshot(context).runs_dir
+    cfg = _config_snapshot(context)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=cfg.runs_dir)
     rows: List[Dict[str, Any]] = []
-
-    if not base.exists():
-        return rows
-
-    for p in base.iterdir():
-        if not p.is_dir():
+    seen: set[str] = set()
+    for base in layout.episode_roots():
+        if not base.exists():
             continue
-        sfile = p / SUMMARY_FILE
-        if not sfile.exists():
-            continue
-
-        s = read_summary(p)
-        manifest_meta = s.get("manifest") or {}
-        manifest_status = None
-        if strict_manifest:
-            manifest_status = _verify_manifest(p, manifest_meta)
-            if manifest_meta is not None and manifest_status is not None:
-                manifest_meta["status"] = manifest_status
-        rows.append({
-            "episode_id": s.get("episode_id"),
-            "task": s.get("task"),
-            "started_at": s.get("started_at"),
-            "flags": s.get("flags", {}),
-            "success": s.get("metrics", {}).get("success"),
-            "veto_count": s.get("metrics", {}).get("veto_count"),
-            "duration_sec": s.get("duration_sec"),
-            "status": s.get("status"),
-            "outcome": s.get("outcome"),
-            "manifest": manifest_meta,
-            "manifest_status": manifest_status,
-        })
+        for p in base.iterdir():
+            if not p.is_dir():
+                continue
+            episode_id = p.name
+            if not episode_id.startswith("ep_") or episode_id in seen:
+                continue
+            sfile = p / SUMMARY_FILE
+            if not sfile.exists():
+                continue
+            seen.add(episode_id)
+            s = read_summary(p)
+            manifest_meta = s.get("manifest") or {}
+            manifest_status = None
+            if strict_manifest:
+                manifest_status = _verify_manifest(p, manifest_meta)
+                if manifest_meta is not None and manifest_status is not None:
+                    manifest_meta["status"] = manifest_status
+            rows.append({
+                "episode_id": s.get("episode_id"),
+                "task": s.get("task"),
+                "started_at": s.get("started_at"),
+                "flags": s.get("flags", {}),
+                "success": s.get("metrics", {}).get("success"),
+                "veto_count": s.get("metrics", {}).get("veto_count"),
+                "duration_sec": s.get("duration_sec"),
+                "status": s.get("status"),
+                "outcome": s.get("outcome"),
+                "process": s.get("process"),
+                "manifest": manifest_meta,
+                "manifest_status": manifest_status,
+            })
 
     rows.sort(key=lambda r: r.get("started_at") or "", reverse=True)
     return rows[:limit]
@@ -135,7 +141,12 @@ def paths(episode_id: str, *, context: RuntimeContext | None = None) -> Dict[str
 
 def _run_dir(episode_id: str, *, context: RuntimeContext | None = None) -> Path:
     """Resolve the filesystem directory for a given episode."""
-    return _config_snapshot(context).runs_dir / episode_id
+    cfg = _config_snapshot(context)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=cfg.runs_dir)
+    found = find_episode_dir(episode_id, layout)
+    if found:
+        return found
+    return layout.episodes_dir / episode_id
 
 
 def _verify_manifest(run_dir: Path, manifest_meta: Dict[str, Any]) -> str | None:

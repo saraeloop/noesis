@@ -11,6 +11,7 @@ from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.learning.model import LearnMode
 from noesis.context import RuntimeContext
 from noesis.interfaces.config import ConfigPort, ConfigSnapshot, PlannerMode
+from noesis.runtime.paths import resolve_noesis_paths
 from noesis.runtime.session import (
     DefaultSessionProvider,
     NoesisSession,
@@ -86,11 +87,16 @@ def _session(tmp_path: Path) -> NoesisSession:
     return builder.build()
 
 
+def _episode_dir(tmp_path: Path, episode_id: str) -> Path:
+    layout = resolve_noesis_paths(workspace=None, runs_dir=tmp_path)
+    return layout.episodes_dir / episode_id
+
+
 def test_session_run_produces_artifacts(tmp_path: Path) -> None:
     session = _session(tmp_path)
     episode_id = session.run("Summarize repository status", intuition=False)
     assert episode_id.startswith("ep_")
-    assert (tmp_path / episode_id / "summary.json").exists()
+    assert (_episode_dir(tmp_path, episode_id) / "summary.json").exists()
 
 
 def test_session_runner_protocol_invoked(tmp_path: Path) -> None:
@@ -116,7 +122,7 @@ def test_ns_run_respects_session_override(tmp_path: Path) -> None:
     custom_session = _session(tmp_path)
     with provider.use(custom_session):
         episode_id = ns.run("Ensure override works", intuition=False)
-    assert (tmp_path / episode_id / "summary.json").exists()
+    assert (_episode_dir(tmp_path, episode_id) / "summary.json").exists()
 
 
 def test_prompt_provenance_manifest_listing(tmp_path: Path) -> None:
@@ -124,7 +130,7 @@ def test_prompt_provenance_manifest_listing(tmp_path: Path) -> None:
     session = SessionBuilder(config_port=_FakeConfigPort(snapshot)).build()
 
     episode_id = session.run("Capture prompt provenance", intuition=False)
-    run_dir = tmp_path / episode_id
+    run_dir = _episode_dir(tmp_path, episode_id)
     prompt_path = run_dir / "prompts.jsonl"
 
     assert prompt_path.exists(), "prompts.jsonl should be created when provenance is enabled"
@@ -147,7 +153,7 @@ def test_prompt_provenance_join_sanity(tmp_path: Path) -> None:
     session = SessionBuilder(config_port=_FakeConfigPort(snapshot)).build()
 
     episode_id = session.run("Join sanity", intuition=False)
-    run_dir = tmp_path / episode_id
+    run_dir = _episode_dir(tmp_path, episode_id)
     prompt_path = run_dir / "prompts.jsonl"
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
 
@@ -174,7 +180,7 @@ def test_session_allows_parallel_runs(tmp_path: Path) -> None:
 
     assert len(set(results)) == 2
     for episode_id in results:
-        assert (tmp_path / episode_id / "summary.json").exists()
+        assert (_episode_dir(tmp_path, episode_id) / "summary.json").exists()
 
 
 def test_session_reuse_does_not_leak_state(tmp_path: Path) -> None:
@@ -186,7 +192,7 @@ def test_session_reuse_does_not_leak_state(tmp_path: Path) -> None:
 
     assert first != second
     for episode_id, task in [(first, "first"), (second, "second")]:
-        summary = json.loads((tmp_path / episode_id / "summary.json").read_text(encoding="utf-8"))
+        summary = json.loads((_episode_dir(tmp_path, episode_id) / "summary.json").read_text(encoding="utf-8"))
         assert summary["task"] == task
 
 

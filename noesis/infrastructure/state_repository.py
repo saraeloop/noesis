@@ -14,6 +14,7 @@ from typing import Literal, Protocol, Sequence, TYPE_CHECKING
 from noesis.runtime.serialization import atomic_write_json
 from noesis.runtime.normalization import normalize_using
 from noesis.domain.faculties.intuition import IntuitionMode
+from noesis.domain.process import ProcessKind
 from noesis.domain.state import NoesisState, create_state
 from noesis.domain.verification import Assertion
 
@@ -40,6 +41,10 @@ class EpisodeContext:
     tags: dict[str, object]
     adapter_label: str
     started_at: str
+    process_id: str | None = None
+    process_name: str | None = None
+    process_kind: ProcessKind | None = None
+    process_run_index: int | None = None
     workspace: Path | None = None
     verify: Sequence[Assertion] | None = None
     intuition_mode: IntuitionMode = IntuitionMode.ADVISORY

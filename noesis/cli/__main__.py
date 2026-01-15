@@ -24,6 +24,8 @@ from noesis.cli.formatters import format_duration
 from noesis.cli.query import load_episode_dir
 from noesis.cli.content.home import build_home_screen, RecentEpisode, LastEpisodeInfo
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
+from noesis.runtime.paths import resolve_noesis_paths
+from noesis.infrastructure.layout_migration import migrate_layout
 
 
 try:  # pragma: no cover - optional Rich import
@@ -412,8 +414,11 @@ def run(
         raise typer.Exit(code=3)
 
     if json_output:
-        runs_dir = ctx.config_snapshot.runs_dir
-        episode_dir = Path(runs_dir).expanduser().resolve() / episode_id
+        layout = resolve_noesis_paths(
+            workspace=workspace.expanduser().resolve() if workspace else None,
+            runs_dir=ctx.config_snapshot.runs_dir,
+        )
+        episode_dir = layout.episodes_dir / episode_id
         envelope = _build_run_envelope(
             episode_id=episode_id,
             episode_dir=episode_dir,
@@ -534,7 +539,8 @@ def browse(
         renderer.echo(f"Textual not available: {exc}")
         raise typer.Exit(code=1)
     episodes = ctx.ns.list_runs(limit=50, context=ctx.runtime_context)
-    run_browse(episodes, ctx.config_snapshot.runs_dir)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+    run_browse(episodes, episode_roots=layout.episode_roots())
 
 
 @app.command()
@@ -719,6 +725,31 @@ def diagnostics(
                 pass
     if exit_code:
         raise typer.Exit(code=exit_code)
+
+
+@app.command("migrate-layout")
+def migrate_layout_cmd(
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
+    force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
+    port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+) -> None:
+    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
+    ctx = build_context(options, port_specs=port or [])
+    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+    result = migrate_layout(layout)
+    if json_output:
+        renderer.json(result.to_dict())
+        return
+    renderer.banner("Noesis layout migration")
+    renderer.echo(f"root      : {layout.root}")
+    renderer.echo(f"episodes  : {result.episodes_copied}")
+    renderer.echo(f"processes : {result.processes_copied}")
+    if result.warnings:
+        renderer.echo("warnings  :")
+        for warning in result.warnings:
+            renderer.echo(f"  - {warning}")
 
 
 @app.command()

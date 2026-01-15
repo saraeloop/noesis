@@ -4,9 +4,16 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, Tuple
 
+from noesis.runtime.paths import resolve_noesis_paths, find_episode_dir
+
 
 def episode_dir(runs_dir: str | Path, episode_id: str) -> Path:
-    return Path(runs_dir) / episode_id
+    runs_path = Path(runs_dir)
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_path)
+    found = find_episode_dir(episode_id, layout)
+    if found is not None:
+        return found
+    return layout.episodes_dir / episode_id
 
 
 def episode_dir_from_runs_dir(runs_dir: str | Path, episode_id: str) -> Path:

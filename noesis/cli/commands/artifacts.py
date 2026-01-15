@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
+from noesis.runtime.paths import resolve_noesis_paths, find_episode_dir
 from noesis.runtime.artifacts.verify import ManifestVerifier
 
 from ..context import CLIContext
@@ -95,15 +96,16 @@ class ArtifactsCommand:
             manifest = candidate / MANIFEST_FILE_NAME
             if manifest.is_file():
                 return manifest
-        runs_dir = ctx.config_snapshot.runs_dir
-        episode_dir = runs_dir / target
-        if episode_dir.is_dir():
+        layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+        episode_dir = find_episode_dir(target, layout)
+        if episode_dir is not None:
             manifest = episode_dir / MANIFEST_FILE_NAME
             if manifest.is_file():
                 return manifest
-        manifest = runs_dir / target
-        if manifest.is_file():
-            return manifest
+        for root in layout.episode_roots():
+            manifest = root / target
+            if manifest.is_file():
+                return manifest
         raise FileNotFoundError(f"Could not locate manifest for target '{target}'")
 
     @staticmethod
