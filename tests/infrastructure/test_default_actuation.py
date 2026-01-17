@@ -12,6 +12,7 @@ from noesis.infrastructure.actuation.default_actuation import governed_act_impl
 from noesis.interfaces.actuation import GovernedActRequest
 from noesis.interfaces.config import ConfigPort, ConfigSnapshot, PlannerMode
 from noesis.runtime.actuation_registry import get_actuation_registry
+from noesis.runtime.paths import resolve_noesis_paths
 
 
 class _StaticConfig(ConfigPort):
@@ -53,7 +54,14 @@ def _build_snapshot(runs_dir: Path, intuition_mode: IntuitionMode) -> ConfigSnap
 
 
 def _find_episode_dir(root: Path) -> Path:
-    candidates = [path for path in root.iterdir() if path.is_dir() and path.name.startswith("ep_")]
+    layout = resolve_noesis_paths(workspace=None, runs_dir=root)
+    candidates = []
+    for base in layout.episode_roots():
+        if not base.exists():
+            continue
+        candidates.extend(
+            path for path in base.iterdir() if path.is_dir() and path.name.startswith("ep_")
+        )
     if not candidates:
         raise AssertionError("no episode directories found")
     return candidates[0]

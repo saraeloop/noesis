@@ -14,6 +14,7 @@ from noesis.domain.state.models import STATE_SCHEMA_VERSION, STATE_VERSION
 from noesis.diagnostics import DriftResult, compare_runs
 from noesis.interfaces.config import ConfigSnapshot
 from noesis.runtime.config_provider import get_config_snapshot
+from noesis.runtime.paths import resolve_noesis_paths
 from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
 from noesis.runtime.artifacts.verify import ManifestVerifier
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
@@ -131,20 +132,29 @@ class DiagnosticsCommand:
         yield self._check_latest_manifest(snapshot.runs_dir)
 
     def _check_runs_dir(self, path: Path) -> CheckResult:
-        expanded = path.expanduser()
-        if not expanded.exists():
-            return CheckResult("runs_dir", "warn", f"{expanded} (missing)")
-        if not expanded.is_dir():
-            return CheckResult("runs_dir", "error", f"{expanded} is not a directory")
+        layout = resolve_noesis_paths(workspace=None, runs_dir=path)
+        expanded_runs = path.expanduser()
+        expanded_episodes = layout.episodes_dir.expanduser()
+
+        if not expanded_runs.exists():
+            return CheckResult("runs_dir", "warn", f"{expanded_runs} (missing)")
+        if not expanded_runs.is_dir():
+            return CheckResult("runs_dir", "error", f"{expanded_runs} is not a directory")
+
+        # Ensure the canonical episodes directory is also available/writable
+        if not expanded_episodes.exists():
+            return CheckResult("runs_dir", "warn", f"{expanded_episodes} (missing episodes dir)")
+        if not expanded_episodes.is_dir():
+            return CheckResult("runs_dir", "error", f"{expanded_episodes} is not a directory")
         try:
-            _, _, free = shutil.disk_usage(expanded)
+            _, _, free = shutil.disk_usage(expanded_episodes)
         except Exception:
             free = None
-        if not os.access(expanded, os.W_OK):
-            return CheckResult("runs_dir", "warn", f"{expanded} not writable")
+        if not os.access(expanded_episodes, os.W_OK):
+            return CheckResult("runs_dir", "warn", f"{expanded_episodes} not writable")
         if free is not None and free < 50 * 1024 * 1024:
-            return CheckResult("runs_dir", "warn", f"{expanded} low free space ({free} bytes)")
-        return CheckResult("runs_dir", "ok", str(expanded))
+            return CheckResult("runs_dir", "warn", f"{expanded_episodes} low free space ({free} bytes)")
+        return CheckResult("runs_dir", "ok", f"{expanded_runs} (episodes: {expanded_episodes})")
 
     def _check_learn_home(self, path: Path) -> CheckResult:
         expanded = path.expanduser()
@@ -194,48 +204,56 @@ class DiagnosticsCommand:
         )
 
     def _check_latest_summary(self, runs_dir: Path) -> CheckResult:
-        base = runs_dir.expanduser()
-        if not base.exists() or not base.is_dir():
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+        roots = [path.expanduser() for path in layout.episode_roots()]
+        if not any(path.exists() and path.is_dir() for path in roots):
             return CheckResult("latest_summary", "ok", "no runs directory")
 
-        candidates = sorted((p for p in base.glob("ep_*") if p.is_dir()), reverse=True)
-        for candidate in candidates:
-            summary_path = candidate / "summary.json"
-            if not summary_path.is_file():
+        for base in roots:
+            if not base.exists() or not base.is_dir():
                 continue
-            try:
-                data = json.loads(summary_path.read_text(encoding="utf-8"))
-            except Exception:
-                return CheckResult("latest_summary", "warn", f"{summary_path} unreadable")
-            schema = data.get("schema_version")
-            if schema == SUMMARY_SCHEMA_VERSION:
-                return CheckResult("latest_summary", "ok", f"{summary_path}")
-            return CheckResult(
-                "latest_summary",
-                "warn",
-                f"{summary_path} schema_version={schema}",
-            )
+            candidates = sorted((p for p in base.glob("ep_*") if p.is_dir()), reverse=True)
+            for candidate in candidates:
+                summary_path = candidate / "summary.json"
+                if not summary_path.is_file():
+                    continue
+                try:
+                    data = json.loads(summary_path.read_text(encoding="utf-8"))
+                except Exception:
+                    return CheckResult("latest_summary", "warn", f"{summary_path} unreadable")
+                schema = data.get("schema_version")
+                if schema == SUMMARY_SCHEMA_VERSION:
+                    return CheckResult("latest_summary", "ok", f"{summary_path}")
+                return CheckResult(
+                    "latest_summary",
+                    "warn",
+                    f"{summary_path} schema_version={schema}",
+                )
         return CheckResult("latest_summary", "ok", "no summary artifacts found")
 
     def _check_latest_manifest(self, runs_dir: Path) -> CheckResult:
-        base = runs_dir.expanduser()
-        if not base.exists() or not base.is_dir():
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+        roots = [path.expanduser() for path in layout.episode_roots()]
+        if not any(path.exists() and path.is_dir() for path in roots):
             return CheckResult("artifact_manifest", "ok", "no runs directory")
-        candidates = sorted((p for p in base.glob("ep_*") if p.is_dir()), reverse=True)
-        for candidate in candidates:
-            manifest_path = candidate / MANIFEST_FILE_NAME
-            if not manifest_path.is_file():
+        for base in roots:
+            if not base.exists() or not base.is_dir():
                 continue
-            try:
-                verifier = ManifestVerifier(run_dir=candidate)
-                report = verifier.verify_path(manifest_path)
-            except Exception:
-                return CheckResult("artifact_manifest", "warn", f"{manifest_path} unreadable")
-            if report.status == "ok":
-                return CheckResult("artifact_manifest", "ok", f"{manifest_path}")
-            issue = report.issues[0] if report.issues else None
-            detail = issue.detail if issue else "verification failed"
-            return CheckResult("artifact_manifest", "error", f"{manifest_path}: {detail}")
+            candidates = sorted((p for p in base.glob("ep_*") if p.is_dir()), reverse=True)
+            for candidate in candidates:
+                manifest_path = candidate / MANIFEST_FILE_NAME
+                if not manifest_path.is_file():
+                    continue
+                try:
+                    verifier = ManifestVerifier(run_dir=candidate)
+                    report = verifier.verify_path(manifest_path)
+                except Exception:
+                    return CheckResult("artifact_manifest", "warn", f"{manifest_path} unreadable")
+                if report.status == "ok":
+                    return CheckResult("artifact_manifest", "ok", f"{manifest_path}")
+                issue = report.issues[0] if report.issues else None
+                detail = issue.detail if issue else "verification failed"
+                return CheckResult("artifact_manifest", "error", f"{manifest_path}: {detail}")
         return CheckResult("artifact_manifest", "warn", "no manifest found")
 
     def _run_replay(self, args: argparse.Namespace, renderer: OutputRenderer) -> int:

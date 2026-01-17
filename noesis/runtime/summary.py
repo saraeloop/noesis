@@ -51,12 +51,17 @@ def finalize_summary(
     using_label: Optional[str],
     tags: Optional[Dict[str, Any]],
     intuition: Optional[Intuition],
+    process_id: str | None = None,
+    process_name: str | None = None,
+    process_kind: str | None = None,
+    process_run_index: int | None = None,
     schema_version: str,
     config: ConfigSnapshot,
     ports: Dict[str, str],
     adapter_result: str,
     outcome: str,
     verification: Dict[str, object | None],
+    process: Dict[str, object] | None = None,
 ) -> None:
     snapshot = config
     events = read_events(run_dir)
@@ -98,9 +103,22 @@ def finalize_summary(
         ports=ports,
     ).__dict__
 
+    if process:
+        summary["process"] = process
+
     summary["adapter_result"] = adapter_result
     summary["outcome"] = outcome
     summary["verification"] = verification
+    # Prefer structured process block; fall back to legacy fields only if missing.
+    if process:
+        summary["process"] = process
+    elif process_id and process_name:
+        summary["process"] = {
+            "id": process_id,
+            "name": process_name,
+            "run_index": process_run_index,
+            "kind": process_kind,
+        }
 
     metrics_bucket = summary.setdefault("metrics", {})
     summary.setdefault("insight", {})["metrics"] = insight_metrics.to_mapping()

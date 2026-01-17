@@ -12,6 +12,7 @@ from noesis.domain.learning.model import LearnMode
 from noesis.interfaces.config import ConfigSnapshot, PlannerMode
 from noesis.runtime.determinism import DeterministicClock, DeterministicRNG
 from noesis.runtime.session import SessionBuilder
+from noesis.runtime.paths import resolve_noesis_paths
 from tests.runtime.test_determinism import _FakeConfigPort
 
 
@@ -68,7 +69,9 @@ def _run_veto_pair(tmp_path: Path) -> tuple[Path, Path]:
     task = "veto this action: delete production database"
     ep_a = session_a.run(task, intuition=False)
     ep_b = session_b.run(task, intuition=False)
-    return root_a / ep_a, root_b / ep_b
+    layout_a = resolve_noesis_paths(workspace=None, runs_dir=root_a)
+    layout_b = resolve_noesis_paths(workspace=None, runs_dir=root_b)
+    return layout_a.episodes_dir / ep_a, layout_b.episodes_dir / ep_b
 
 
 def test_replay_cli_reports_no_drift_for_veto_runs(tmp_path: Path) -> None:

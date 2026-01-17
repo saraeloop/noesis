@@ -79,7 +79,7 @@ CHECKS: List[Check] = [
     ),
 ]
 
-SUMMARY_DIR = Path(".noesis/prerelease")
+SUMMARY_DIR = Path(".noesis-ci/prerelease")
 SUMMARY_PATH = SUMMARY_DIR / "summary.txt"
 
 

@@ -36,6 +36,8 @@ from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
 from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
+from .infrastructure.process_registry import FileProcessRegistry
+from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
 from .infrastructure.verification import FileSystemFileReader
 from .interfaces.observability import RuntimeEventBus
@@ -55,6 +57,7 @@ from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .runtime.artifacts.ids import EpisodeIds
 from .runtime.artifacts.writer import ManifestWriter
 from .runtime.artifacts.manifest import MANIFEST_SCHEMA_VERSION, MANIFEST_FILE_NAME, compute_sha256
+from .runtime.paths import NoesisPaths
 from .usecases.episode_runner import (
     EpisodeDependencies,
     EpisodeInstrumentation,
@@ -64,6 +67,8 @@ from .usecases.episode_runner import (
 from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
+from .usecases.process_registry import ProcessRegistryService
+from .domain.process import derive_process_identity
 from .context import RuntimeContext, get_context
 
 if TYPE_CHECKING:
@@ -114,6 +119,12 @@ def _load_graph(source: GraphSource) -> Any:
     return load_graph(source)
 
 
+def _workspace_identity(workspace: Path | str | None) -> str:
+    if workspace is None:
+        return str(Path.cwd().resolve())
+    return str(Path(workspace).expanduser().resolve())
+
+
 # Public API
 
 def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
@@ -136,6 +147,7 @@ def solve(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
@@ -150,6 +162,7 @@ def solve(
         workspace=workspace,
         verify=verify,
         determinism=determinism,
+        process_name=process,
     )
 
 
@@ -162,6 +175,7 @@ async def solve_async(
     tags: Optional[Dict[str, Any]] = None,
     context: RuntimeContext | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
 ) -> str:
@@ -176,6 +190,7 @@ async def solve_async(
         workspace=workspace,
         verify=verify,
         determinism=determinism,
+        process_name=process,
     )
 
 
@@ -194,13 +209,17 @@ class _EpCtx:
 class _EpisodeRuntime:
     cfg: Any
     port_versions: Any
-    runs_dir: str
+    layout: NoesisPaths
     ctx: _EpCtx
     episode_ctx: EpisodeContext
     state_repo: RuntimeStateRepository
     state_path: Path
     adapter_label: str
     raw_using_label: str
+    process_id: str
+    process_name: str
+    process_kind: ProcessKind
+    process_run_index: int
     determinism: "_DeterminismConfig | None"
     now_fn: Callable[[], str]
     run_clock: RuntimeClock | None
@@ -299,6 +318,15 @@ def _finalize_episode(
     outcome: str,
     verification: Dict[str, object | None],
 ) -> None:
+    process_block: Dict[str, object] | None = None
+    if setup.episode_ctx.process_id:
+        process_block = {
+            "id": setup.episode_ctx.process_id,
+            "name": setup.episode_ctx.process_name,
+            "kind": setup.episode_ctx.process_kind,
+            "run_index": setup.episode_ctx.process_run_index,
+        }
+
     _finalize_summary(
         run_dir=setup.ctx.run_dir,
         episode_id=setup.ctx.episode_id,
@@ -310,12 +338,17 @@ def _finalize_episode(
         using_label=setup.raw_using_label,
         tags=tags,
         intuition=setup.intuition_impl,
+        process_id=setup.process_id,
+        process_name=setup.process_name,
+        process_kind=setup.process_kind,
+        process_run_index=setup.process_run_index,
         schema_version=SCHEMA_VERSION,
         config=setup.cfg,
         ports=setup.port_versions,
         adapter_result=adapter_result,
         outcome=outcome,
         verification=verification,
+        process=process_block,
     )
 
     persist_episode_memory(run_dir=setup.ctx.run_dir, context=setup.runtime_context)
@@ -323,7 +356,7 @@ def _finalize_episode(
     manifest_path, manifest_sha = _finalize_manifest(setup.ctx)
 
     try:
-        store_root = Path(setup.runs_dir) / "_episodes"
+        store_root = setup.layout.episodes_dir / "_episodes"
         summary_path = setup.ctx.run_dir / "summary.json"
         EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
             episode_id=setup.ctx.episode_id,
@@ -344,6 +377,22 @@ def _finalize_episode(
         # Indexing is best-effort and should not fail the run.
         pass
 
+    try:
+        process_id = setup.episode_ctx.process_id
+        if process_id:
+            factory = setup.runtime_context.require("process_registry_factory", "process_registry_factory/1.0")
+            service = ProcessRegistryService(factory.create(setup.layout))
+            status = "error" if outcome == "error" else "idle"
+            service.end_run(
+                process_id,
+                run_id=setup.ctx.episode_id,
+                outcome=outcome,
+                status=status,
+            )
+    except Exception:
+        # Registry updates should not prevent artifact completion.
+        pass
+
 
 def _bootstrap_episode(
     *,
@@ -357,18 +406,28 @@ def _bootstrap_episode(
     verify: VerifyInput,
     intuition: bool | Intuition,
     determinism: "_DeterminismConfig | None",
+    process_name: str | None = None,
 ) -> _EpisodeRuntime:
     config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
     cfg = config_port.get()
     port_versions = context.list_ports()
-    runs_dir = str(cfg.runs_dir)
+    workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
+    layout_port = context.require("layout", "layout/1.0")
+    layout = layout_port.resolve(workspace=workspace_path, runs_dir=cfg.runs_dir)
+    layout_port.ensure(layout)
+    runs_dir = str(layout.episodes_dir)
     ids = _mint_episode_ids(seed, determinism)
     run_dir = begin_episode(runs_dir, ids.episode_id)
     run_clock, now_fn = _init_clock(determinism)
     ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=now_fn())
     intuition_impl, intuition_enabled = _normalize_intuition(cfg.intuition_mode, intuition)
-    workspace_path = Path(workspace) if workspace is not None else None
     verify_specs = normalize_verify(verify)
+    workspace_identity_path = workspace_path or Path(cfg.runs_dir).expanduser().resolve().parent
+    identity = derive_process_identity(workspace_identity=str(workspace_identity_path), process_name=process_name)
+    factory = context.require("process_registry_factory", "process_registry_factory/1.0")
+    process_service = ProcessRegistryService(factory.create(layout))
+    process_record = process_service.get_or_create(identity, kind="oneshot")
+    process_record = process_service.start_run(process_record.process_id, run_id=ids.episode_id)
 
     episode_ctx = EpisodeContext(
         run_dir=ctx.run_dir,
@@ -378,6 +437,10 @@ def _bootstrap_episode(
         tags=tags or {},
         adapter_label=adapter_label,
         started_at=ctx.started_at,
+        process_id=process_record.process_id,
+        process_name=process_record.process_name,
+        process_kind=process_record.kind,
+        process_run_index=process_record.run_index,
         workspace=workspace_path,
         verify=verify_specs,
         intuition_mode=cfg.intuition_mode,
@@ -402,13 +465,17 @@ def _bootstrap_episode(
     return _EpisodeRuntime(
         cfg=cfg,
         port_versions=port_versions,
-        runs_dir=runs_dir,
+        layout=layout,
         ctx=ctx,
         episode_ctx=episode_ctx,
         state_repo=state_repo,
         state_path=state_path,
         adapter_label=adapter_label,
         raw_using_label=raw_using_label,
+        process_id=process_record.process_id,
+        process_name=process_record.process_name,
+        process_kind=process_record.kind,
+        process_run_index=process_record.run_index,
         determinism=determinism,
         now_fn=now_fn,
         run_clock=run_clock,
@@ -534,6 +601,7 @@ def _run_impl(
     workspace: str | Path | None,
     verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
+    process_name: str | None = None,
 ) -> str:
     minimal_mode = using is None
     raw_using_label: Optional[str]
@@ -554,6 +622,7 @@ def _run_impl(
         verify=verify,
         intuition=intuition,
         determinism=determinism,
+        process_name=process_name,
     )
 
     return _run_episode(setup=setup, task=task, seed=seed, tags=tags, using=using)
@@ -665,6 +734,7 @@ def run(
     workspace: str | Path | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
+    process_name: str | None = None,
 ) -> str:
     app = context or get_context()
     workspace_path = Path(workspace) if workspace is not None else None
@@ -679,6 +749,7 @@ def run(
         workspace=workspace_path,
         verify=verify_specs,
         determinism=determinism,
+        process_name=process_name,
     )
 
 
@@ -693,6 +764,7 @@ def run_using(
     workspace: str | Path | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
+    process_name: str | None = None,
 ) -> str:
     app = context or get_context()
     workspace_path = Path(workspace) if workspace is not None else None
@@ -707,6 +779,7 @@ def run_using(
         workspace=workspace_path,
         verify=verify_specs,
         determinism=determinism,
+        process_name=process_name,
     )
 
 
@@ -721,6 +794,7 @@ async def run_using_async(
     workspace: str | Path | None = None,
     verify: VerifyInput = None,
     determinism: "_DeterminismConfig | None" = None,
+    process_name: str | None = None,
 ) -> str:
     app = context or get_context()
     workspace_path = Path(workspace) if workspace is not None else None
@@ -735,6 +809,7 @@ async def run_using_async(
         workspace=workspace_path,
         verify=verify_specs,
         determinism=determinism,
+        process_name=process_name,
     )
 
 
@@ -749,6 +824,7 @@ async def _run_impl_async(
     workspace: str | Path | None,
     verify: VerifyInput,
     determinism: "_DeterminismConfig | None",
+    process_name: str | None = None,
 ) -> str:
     minimal_mode = using is None
     raw_using_label: Optional[str]
@@ -769,6 +845,7 @@ async def _run_impl_async(
         verify=verify,
         intuition=intuition,
         determinism=determinism,
+        process_name=process_name,
     )
 
     return await _run_episode_async(setup=setup, task=task, seed=seed, tags=tags, using=using)

@@ -63,6 +63,7 @@ class NoesisSession:
         intuition: bool | Intuition | None = True,
         tags: Optional[MutableMapping[str, Any]] = None,
         workspace: str | Path | None = None,
+        process: str | None = None,
         verify: "VerifyInput" = None,
         runner: RunnerProtocol | None = None,
     ) -> str:
@@ -78,7 +79,9 @@ class NoesisSession:
                     intuition=intuition,
                     tags=merged_tags,
                     workspace=workspace_path,
+                    process=process,
                     verify=verify_specs,
+                    process_name=process,
                 )
                 return runner.run(request, context=self._context)
 
@@ -93,6 +96,7 @@ class NoesisSession:
                 workspace=workspace_path,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     def solve(
@@ -104,6 +108,7 @@ class NoesisSession:
         intuition: bool | Intuition = True,
         tags: Optional[MutableMapping[str, Any]] = None,
         workspace: str | Path | None = None,
+        process: str | None = None,
         verify: "VerifyInput" = None,
     ) -> str:
         """Execute a task using a supplied graph/adapter."""
@@ -123,6 +128,7 @@ class NoesisSession:
                 workspace=workspace_path,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     async def solve_async(
@@ -134,6 +140,7 @@ class NoesisSession:
         intuition: bool | Intuition = True,
         tags: Optional[MutableMapping[str, Any]] = None,
         workspace: str | Path | None = None,
+        process: str | None = None,
         verify: "VerifyInput" = None,
     ) -> str:
         """Execute a task using a supplied graph/adapter (async)."""
@@ -153,6 +160,7 @@ class NoesisSession:
                 workspace=workspace_path,
                 verify=verify_specs,
                 determinism=self._config.determinism,
+                process_name=process,
             )
 
     def with_ports(self, **ports: tuple[Any, str]) -> "NoesisSession":

@@ -172,7 +172,10 @@ def _bootstrap_runtime(
     cfg: Any,
 ) -> _GovernedActRuntime:
     ids = _mint_episode_ids(request.seed, determinism)
-    run_dir = _begin_episode(cfg.runs_dir, ids.episode_id)
+    layout_port = context.require("layout", "layout/1.0")
+    layout = layout_port.resolve(workspace=None, runs_dir=cfg.runs_dir)
+    layout_port.ensure(layout)
+    run_dir = _begin_episode(layout.episodes_dir, ids.episode_id)
     clock, now_fn = _init_clock(determinism)
     started_at = now_fn()
     adapter_label = _resolve_adapter_label(request.kind, request.payload)
@@ -410,6 +413,10 @@ def _finalize_terminal(
         using_label=runtime.adapter_label,
         tags=runtime.state.tags,
         intuition=None,
+        process_id=runtime.state.process_id,
+        process_name=runtime.state.process_name,
+        process_kind=runtime.state.process_kind,
+        process_run_index=runtime.state.process_run_index,
         schema_version=SUMMARY_SCHEMA_VERSION,
         config=_config_snapshot(context),
         ports=context.list_ports(),

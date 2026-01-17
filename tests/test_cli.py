@@ -4,6 +4,7 @@ import json
 
 import noesis as ns
 from noesis.cli import main as cli_main
+from noesis.runtime.paths import resolve_noesis_paths
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 
 
@@ -78,10 +79,11 @@ def test_cli_validate_ports_json(tmp_path, capsys):
 def test_cli_diagnostics_json(tmp_path, capsys):
     runs_dir = tmp_path / "runs"
     learn_home = tmp_path / "learn"
-    runs_dir.mkdir()
     learn_home.mkdir()
 
     ns.set(runs_dir=str(runs_dir), learn_home=str(learn_home))
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+    layout.episodes_dir.mkdir(parents=True, exist_ok=True)
 
     code = cli_main(["diagnostics", "--json"])
     output = capsys.readouterr().out.strip()
@@ -102,7 +104,6 @@ def test_cli_diagnostics_json(tmp_path, capsys):
 def test_cli_diagnostics_strict_warn(tmp_path, capsys):
     runs_dir = tmp_path / "runs"
     learn_home = tmp_path / "learn"
-    runs_dir.mkdir()
 
     ns.set(
         runs_dir=str(runs_dir),
@@ -119,10 +120,11 @@ def test_cli_diagnostics_strict_warn(tmp_path, capsys):
 def test_cli_diagnostics_checks_filter(tmp_path, capsys):
     runs_dir = tmp_path / "runs"
     learn_home = tmp_path / "learn"
-    runs_dir.mkdir()
     learn_home.mkdir()
 
     ns.set(runs_dir=str(runs_dir), learn_home=str(learn_home))
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+    layout.episodes_dir.mkdir(parents=True, exist_ok=True)
 
     code = cli_main(["diagnostics", "--json", "--checks", "runs_dir"])
     output = capsys.readouterr().out.strip()

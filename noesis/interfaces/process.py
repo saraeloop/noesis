@@ -5,7 +5,7 @@ from typing import Protocol, Sequence
 
 from noesis.domain.process import Process
 
-__all__ = ["ProcessRegistryPort"]
+__all__ = ["ProcessRegistryPort", "ProcessRegistryFactoryPort"]
 
 
 class ProcessRegistryPort(Protocol):
@@ -23,4 +23,13 @@ class ProcessRegistryPort(Protocol):
         ...
 
     def upsert(self, process: Process) -> None:
+        ...
+
+
+class ProcessRegistryFactoryPort(Protocol):
+    """Factory for process registry instances bound to a layout."""
+
+    __api_version__: str = "process_registry_factory/1.0"
+
+    def create(self, layout: object) -> ProcessRegistryPort:
         ...

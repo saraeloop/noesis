@@ -30,7 +30,7 @@ class _DummyNS:
         self.summary = _DummySummary(summary)
         self.events = _DummyEvents(events)
 
-    def run(self, *, task: str, context=None, workspace=None, verify=None):
+    def run(self, *, task: str, context=None, workspace=None, process=None, verify=None):
         return "ep_test"
 
 

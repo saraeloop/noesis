@@ -12,6 +12,7 @@ runs/
 !docs/runs/
 !docs/runs/README.md
 .noesis/
+.noesis-ci/
 .pytest_cache/
 .coverage
 htmlcov/
@@ -62,3 +63,8 @@ CLAUDE.md
 # internal folders
 internals/adr/
 images/
+
+# noesis-tui build output
+/noesis-tui/noesis-tui
+/noesis-tui/*.exe
+/noesis-tui/*.out

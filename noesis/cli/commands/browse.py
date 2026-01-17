@@ -6,6 +6,7 @@ from typing import Any
 
 from ..context import CLIContext
 from ..render.base import OutputRenderer
+from noesis.runtime.paths import resolve_noesis_paths
 
 
 class BrowseCommand:
@@ -40,8 +41,8 @@ class BrowseCommand:
             return 0
 
         # Launch the TUI
-        runs_dir = ctx.config_snapshot.runs_dir
-        run_browse(episodes, runs_dir=runs_dir)
+        layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
+        run_browse(episodes, episode_roots=layout.episode_roots())
 
         return 0
 

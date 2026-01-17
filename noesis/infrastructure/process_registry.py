@@ -14,7 +14,7 @@ from noesis.runtime.serialization import atomic_write_json
 INDEX_SCHEMA_VERSION = "process_registry/1.0"
 INDEX_FILE_NAME = "index.json"
 
-__all__ = ["FileProcessRegistry"]
+__all__ = ["FileProcessRegistry", "FileProcessRegistryFactory", "list_processes"]
 
 
 def _utc_now() -> datetime:
@@ -129,3 +129,32 @@ class FileProcessRegistry(ProcessRegistryPort):
 
     def _process_path(self, process_id: str) -> Path:
         return self.root / f"{process_id}.json"
+
+
+@dataclass(slots=True)
+class FileProcessRegistryFactory:
+    """Create process registries rooted at a resolved layout."""
+
+    __api_version__ = "process_registry_factory/1.0"
+
+    def create(self, layout: object) -> ProcessRegistryPort:
+        processes_dir = getattr(layout, "processes_dir", None)
+        if not isinstance(processes_dir, Path):
+            raise TypeError("layout must provide a processes_dir Path")
+        return FileProcessRegistry(processes_dir)
+
+
+def list_processes(layout: object) -> list[Process]:
+    """Load processes across canonical and legacy roots (canonical wins)."""
+    process_roots = getattr(layout, "process_roots", None)
+    if not callable(process_roots):
+        raise TypeError("layout must provide process_roots()")
+    seen: dict[str, Process] = {}
+    for root in process_roots():
+        if not isinstance(root, Path):
+            continue
+        registry = FileProcessRegistry(root)
+        for process in registry.list():
+            if process.process_id not in seen:
+                seen[process.process_id] = process
+    return list(seen.values())

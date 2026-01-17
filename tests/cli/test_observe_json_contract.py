@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from pathlib import Path
 
 import noesis as ns
 from noesis.cli import main as cli_main
+from noesis.runtime.paths import resolve_noesis_paths
 
 
 @contextmanager
@@ -15,6 +17,11 @@ def _preserve_config():
         yield
     finally:
         ns.set(**snapshot)
+
+
+def _episode_dirs(runs_dir: Path) -> list[Path]:
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+    return list(layout.episodes_dir.glob("ep_*"))
 
 
 def test_view_json_envelope(tmp_path, capsys) -> None:
@@ -29,7 +36,7 @@ def test_view_json_envelope(tmp_path, capsys) -> None:
         assert run_code == 0
 
         # Get the episode ID from the runs directory
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         assert len(episode_dirs) == 1
         episode_id = episode_dirs[0].name
 
@@ -66,12 +73,12 @@ def test_view_json_envelope(tmp_path, capsys) -> None:
 
 
 def test_ps_json_envelope(tmp_path, capsys) -> None:
-    """Test that ps --json emits PsResult envelope per ADR-012."""
+    """Test that ps --json emits PsResult envelope."""
     runs_dir = tmp_path / "runs"
     with _preserve_config():
         ns.set(runs_dir=str(runs_dir))
 
-        # Create a couple episodes
+        # Create a couple episodes under the same process
         cli_main(["run", "ps test 1", "--json"])
         cli_main(["run", "ps test 2", "--json"])
         capsys.readouterr()  # Clear run output
@@ -95,19 +102,20 @@ def test_ps_json_envelope(tmp_path, capsys) -> None:
         assert cli["compat_max"] == "cli/1.x"
 
         # Verify required fields
-        assert "episodes" in envelope
-        assert isinstance(envelope["episodes"], list)
-        assert len(envelope["episodes"]) >= 2
+        assert "processes" in envelope
+        assert isinstance(envelope["processes"], list)
+        assert len(envelope["processes"]) >= 1
         assert envelope["limit"] == 10
-        assert envelope["total_count"] >= 2
+        assert envelope["total_count"] >= 1
         assert "offset" in envelope
 
-        # Verify episode row structure
-        episode = envelope["episodes"][0]
-        assert "episode_id" in episode
-        assert "episode_short" in episode
-        assert "status" in episode
-        assert "outcome" in episode
+        # Verify process row structure
+        process = envelope["processes"][0]
+        assert "process_id" in process
+        assert "process_name" in process
+        assert "kind" in process
+        assert "status" in process
+        assert "last_seen_at" in process
 
 
 def test_events_json_envelope(tmp_path, capsys) -> None:
@@ -121,7 +129,7 @@ def test_events_json_envelope(tmp_path, capsys) -> None:
         capsys.readouterr()
 
         # Get episode ID
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         assert len(episode_dirs) == 1
         episode_id = episode_dirs[0].name
 
@@ -163,7 +171,7 @@ def test_events_json_streaming_preserved(tmp_path, capsys) -> None:
         capsys.readouterr()
 
         # Get episode ID
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         episode_id = episode_dirs[0].name
 
         # Test events --json (JSONL mode)
@@ -194,7 +202,7 @@ def test_events_envelope_with_phase_filter(tmp_path, capsys) -> None:
         cli_main(["run", "events filter test", "--json"])
         capsys.readouterr()
 
-        episode_dirs = list(runs_dir.glob("ep_*"))
+        episode_dirs = _episode_dirs(runs_dir)
         episode_id = episode_dirs[0].name
 
         # Test events --envelope --phase start
