@@ -1,0 +1,26 @@
+{
+  "created_at": "2025-11-11T02:19:15.776154+00:00",
+  "episode_id": "ep_01K9RBBMXXRSFWR49SXFGF4SPR",
+  "files": [
+    {
+      "kind": "events",
+      "name": "events.jsonl",
+      "sha256": "sha256:74b1fd007607dfa44d28f969b0be5390ca1096bb527d0608959271ba45e20b26",
+      "size_bytes": 6909
+    },
+    {
+      "kind": "state",
+      "name": "state.json",
+      "sha256": "sha256:34243b8be5f99204714ef00038474fac0f3cb5cf803fad426f8716c4d57bb4f3",
+      "size_bytes": 2211
+    },
+    {
+      "kind": "summary",
+      "name": "summary.json",
+      "sha256": "sha256:137e21b2ff57093dd0e36b57b34083562b60ec62491257ef5b79556073433e34",
+      "size_bytes": 1765
+    }
+  ],
+  "schema_version": "manifest/1.0",
+  "signer": null
+}
