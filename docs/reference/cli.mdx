@@ -345,9 +345,9 @@ noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --open
 
 ```
 === artifacts ===
-dir: runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
-summary: runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
-events: runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/events.jsonl
+dir: .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+summary: .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
+events: .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/events.jsonl
 
 === timeline ===
 [start] 2024-12-27T10:15:32.000Z
@@ -507,7 +507,7 @@ noesis artifacts verify ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --strict
 
 ```
 Artifact verification
-manifest : runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
+manifest : .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
 status   : ok
 files    : 4
 duration : 12.34 ms
@@ -523,7 +523,7 @@ files detail:
 
 ```
 === Artifact verification ===
-manifest : runs/ep_2024_abc123_s0/manifest.json
+manifest : .noesis/episodes/ep_2024_abc123_s0/manifest.json
 status   : ok
 files    : 4
 duration : 12.34 ms
@@ -588,7 +588,7 @@ noesis diagnostics --strict
 noesis diagnostics --checks runs_dir,ports,artifact_manifest
 
 # Drift compare two runs
-noesis diagnostics replay runs/ep_a runs/ep_b
+noesis diagnostics replay .noesis/episodes/ep_a .noesis/episodes/ep_b
 ```
 
 Replay exits `1` on drift, `0` otherwise. Default mode exits `1` on errors (or warnings when `--strict`).
@@ -603,15 +603,15 @@ summary_schema_version: 1.1.0
 state_version         : 1 (schema 1.0)
 selected_checks       : all
 checks:
-  [ok] runs_dir - ./runs
+  [ok] runs_dir - ./.noesis/episodes
   [ok] learn_home - ~/.noesis/state
   [ok] direction_min_confidence - 0.50
   [ok] learn_auto_apply_min_confidence - 0.75
   [ok] learn_auto_apply_min_successes - 3
   [ok] ports - config=config/1.0-rc1
   [ok] config_snapshot - in sync
-  [ok] latest_summary - runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
-  [ok] artifact_manifest - runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
+  [ok] latest_summary - .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
+  [ok] artifact_manifest - .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
 overall status        : ok
 ```
 

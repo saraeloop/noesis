@@ -3,7 +3,7 @@ title: "Adopting Noēsis in real systems"
 description: "Move from local traces to team-wide observability and evals without surprises."
 ---
 
-Noēsis is easy to try locally: install the package, run an episode, open `runs/demo/...`, and you can literally **see your agent think**. This guide is for the moment _after_ that first “wow”:
+Noēsis is easy to try locally: install the package, run an episode, open `.noesis/episodes/<episode-id>/`, and you can literally **see your agent think**. This guide is for the moment _after_ that first “wow”:
 
 > “I like this. How do I use it responsibly in a real service, team, or eval harness?”
 
@@ -33,7 +33,7 @@ Most teams start by wrapping a single agent or eval harness and grow from there.
 
 Only then ask: “Where should these episodes live if multiple people or services produce them?”
 
-- Local only: keep default `./runs/demo/...`.
+- Local only: keep default `./.noesis/episodes/<episode-id>/`.
 - Shared dev: network volume/S3/mounted path in Docker/Kubernetes.
 - Service-level: scoped location per app/team.
 
@@ -42,7 +42,7 @@ You don’t need a perfect “episode store” on day one—pick **one** place t
 ## 3) Where to store episodes
 
 ```
-./runs/demo/<episode-id>/
+./.noesis/episodes/<episode-id>/
   events.jsonl
   summary.json
   state.json
@@ -54,11 +54,11 @@ Goal: make episodes easy to find, safe to keep, and cheap to delete.
 </Note>
 
 **Local dev / CI**
-- Keep `./runs/...`.
+- Keep `./.noesis/episodes/...`.
 - Add cleanup: in CI delete after each job; on dev machines prune old runs (`find runs -mtime +7 -delete` or similar).
 
 **Shared / long-lived (later, if Noēsis becomes central)**
-- Centralize base path: `/var/noesis/runs/<service>/<date>/...` or a mounted volume/S3 prefix.
+- Centralize base path: `/var/noesis/episodes/<service>/<date>/...` or a mounted volume/S3 prefix.
 - Add retention: keep N latest per service, and “golden” episodes (evals, interesting failures) tagged for longer.
 - Noēsis never deletes by itself—use your scheduler/scripts.
 

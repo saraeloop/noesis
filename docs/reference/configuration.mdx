@@ -25,7 +25,7 @@ Directory where artifacts are stored.
 | Python | `ns.set(runs_dir="./my-runs")` |
 | Environment | `NOESIS_RUNS_DIR=./my-runs` |
 | TOML | `runs_dir = "./my-runs"` |
-| Default | `"runs"` |
+| Default | `".noesis/episodes"` |
 
 ### planner_mode
 
@@ -264,7 +264,7 @@ The recommended form is a `[noesis]` table (if the table is missing, Noēsis fal
 
 ```toml noesis.toml
 [noesis]
-runs_dir = "./runs"
+runs_dir = "./.noesis/episodes"
 agents = "agents.yaml"
 tasks = "tasks.yaml"
 planner_mode = "meta"
@@ -363,7 +363,7 @@ import noesis as ns
 
 # Set back to defaults explicitly
 ns.set(
-    runs_dir="./runs",
+    runs_dir="./.noesis/episodes",
     planner_mode="meta",
     direction_min_confidence=0.5,
     governance_mode="off",
@@ -442,7 +442,7 @@ except ValueError as e:
 
 ```toml noesis.toml
 [noesis]
-runs_dir = "./runs"
+runs_dir = "./.noesis/episodes"
 planner_mode = "minimal"
 direction_min_confidence = 0.5
 governance_mode = "off"
@@ -453,7 +453,7 @@ prompt_provenance_enabled = false
 
 ```toml noesis.toml
 [noesis]
-runs_dir = "./runs"
+runs_dir = "./.noesis/episodes"
 planner_mode = "meta"
 learn_mode = "record"
 direction_min_confidence = 0.5
@@ -465,7 +465,7 @@ prompt_provenance_enabled = false
 
 ```toml noesis.toml
 [noesis]
-runs_dir = "/var/noesis/runs"
+runs_dir = "/var/noesis/episodes"
 planner_mode = "meta"
 learn_mode = "record"
 governance_mode = "enforce"

@@ -1,10 +1,10 @@
 # Examples & Learning Path
 
-Use these scenarios to introduce Noēsis concepts to engineers, operators, and stakeholders. Each folder keeps real code alongside the immutable artifacts stored in `runs/`.
+Use these scenarios to introduce Noēsis concepts to engineers, operators, and stakeholders. Each folder keeps real code alongside the immutable artifacts stored in `.noesis/episodes/`.
 
 ## Quickstart
 
-- `examples/demo.py` – one-file tour that runs two tasks (normal + vetoed) and prints summaries. Pair it with [`runs/README.md`](../runs/README.md) to explain the emitted artifacts.
+- `examples/demo.py` – one-file tour that runs two tasks (normal + vetoed) and prints summaries. Pair it with [`docs/explanation/artifacts.mdx`](../docs/explanation/artifacts.mdx) to explain the emitted artifacts.
 - `examples/artifacts/state_v1_example.json` – trimmed state snapshot used throughout the README and docs.
 
 ## Governance & operations
@@ -25,6 +25,6 @@ Use these scenarios to introduce Noēsis concepts to engineers, operators, and s
 ### Suggested flow for new contributors
 
 1. Run `uv run python examples/demo.py`.
-2. Open the emitted `runs/demo/<episode>/summary.json` and `state.json`.
+2. Open the emitted `.noesis/episodes/demo/<episode>/summary.json` and `state.json`.
 3. Step up to `uv run python -m examples.incident_triage.gradio_app` to see governance + dashboards.
 4. Customize `context.register("memory", ...)` to plug in domain memories or insight evaluators.

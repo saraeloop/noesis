@@ -81,7 +81,7 @@ Noēsis is a cognitive framework. To protect its identity and prevent scope drif
 - ✅ Schema-governed prompt records (`$schema_name: prompt`, `$schema_version: 1.1.0`) with fixtures and schema guard (`internal_docs/schema/prompt.v1.yaml`, `docs/schema/prompt/1.1.0.json`, `tests/runtime/test_prompt_schema.py`).
 - ✅ PromptRecorder with `full` / `hash_only` / `redacted` modes, deterministic hashing, manifest integration, and leakage guards (`noesis/runtime/prompt_recorder.py`, `tests/runtime/test_prompt_recorder.py`).
 - ✅ Recorded prompts across interpret, plan, governance, and reflect phases with tag threading and event linkage where available (`noesis/usecases/episode_runner.py`).
-- ✅ Docs updated to mark prompts.jsonl experimental with mode semantics and schema reference (`docs/runs/README.md`).
+- ✅ Docs updated to mark prompts.jsonl experimental with mode semantics and schema reference (`docs/explanation/artifacts.mdx`).
 
 ### Accepted Baseline Metrics
 

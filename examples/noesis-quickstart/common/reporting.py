@@ -121,7 +121,7 @@ def print_case(label: str, task: str, episode_id: str | None) -> None:
         warn("Episode ID: unavailable")
 
 
-def print_guarded_episode_results(episode_id: str, runs_dir: str = "runs") -> None:
+def print_guarded_episode_results(episode_id: str, runs_dir: str = ".noesis/episodes") -> None:
     try:
         events = read_events_jsonl(runs_dir=runs_dir, episode_id=episode_id, limit=80)
         summary = read_summary_json(runs_dir=runs_dir, episode_id=episode_id)

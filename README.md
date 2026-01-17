@@ -46,7 +46,7 @@ flowchart LR
     M --> O
 ```
 
-- Artifacts (under `runs/<label>/<episode_id>/`):
+- Artifacts (under `.noesis/episodes/<episode_id>/` by default; set `runs_dir` to add a label):
   - `events.jsonl` – timeline with causal IDs
   - `summary.json` – metrics, outcome, cross-links
   - `state.json` – current plan and episode state
@@ -71,7 +71,7 @@ uv tool install .
 brew install jq
 ```
 
-Minimal run (emits artifacts to `./runs` by default):
+Minimal run (emits artifacts to `./.noesis/episodes` by default):
 
 ```python
 import noesis as ns
@@ -87,8 +87,8 @@ print(timeline[0]["phase"], timeline[0].get("payload"))
 Artifacts layout:
 
 ```
-runs/
-  demo/              # label (configurable)
+.noesis/
+  episodes/
     ep_.../          # episode id
       summary.json
       state.json
@@ -119,7 +119,7 @@ Toggle governance depth:
 ```python
 import noesis as ns
 
-ns.set(runs_dir="./runs/demo")
+ns.set(runs_dir="./.noesis/episodes/demo")
 ns.set(planner_mode="meta")      # with governance (default)
 ns.run("Summarize release notes", intuition=False)
 
@@ -151,7 +151,7 @@ Config snapshots (read/write current session config):
 ```python
 import noesis as ns
 
-ns.set(runs_dir="./runs/demo", planner_mode="minimal", governance_mode="audit")
+ns.set(runs_dir="./.noesis/episodes/demo", planner_mode="minimal", governance_mode="audit")
 config = ns.get()
 print(config["runs_dir"], config["planner_mode"])
 ```
@@ -189,7 +189,7 @@ except NoesisVeto as veto:
 
 ## Docs & links
 - Artifacts guide: `docs/artifacts/state.md`
-- Runs cheat sheet: `runs/README.md`
+- Runs cheat sheet: `docs/explanation/artifacts.mdx`
 - Schema index: `docs/app/reference/schema-index.mdx`
 - CLI reference: `docs/app/reference/cli/page.mdx`
 - Quickstart guide: `docs/app/guides/quickstart/page.mdx`

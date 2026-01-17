@@ -10,6 +10,7 @@ import pytest
 from jsonschema import validate
 
 import noesis as ns
+from noesis.config import EnvTomlConfig
 from noesis.cli.viewer import load_episode_view
 from noesis.cli.view_models import build_episode_dashboard
 from noesis.runtime.artifacts.manifest import compute_sha256
@@ -34,6 +35,8 @@ def _tutorial_context(tmp_path: Path) -> Path:
     runs_dir.mkdir(parents=True, exist_ok=True)
     learn_dir.mkdir(parents=True, exist_ok=True)
 
+    session_provider = ns.session_provider()
+    session: ns.NoesisSession | None = None
     original_cwd = Path.cwd()
     original_env = dict(os.environ)
     sys.path.insert(0, str(tutorial_root))
@@ -41,8 +44,12 @@ def _tutorial_context(tmp_path: Path) -> Path:
     os.environ["NOESIS_LEARN_HOME"] = str(learn_dir)
     os.chdir(tmp_path)
     try:
+        config_port = EnvTomlConfig(env=os.environ, cwd=tmp_path)
+        builder = ns.SessionBuilder(config_port=config_port)
+        session = ns.create_session(builder)
         layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
-        yield layout.episodes_dir
+        with session_provider.use(session):
+            yield layout.episodes_dir
     finally:
         os.chdir(original_cwd)
         os.environ.clear()

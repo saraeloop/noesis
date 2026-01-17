@@ -3,7 +3,7 @@ title: "Configure shared episode storage"
 description: "Point Noēsis at a shared location via network volumes, S3 sync, Docker mounts, or Kubernetes PVCs."
 ---
 
-By default, Noēsis writes episodes under `./runs/demo/...`. In a team or service setting, you usually want a **shared** location so everyone can see/replay the same traces.
+By default, Noēsis writes episodes under `./.noesis/episodes/<episode-id>/`. In a team or service setting, you usually want a **shared** location so everyone can see/replay the same traces.
 
 This guide shows four common setups:
 
@@ -19,8 +19,8 @@ Pick one of these patterns for your environment—you don’t need all four.
 ## A) Shared dev: network volume
 
 ```bash
-# Example: shared volume mounted at /srv/noesis/runs
-ls /srv/noesis/runs
+# Example: shared volume mounted at /srv/noesis/episodes
+ls /srv/noesis/episodes
 # (empty or existing runs)
 ```
 
@@ -28,10 +28,10 @@ Configure your app/runtime to use it as the base runs directory, e.g.:
 
 ```bash
 # pseudo-config
-NOESIS_RUNS_DIR=/srv/noesis/runs
+NOESIS_RUNS_DIR=/srv/noesis/episodes
 ```
 
-Result: `/srv/noesis/runs/<service>/<episode-id>/` is shared across the team.
+Result: `/srv/noesis/episodes/<service>/<episode-id>/` is shared across the team.
 
 ## B) Shared dev: local + S3 (or any object store)
 
@@ -39,13 +39,13 @@ Don’t write directly to S3; sync a local directory.
 
 ```bash
 # App writes episodes locally
-NOESIS_RUNS_DIR=/var/noesis/runs
+NOESIS_RUNS_DIR=/var/noesis/episodes
 
 # Periodic sync job (cron/CI)
-aws s3 sync /var/noesis/runs s3://my-bucket/noesis-runs --delete
+aws s3 sync /var/noesis/episodes s3://my-bucket/noesis-runs --delete
 
 # Optionally pull shared episodes down
-aws s3 sync s3://my-bucket/noesis-runs /var/noesis/runs
+aws s3 sync s3://my-bucket/noesis-runs /var/noesis/episodes
 ```
 
 Pattern: local path for fast replay/debugging, S3 as central archive.
@@ -53,15 +53,15 @@ Pattern: local path for fast replay/debugging, S3 as central archive.
 ## C) Docker: bind-mount the runs directory
 
 ```bash
-mkdir -p /srv/noesis/runs
+mkdir -p /srv/noesis/episodes
 
 docker run \
-  -v /srv/noesis/runs:/app/runs \
-  -e NOESIS_RUNS_DIR=/app/runs \
+  -v /srv/noesis/episodes:/app/.noesis/episodes \
+  -e NOESIS_RUNS_DIR=/app/.noesis/episodes \
   my-noesis-service:latest
 ```
 
-Inside the container, Noēsis writes to `/app/runs/...`; on the host, you see `/srv/noesis/runs/...`.
+Inside the container, Noēsis writes to `/app/.noesis/episodes/...`; on the host, you see `/srv/noesis/episodes/...`.
 
 ## D) Kubernetes: PersistentVolumeClaim
 
@@ -88,17 +88,17 @@ spec:
           image: my-noesis-service:latest
           env:
             - name: NOESIS_RUNS_DIR
-              value: /var/noesis/runs
+              value: /var/noesis/episodes
           volumeMounts:
             - name: noesis-runs
-              mountPath: /var/noesis/runs
+              mountPath: /var/noesis/episodes
       volumes:
         - name: noesis-runs
           persistentVolumeClaim:
             claimName: noesis-runs-pvc
 ```
 
-Each pod writes episodes under `/var/noesis/runs`, backed by the shared PVC.
+Each pod writes episodes under `/var/noesis/episodes`, backed by the shared PVC.
 
 ---
 

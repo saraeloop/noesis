@@ -59,7 +59,7 @@ class RuntimeConfig:
 def default_runtime_config() -> RuntimeConfig:
     """Return the immutable default configuration."""
     return RuntimeConfig(
-        runs_dir=Path("runs"),
+        runs_dir=Path(".noesis") / "episodes",
         agents="agents.yaml",
         tasks="tasks.yaml",
         timeout_sec=60,
