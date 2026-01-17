@@ -1,0 +1,14 @@
+Noēsis pre-release summary
+mode: dry-run
+checks: 8
+failures: 0
+
+check	status	command
+unit-tests	ok	uv run python -m pytest
+diagnostics-help	ok	uv run noesis diagnostics --help
+validate-ports	ok	uv run noesis validate-ports --json
+cli-smoke	ok	uv run noesis --help
+validate-exports	ok	uv run scripts/validate_exports.py --strict
+docs-build	ok	pnpm run build
+telemetry-smoke	ok	uv run python -c import os; os.environ.setdefault('NOESIS_OTLP_URL', 'http://127.0.0.1:4317'); import noesis; print('telemetry smoke ok')
+build-wheel	ok	uv run python -m build

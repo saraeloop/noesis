@@ -127,6 +127,35 @@ ns.set(planner_mode="minimal")   # opt out for throughput
 ns.run("Summarize release notes", intuition=False)
 ```
 
+Workspace snapshots + verification (verify real filesystem changes with immutable snapshots):
+
+```python
+import noesis as ns
+
+verify = [
+    ns.file_exists("config.yaml"),
+    ns.file_contains("config.yaml", "enabled: true"),
+    ns.only_modified(["config.yaml"]),
+]
+
+episode_id = ns.solve(
+    "Update config",
+    using="my.module:adapter_fn",
+    workspace=".",   # capture pre/post workspace snapshots
+    verify=verify,
+)
+```
+
+Config snapshots (read/write current session config):
+
+```python
+import noesis as ns
+
+ns.set(runs_dir="./runs/demo", planner_mode="minimal", governance_mode="audit")
+config = ns.get()
+print(config["runs_dir"], config["planner_mode"])
+```
+
 Governed side effects (pre-act gating):
 
 ns.governed_act(...) is the “operating-system boundary” for side effects. It emits:

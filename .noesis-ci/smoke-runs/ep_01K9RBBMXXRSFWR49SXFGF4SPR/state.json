@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "state_schema_version": "1.0.0",
+  "episode": {
+    "id": "ep_01K9RBBMXXRSFWR49SXFGF4SPR",
+    "seed": 0,
+    "started_at": "2025-11-11T02:19:15.773740+00:00",
+    "tags": {},
+    "using": "adapter:core.minimal"
+  },
+  "goal": {
+    "task": "smoke: manifest happy path",
+    "type": "task"
+  },
+  "beliefs": [],
+  "plan": {
+    "steps": [
+      {
+        "id": "step-1",
+        "kind": "detect",
+        "description": "Collect relevant context",
+        "status": "done"
+      },
+      {
+        "id": "step-2",
+        "kind": "act",
+        "description": "Execute goal: smoke: manifest happy path",
+        "status": "done"
+      },
+      {
+        "id": "step-3",
+        "kind": "verify",
+        "description": "Verify outcome and capture learnings",
+        "status": "done"
+      }
+    ],
+    "source": "planner.minimal",
+    "updated_at": "2025-11-11T02:19:15.774817+00:00",
+    "rationale": "minimal planner"
+  },
+  "memory": {
+    "facts": [],
+    "scratchpad": ""
+  },
+  "outcomes": {
+    "status": "ok",
+    "summary": "Completed 3 minimal steps.",
+    "actions": [
+      {
+        "id": "act-1",
+        "kind": "adapter",
+        "tool": "adapter:core.minimal",
+        "input_excerpt": "Collect relevant context",
+        "result_status": "ok",
+        "timestamp": "2025-11-11T02:19:15.774521+00:00",
+        "step_id": "step-1"
+      },
+      {
+        "id": "act-2",
+        "kind": "adapter",
+        "tool": "adapter:core.minimal",
+        "input_excerpt": "Execute goal: smoke: manifest happy path",
+        "result_status": "ok",
+        "timestamp": "2025-11-11T02:19:15.774572+00:00",
+        "step_id": "step-2"
+      },
+      {
+        "id": "act-3",
+        "kind": "adapter",
+        "tool": "adapter:core.minimal",
+        "input_excerpt": "Verify outcome and capture learnings",
+        "result_status": "ok",
+        "timestamp": "2025-11-11T02:19:15.774621+00:00",
+        "step_id": "step-3"
+      }
+    ],
+    "metrics": {
+      "task_score": 0.75,
+      "goal_success": 0.8,
+      "efficiency": 0.7
+    }
+  },
+  "links": {
+    "events": "events.jsonl",
+    "summary": "summary.json",
+    "learn": "learn.jsonl",
+    "manifest": "manifest.json"
+  }
+}

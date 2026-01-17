@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.2.0",
+  "episode_id": "ep_01K9RBBMXXRSFWR49SXFGF4SPR",
+  "task": "smoke: manifest happy path",
+  "seed": 0,
+  "started_at": "2025-11-11T02:19:15.773740+00:00",
+  "duration_sec": 0.000911,
+  "flags": {
+    "intuition": false,
+    "mode": "off",
+    "using": "core.minimal",
+    "direction": {
+      "applied": 0,
+      "vetoed": 0,
+      "last_diff": [],
+      "threshold": 0.5
+    }
+  },
+  "agents_config_hash": "sha256:755191c4d1473d4837b70c4ecedf66cf5cda5910ee2ab09a3fedcc6126c450a4",
+  "metrics": {
+    "schema_version": "1.0.0",
+    "veto_count": 0,
+    "branching_factor": 0.0,
+    "plan_adherence": 0.0,
+    "success": true,
+    "plan_revisions": 0,
+    "tool_coverage": 0.0,
+    "plan_count": 1,
+    "reflect_count": 1,
+    "ideal_steps": 0,
+    "direction_events": 0,
+    "direction_applied": 0,
+    "direction_vetoed": 0,
+    "direction_applied_rate": 0.0,
+    "top_reasons": [],
+    "plan_total": 3,
+    "latencies": {
+      "first_action_ms": 1
+    },
+    "policy_confidence_histogram": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "alignment": 0.0,
+    "act_count": 3,
+    "steps": 3,
+    "interpret_count": 1,
+    "learn_proposals": 0,
+    "learn_applied": 0,
+    "phase_ms": {},
+    "intuition_events": 0
+  },
+  "tags": {},
+  "ports": {
+    "config": "config/1.0-rc1"
+  },
+  "insight": {
+    "metrics": {
+      "schema_version": "1.0.0",
+      "veto_count": 0,
+      "branching_factor": 0.0,
+      "plan_adherence": 1.0,
+      "success": true,
+      "plan_revisions": 0,
+      "tool_coverage": 1.0,
+      "phase_ms": {
+        "interpret": 1,
+        "plan": 1,
+        "act": 1,
+        "reflect": 1
+      }
+    }
+  },
+  "manifest": {
+    "path": "manifest.json"
+  }
+}
