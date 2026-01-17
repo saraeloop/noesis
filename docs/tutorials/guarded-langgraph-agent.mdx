@@ -212,7 +212,7 @@ def run_case(task: str, label: str, intuition: Any, using: Any) -> str | None:
         return None
 
 
-def show_episode_results(episode_id: str, runs_dir: str = "runs") -> None:
+def show_episode_results(episode_id: str, runs_dir: str = ".noesis/episodes") -> None:
     print_guarded_episode_results(episode_id, runs_dir=runs_dir)
 ```
 

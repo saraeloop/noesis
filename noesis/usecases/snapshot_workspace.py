@@ -15,7 +15,7 @@ class SnapshotWorkspace:
 
     Integration note:
     EpisodeRunner/solve will invoke this use case before and after Act to
-    persist pre/post snapshots into runs/<episode_id>/snapshots in a later PR.
+    persist pre/post snapshots into .noesis/episodes/<episode_id>/snapshots in a later PR.
     """
 
     gateway: SnapshotGateway

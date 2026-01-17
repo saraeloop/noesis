@@ -101,11 +101,9 @@ def main() -> int:
         episode_id = ns.run(task, intuition=True)
         success(f"Episode ID: {episode_id}")
 
-        # Your repo’s README says runs are under ./runs by default.
-        # If you want a fixed label, set it explicitly:
-        # ns.set(runs_dir="./runs/demo")
-
-        runs_dir = "runs"  # repo-root relative
+        # Use the configured runs_dir to locate artifacts.
+        config = ns.get()
+        runs_dir = str(config.get("runs_dir", ".noesis/episodes"))
         ep_dir = episode_dir(runs_dir, episode_id)
         success(f"Episode folder: {ep_dir}")
 

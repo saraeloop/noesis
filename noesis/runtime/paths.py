@@ -56,6 +56,8 @@ def resolve_noesis_paths(*, workspace: Path | None, runs_dir: Path) -> NoesisPat
 def resolve_noesis_root(*, workspace: Path, runs_dir: Path) -> Path:
     workspace = workspace.expanduser().resolve()
     runs_dir = runs_dir.expanduser().resolve()
+    if runs_dir.name == "episodes" and runs_dir.parent.name == ".noesis":
+        return runs_dir.parent
     if runs_dir.name == ".noesis":
         return runs_dir
     candidate = runs_dir / ".noesis"

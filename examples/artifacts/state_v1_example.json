@@ -90,7 +90,7 @@
         "result_artifacts": [
           {
             "type": "log",
-            "uri": "runs/ep_20250101_120000_123456_abcd_s0/rollback.log"
+            "uri": ".noesis/episodes/ep_20250101_120000_123456_abcd_s0/rollback.log"
           }
         ]
       }
@@ -101,7 +101,7 @@
     "artifacts": [
       {
         "type": "report",
-        "uri": "runs/ep_20250101_120000_123456_abcd_s0/report.md"
+        "uri": ".noesis/episodes/ep_20250101_120000_123456_abcd_s0/report.md"
       }
     ]
   },

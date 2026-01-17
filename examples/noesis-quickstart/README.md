@@ -25,10 +25,10 @@ After a run completes, you’ll get an `episode_id`. View it with:
 ```bash
 noesis view <episode_id>
 # or (works from anywhere):
-noesis view runs/<episode_id>
+noesis view .noesis/episodes/<episode_id>
 ```
 
-If you see “no events matched,” point the viewer to the `runs` folder that holds the episode.
+If you see “no events matched,” point the viewer to the `.noesis/episodes` folder that holds the episode.
 
 ## Tutorials
 
@@ -39,12 +39,12 @@ If you see “no events matched,” point the viewer to the `runs` folder that h
 uv run python -m tutorials.hello_episode
 ```
 - What you’ll learn:
-  - Where artifacts live: `runs/<episode_id>/...`
+  - Where artifacts live: `.noesis/episodes/<episode_id>/...`
   - Which phases happened: observe → interpret → plan → governance → act → reflect → learn → terminate → (insight/memory)
   - How to inspect runs: `noesis view <episode_id>`
 - Expected artifacts:
 ```
-runs/<episode_id>/
+.noesis/episodes/<episode_id>/
   events.jsonl
   state.json
   summary.json
@@ -73,4 +73,4 @@ uv run python -m tutorials.guarded_langgraph
 ```bash
 uv run python -m tutorials.trace_based_evals
 ```
-- Expectation: produce an episode whose summary includes evaluation metrics; review them in `noesis view` and in the written artifacts under `runs/<episode_id>/`.
+- Expectation: produce an episode whose summary includes evaluation metrics; review them in `noesis view` and in the written artifacts under `.noesis/episodes/<episode_id>/`.

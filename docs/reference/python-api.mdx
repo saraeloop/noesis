@@ -202,7 +202,7 @@ episode_id = last(*, context: Any | None = None) -> str | None
 Update or read the current configuration snapshot.
 
 ```python
-ns.set(runs_dir="runs", planner_mode="minimal", direction_min_confidence=0.7)
+ns.set(runs_dir=".noesis/episodes", planner_mode="minimal", direction_min_confidence=0.7)
 config = ns.get()  # returns a mapping of current config values
 ```
 
@@ -420,7 +420,7 @@ Manage an on-disk episode manifest (and optional FAISS similarity index).
 from noesis.episode import EpisodeIndex
 
 store = EpisodeIndex(
-    root="./runs/_episodes",
+    root="./.noesis/episodes/_episodes",
     ttl_days=14,
     enable_faiss=False,  # set True if faiss + numpy installed and you provide embeddings
 )

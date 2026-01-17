@@ -56,7 +56,7 @@ noesis list -j | jq '.[0]'
 Navigate to the runs directory to see what was created:
 
 ```bash
-ls runs/demo/ep_2024_abc123_s0/
+ls .noesis/episodes/ep_2024_abc123_s0/
 ```
 
 You'll find:
@@ -71,7 +71,7 @@ You'll find:
 ### Reading the summary
 
 ```bash
-cat runs/demo/ep_2024_abc123_s0/summary.json | jq .
+cat .noesis/episodes/ep_2024_abc123_s0/summary.json | jq .
 ```
 
 ```json
@@ -98,7 +98,7 @@ cat runs/demo/ep_2024_abc123_s0/summary.json | jq .
 ### Reading the event timeline
 
 ```bash
-cat runs/demo/ep_2024_abc123_s0/events.jsonl | jq -s .
+cat .noesis/episodes/ep_2024_abc123_s0/events.jsonl | jq -s .
 ```
 
 Each event includes:

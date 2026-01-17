@@ -3,7 +3,7 @@ import noesis as ns
 from noesis import context
 
 # keep demo runs separate
-ns.set(runs_dir="./runs/demo")
+ns.set(runs_dir="./.noesis/episodes/demo")
 
 # (optional) pin planner mode; default is meta
 # ns.set(planner_mode="meta")  # or "minimal" to compare

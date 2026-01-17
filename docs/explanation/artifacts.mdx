@@ -8,7 +8,7 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
 ## Artifact structure
 
 ```
-runs/
+.noesis/episodes/
   <label>/                     # e.g., "demo", "production"
     <episode_id>/              # e.g., "ep_20251108_120000_abc123_def4_s0"
       events.jsonl             # cognitive event timeline with lineage
@@ -409,7 +409,7 @@ Learning signals are stored separately when the learn phase emits proposals.
 import json
 from pathlib import Path
 
-learn_path = Path(f"runs/demo/{episode_id}/learn.jsonl")
+learn_path = Path(f".noesis/episodes/{episode_id}/learn.jsonl")
 
 if learn_path.exists():
     with open(learn_path) as f:
@@ -471,10 +471,10 @@ Organize episodes with labels:
 import noesis as ns
 
 ns.set(label="production")
-# Artifacts go to runs/production/ep_.../
+# Artifacts go to .noesis/episodes/production/ep_.../
 
 ns.set(label="staging")
-# Artifacts go to runs/staging/ep_.../
+# Artifacts go to .noesis/episodes/staging/ep_.../
 ```
 
 ### Retention
@@ -484,7 +484,7 @@ Control artifact retention:
 ```python
 from noesis.episode import EpisodeIndex
 
-store = EpisodeIndex("./runs/_episodes", ttl_days=14)
+store = EpisodeIndex("./.noesis/episodes/_episodes", ttl_days=14)
 store.vacuum()  # Remove episodes older than 14 days
 ```
 

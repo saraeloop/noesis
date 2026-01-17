@@ -16,11 +16,11 @@ class QuickstartPaths:
 def get_paths() -> QuickstartPaths:
     """
     Canonical layout for this repo.
-    - runs/: where episodes + reports go
+    - .noesis/episodes/: where episodes + reports go
     - .sandbox/: safe filesystem demo area
     """
     root = Path(__file__).resolve().parent.parent
-    runs = root / "runs"
+    runs = root / ".noesis" / "episodes"
     sandbox = root / ".sandbox"
 
     runs.mkdir(parents=True, exist_ok=True)

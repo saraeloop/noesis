@@ -37,7 +37,7 @@ func NewClient() *Client {
 	}
 }
 
-// detectRunsDir looks for a runs/ directory containing episodes in parent directories.
+// detectRunsDir looks for a .noesis/episodes directory containing episodes in parent directories.
 func detectRunsDir() string {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -46,7 +46,7 @@ func detectRunsDir() string {
 
 	dir := cwd
 	for {
-		runsPath := filepath.Join(dir, "runs")
+		runsPath := filepath.Join(dir, ".noesis", "episodes")
 		if isNoesisRunsDir(runsPath) {
 			return runsPath
 		}

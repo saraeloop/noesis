@@ -49,7 +49,7 @@ The PyPI release is pending. For now, install from source:
     noesis run "hello world" 
     ```
 
-    This prints and stores the episode ID (for example, `ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C`) and creates artifacts in the `runs/` directory, relative to where you run the command.
+    This prints and stores the episode ID (for example, `ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C`) and creates artifacts in the `.noesis/episodes/` directory, relative to where you run the command.
   </Step>
 
   <Step title="List recent episodes">
@@ -94,10 +94,10 @@ for event in events:
 
 ## Inspect artifacts
 
-Every episode creates a structured artifact directory (written under `runs/` by default, relative to where you run the command):
+Every episode creates a structured artifact directory (written under `.noesis/episodes/` by default, relative to where you run the command):
 
 ```
-runs/
+.noesis/episodes/
   ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/   # episode id (ULID)
     summary.json                  # metrics + rollups
     state.json                    # final state snapshot
@@ -111,7 +111,7 @@ runs/
 The `_episodes/` index is written on a best-effort basis at the end of runs and may be missing or empty (for example, if indexing fails due to permissions).
 
 <Tip>
-Use `jq` for pretty-printing JSON artifacts: `cat runs/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json | jq .`
+Use `jq` for pretty-printing JSON artifacts: `cat .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json | jq .`
 
 To change the artifact location, set `NOESIS_RUNS_DIR` or in Python call `ns.set(runs_dir="./my-runs")`.
 </Tip>

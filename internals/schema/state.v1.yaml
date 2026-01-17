@@ -40,7 +40,7 @@ json_schema:
           stability: stable
         label:
           type: string
-          description: Human-friendly folder label (e.g., runs/demo).
+          description: Human-friendly folder label (e.g., .noesis/episodes/demo).
           stability: beta
         using:
           type: string
