@@ -307,6 +307,10 @@ noesis processes [options]
 
 `status` is one of `running`, `idle`, `stale`, `error`.
 
+**Registry fields**:
+
+Process records include `last_heartbeat_at` (RFC 3339 UTC with `Z`) for staleness checks and `next_run_index` for monotonic run allocation.
+
 **JSON envelope**:
 
 `ProcessesResult` contains `processes`:
@@ -321,8 +325,10 @@ noesis processes [options]
       "kind": "oneshot",
       "status": "idle",
       "last_seen_at": "2024-12-27T10:20:05Z",
+      "last_heartbeat_at": "2024-12-27T10:20:05Z",
       "active_run_id": null,
-      "last_run_outcome": "success_unverified"
+      "last_run_outcome": "success_unverified",
+      "next_run_index": 3
     }
   ],
   "total_count": 1,

@@ -4,12 +4,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 import json
 
-from noesis.domain.process import PROCESS_SCHEMA_VERSION, Process
+from noesis.domain.process import PROCESS_SCHEMA_VERSION, Process, ProcessKind
 from noesis.interfaces.process import ProcessRegistryPort
 from noesis.runtime.serialization import atomic_write_json
+from noesis.infrastructure.locking import file_lock
+from noesis.runtime.utils import now as now_str, parse_iso8601
 
 INDEX_SCHEMA_VERSION = "process_registry/1.0"
 INDEX_FILE_NAME = "index.json"
@@ -18,6 +20,9 @@ __all__ = ["FileProcessRegistry", "FileProcessRegistryFactory", "list_processes"
 
 
 def _utc_now() -> datetime:
+    parsed = parse_iso8601(now_str())
+    if parsed is not None:
+        return parsed
     return datetime.now(timezone.utc)
 
 
@@ -33,6 +38,7 @@ class FileProcessRegistry(ProcessRegistryPort):
     """Store process records as JSON files plus a lightweight index."""
 
     root: Path
+    now: Callable[[], datetime] = _utc_now
 
     def __post_init__(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -68,8 +74,80 @@ class FileProcessRegistry(ProcessRegistryPort):
         if process.process_id not in index["process_ids"]:
             index["process_ids"].append(process.process_id)
         self._refresh_name_mapping(index, process)
-        index["updated_at"] = _utc_now().isoformat()
+        index["updated_at"] = now_str()
         atomic_write_json(self.root / INDEX_FILE_NAME, index)
+
+    def allocate_run(
+        self,
+        process_id: str,
+        *,
+        process_name: str | None = None,
+        kind: ProcessKind = "oneshot",
+        run_id: str | None = None,
+    ) -> Process:
+        lock_path = self._lock_path(process_id)
+        with file_lock(lock_path):
+            process = self.get(process_id)
+            if process is None:
+                if not process_name:
+                    raise ValueError("process_name is required to create a process record")
+                timestamp = self.now()
+                process = Process(
+                    process_id=process_id,
+                    process_name=process_name,
+                    kind=kind,
+                    status="running",
+                    created_at=timestamp,
+                    last_seen_at=timestamp,
+                    last_heartbeat_at=timestamp,
+                    updated_at=timestamp,
+                    active_run_id=run_id,
+                    last_run_outcome=None,
+                    run_index=0,
+                    next_run_index=1,
+                )
+            timestamp = self.now()
+            allocated = max(process.next_run_index, 1)
+            updated = Process(
+                process_id=process.process_id,
+                process_name=process.process_name,
+                kind=process.kind,
+                status="running",
+                created_at=process.created_at,
+                last_seen_at=timestamp,
+                last_heartbeat_at=timestamp,
+                updated_at=timestamp,
+                active_run_id=run_id,
+                last_run_outcome=process.last_run_outcome,
+                run_index=allocated,
+                next_run_index=allocated + 1,
+            )
+            self.upsert(updated)
+            return updated
+
+    def heartbeat(self, process_id: str) -> Process:
+        lock_path = self._lock_path(process_id)
+        with file_lock(lock_path):
+            process = self.get(process_id)
+            if process is None:
+                raise KeyError(f"unknown process_id: {process_id}")
+            timestamp = self.now()
+            updated = Process(
+                process_id=process.process_id,
+                process_name=process.process_name,
+                kind=process.kind,
+                status=process.status,
+                created_at=process.created_at,
+                last_seen_at=timestamp,
+                last_heartbeat_at=timestamp,
+                updated_at=timestamp,
+                active_run_id=process.active_run_id,
+                last_run_outcome=process.last_run_outcome,
+                run_index=process.run_index,
+                next_run_index=process.next_run_index,
+            )
+            self.upsert(updated)
+            return updated
 
     def _read_index(self) -> dict[str, object]:
         path = self.root / INDEX_FILE_NAME
@@ -93,7 +171,7 @@ class FileProcessRegistry(ProcessRegistryPort):
     def _empty_index(self) -> dict[str, object]:
         return {
             "schema_version": INDEX_SCHEMA_VERSION,
-            "updated_at": _utc_now().isoformat(),
+            "updated_at": now_str(),
             "process_ids": [],
             "by_name": {},
         }
@@ -129,6 +207,9 @@ class FileProcessRegistry(ProcessRegistryPort):
 
     def _process_path(self, process_id: str) -> Path:
         return self.root / f"{process_id}.json"
+
+    def _lock_path(self, process_id: str) -> Path:
+        return self.root / f"{process_id}.lock"
 
 
 @dataclass(slots=True)

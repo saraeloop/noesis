@@ -10,7 +10,7 @@ from typing import Literal
 ProcessKind = Literal["oneshot", "loop", "workflow"]
 ProcessStatus = Literal["running", "idle", "stale", "error"]
 
-PROCESS_SCHEMA_VERSION = "process/1.0"
+PROCESS_SCHEMA_VERSION = "process/1.1"
 
 
 def _utc_now() -> datetime:
@@ -19,6 +19,10 @@ def _utc_now() -> datetime:
 
 def _parse_iso(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _fmt_iso(ts: datetime) -> str:
+    return ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(slots=True, frozen=True)
@@ -35,6 +39,8 @@ class Process:
     active_run_id: Current run/episode id if one is active.
     last_run_outcome: Outcome string from the most recent completed run.
     run_index: Monotonic per-process run counter (used for labels like #3).
+    next_run_index: Next run index to allocate (1-based, monotonically increasing).
+    last_heartbeat_at: Last heartbeat timestamp for liveness checks.
     """
 
     process_id: str
@@ -46,6 +52,9 @@ class Process:
     active_run_id: str | None = None
     last_run_outcome: str | None = None
     run_index: int = 0
+    next_run_index: int = 1
+    last_heartbeat_at: datetime = field(default_factory=_utc_now)
+    updated_at: datetime = field(default_factory=_utc_now)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -53,11 +62,14 @@ class Process:
             "process_name": self.process_name,
             "kind": self.kind,
             "status": self.status,
-            "created_at": self.created_at.isoformat(),
-            "last_seen_at": self.last_seen_at.isoformat(),
+            "created_at": _fmt_iso(self.created_at),
+            "last_seen_at": _fmt_iso(self.last_seen_at),
             "active_run_id": self.active_run_id,
             "last_run_outcome": self.last_run_outcome,
             "run_index": self.run_index,
+            "next_run_index": self.next_run_index,
+            "last_heartbeat_at": _fmt_iso(self.last_heartbeat_at),
+            "updated_at": _fmt_iso(self.updated_at),
         }
 
     @classmethod
@@ -66,6 +78,12 @@ class Process:
         last_seen_at = payload.get("last_seen_at")
         if not isinstance(created_at, str) or not isinstance(last_seen_at, str):
             raise ValueError("process payload missing timestamps")
+        last_heartbeat_at = payload.get("last_heartbeat_at")
+        if not isinstance(last_heartbeat_at, str):
+            last_heartbeat_at = last_seen_at
+        updated_at = payload.get("updated_at")
+        if not isinstance(updated_at, str):
+            updated_at = last_seen_at
         process_id = payload.get("process_id")
         process_name = payload.get("process_name")
         if not isinstance(process_id, str) or not process_id:
@@ -74,6 +92,8 @@ class Process:
             raise ValueError("process payload missing process_name")
         kind = payload.get("kind")
         status = payload.get("status")
+        run_index = int(payload.get("run_index", 0))
+        next_run_index = int(payload.get("next_run_index", max(run_index + 1, 1)))
         return cls(
             process_id=process_id,
             process_name=process_name,
@@ -81,9 +101,12 @@ class Process:
             status=status if isinstance(status, str) else "idle",  # type: ignore[assignment]
             created_at=_parse_iso(created_at),
             last_seen_at=_parse_iso(last_seen_at),
+            last_heartbeat_at=_parse_iso(last_heartbeat_at),
+            updated_at=_parse_iso(updated_at),
             active_run_id=payload.get("active_run_id") if payload.get("active_run_id") else None,
             last_run_outcome=payload.get("last_run_outcome") if payload.get("last_run_outcome") else None,
-            run_index=int(payload.get("run_index", 0)),
+            run_index=run_index,
+            next_run_index=max(next_run_index, run_index + 1),
         )
 
 
