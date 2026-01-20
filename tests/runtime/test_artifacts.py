@@ -10,6 +10,11 @@ from noesis.runtime.artifacts.verify import ManifestVerifier
 from noesis.runtime.artifacts.signing import HMACManifestSigner, HMACSignatureVerifier
 from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
 from noesis.trace.events import write_event
+from noesis.trace.summary import write_summary
+from noesis.runtime.learning import ensure_learn_file, persist_episode_learning
+from noesis.runtime.prompt_recorder import PromptRecorder
+from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
+from noesis.domain.artifacts.immutability import ImmutabilityError
 
 
 def _write_json(path: Path, payload: str) -> None:
@@ -120,8 +125,84 @@ def test_write_event_after_manifest_fails(tmp_path: Path) -> None:
         "payload": {},
         "evidence_ids": [],
     }
-    with pytest.warns(RuntimeWarning), pytest.raises(RuntimeError):
+    with pytest.raises(ImmutabilityError) as exc:
         write_event(run_dir, event, validate=False)
+    assert "episode sealed" in str(exc.value)
+
+
+def test_append_only_allows_events_pre_seal(tmp_path: Path) -> None:
+    run_dir = tmp_path / "ep_events"
+    run_dir.mkdir()
+    event = {
+        "timestamp": "2024-01-01T00:00:00Z",
+        "episode_id": "ep_events",
+        "phase": "test",
+        "payload": {},
+        "evidence_ids": [],
+    }
+    write_event(run_dir, dict(event), validate=False)
+    write_event(run_dir, dict(event), validate=False)
+
+
+def test_summary_state_and_learn_writes_block_after_seal(tmp_path: Path) -> None:
+    run_dir = tmp_path / "ep_state"
+    run_dir.mkdir()
+
+    write_summary(run_dir, {"schema_version": "1.0.0", "episode_id": "ep_state"})
+
+    ctx = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="ep_state",
+        seed=0,
+        task="test",
+        tags={},
+        adapter_label="adapter:test",
+        started_at="2024-01-01T00:00:00Z",
+    )
+    repo = RuntimeStateRepository(context=ctx)
+    state = repo.init()
+
+    ensure_learn_file(run_dir)
+    persist_episode_learning(
+        run_dir,
+        episode_id="ep_state",
+        agent_id="system",
+        payload={"policy_id": "policy:test"},
+    )
+
+    ManifestWriter(run_dir=run_dir, episode_id="ep_state").finalize()
+
+    with pytest.raises(ImmutabilityError) as exc:
+        write_summary(run_dir, {"schema_version": "1.0.0", "episode_id": "ep_state"})
+    assert "episode sealed" in str(exc.value)
+    with pytest.raises(ImmutabilityError):
+        repo.persist(state)
+    with pytest.raises(ImmutabilityError):
+        ensure_learn_file(run_dir)
+    with pytest.raises(ImmutabilityError):
+        persist_episode_learning(
+            run_dir,
+            episode_id="ep_state",
+            agent_id="system",
+            payload={"policy_id": "policy:test"},
+        )
+
+
+def test_prompt_recording_blocked_after_seal(tmp_path: Path) -> None:
+    run_dir = tmp_path / "ep_prompt_seal"
+    run_dir.mkdir()
+    recorder = PromptRecorder(
+        run_dir=run_dir,
+        episode_id="ep_prompt_seal",
+        enabled=True,
+        mode="hash_only",
+    )
+    recorder.record(phase="observe", agent_id="tester", rendered="hi")
+
+    ManifestWriter(run_dir=run_dir, episode_id="ep_prompt_seal").finalize()
+
+    with pytest.raises(ImmutabilityError):
+        recorder.record(phase="observe", agent_id="tester", rendered="blocked")
 
 
 def test_manifest_signatures_survive_canonicalization(tmp_path: Path) -> None:

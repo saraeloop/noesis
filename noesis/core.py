@@ -57,6 +57,7 @@ from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .runtime.artifacts.ids import EpisodeIds
 from .runtime.artifacts.writer import ManifestWriter
 from .runtime.artifacts.manifest import MANIFEST_SCHEMA_VERSION, MANIFEST_FILE_NAME, compute_sha256
+from .runtime.artifacts.immutability import default_artifact_guard
 from .runtime.paths import NoesisPaths
 from .usecases.episode_runner import (
     EpisodeDependencies,
@@ -516,6 +517,7 @@ def _run_episode(
         gateway=FileSystemSnapshotGateway(),
         metadata_store=FileSystemSnapshotMetadataStore(),
         clock=UtcSnapshotClock(),
+        immutability_guard=default_artifact_guard(),
     )
     file_reader_factory = lambda root: FileSystemFileReader(root=root)
     deps = EpisodeDependencies(

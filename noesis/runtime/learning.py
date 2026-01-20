@@ -20,6 +20,8 @@ from noesis.domain.learning.model import (
     derive_target_key,
 )
 from noesis.trace.events import write_event
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.runtime.artifacts.immutability import default_artifact_guard
 
 from .config_provider import get_config_port
 from .events import last_event_of_phase
@@ -51,6 +53,11 @@ def _sanitize_policy_id(policy_id: str) -> str:
 def ensure_learn_file(run_dir: Path) -> Path:
     """Create learn.jsonl if it is missing (empty file is valid)."""
     path = run_dir / "learn.jsonl"
+    default_artifact_guard().ensure_write_allowed(
+        episode_dir=run_dir,
+        artifact=path.name,
+        mode=ArtifactWriteMode.CREATE,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         path.touch()
@@ -96,6 +103,11 @@ def persist_episode_learning(
     payload: Dict[str, Any],
 ) -> None:
     path = run_dir / "learn.jsonl"
+    default_artifact_guard().ensure_write_allowed(
+        episode_dir=run_dir,
+        artifact=path.name,
+        mode=ArtifactWriteMode.APPEND,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     record_id = payload.get("id") or f"episode:{episode_id}"
     record = {

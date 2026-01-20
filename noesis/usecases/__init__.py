@@ -14,11 +14,10 @@ __all__ = [
     "EpisodeOutcome",
 ]
 
-from .episode_runner import (
-    EpisodeDependencies,
-    EpisodeInstrumentation,
-    EpisodeOutcome,
-    EpisodeRequest,
-    EpisodeResult,
-    EpisodeRunner,
-)
+
+def __getattr__(name: str):  # pragma: no cover - import shim
+    if name in __all__:
+        from . import episode_runner as _episode_runner
+
+        return getattr(_episode_runner, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

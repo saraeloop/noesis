@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Literal, Protocol, Sequence, TYPE_CHECKING
 
 from noesis.runtime.serialization import atomic_write_json
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.runtime.normalization import normalize_using
 from noesis.domain.faculties.intuition import IntuitionMode
 from noesis.domain.process import ProcessKind
@@ -91,6 +93,11 @@ class RuntimeStateRepository(StateRepository):
 
 
 def _write_state(path: Path, state: NoesisState) -> None:
+    default_artifact_guard().ensure_write_allowed(
+        episode_dir=path.parent,
+        artifact=path.name,
+        mode=ArtifactWriteMode.OVERWRITE,
+    )
     payload = state.to_dict()
     episode = payload.get("episode")
     if isinstance(episode, dict):
