@@ -539,108 +539,108 @@ def _run_episode(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
 ) -> str:
-    event_bus, instrumentation, _lineage = _build_runner_ports(setup)
-    direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
-    governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
-    governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
-    governance_failure_policy = _parse_governance_failure_policy(
-        getattr(setup.cfg, "governance_failure_policy", None),
-        governance_mode,
-    )
-    governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
-
-    if using is None:
-        actuator = MinimalActuator(tool_label=setup.adapter_label)
-    else:
-        from noesis.infrastructure.episode.adapter_actuator import AdapterActuator
-
-        graph = _load_graph(using)
-        actuator = AdapterActuator(graph=graph, tool_label=setup.adapter_label)
-
-    snapshot_writer = SnapshotArtifactWriter(
-        gateway=FileSystemSnapshotGateway(),
-        metadata_store=FileSystemSnapshotMetadataStore(),
-        clock=UtcSnapshotClock(),
-        immutability_guard=default_artifact_guard(),
-    )
-    file_reader_factory = lambda root: FileSystemFileReader(root=root)
-    deps = EpisodeDependencies(
-        planner=MinimalPlanner(),
-        actuator=actuator,
-        event_bus=event_bus,
-        state_repository=setup.state_repo,
-        snapshot_writer=snapshot_writer,
-        file_reader_factory=file_reader_factory,
-        direction_planner=direction_planner,
-        governance_policy=governance_policy,
-        governance_mode=governance_mode,
-        governance_failure_policy=governance_failure_policy,
-        governance_timeout_ms=governance_timeout_ms,
-        intuition_policy=setup.intuition_impl,
-        intuition_enabled=setup.intuition_enabled,
-    )
-    runner = EpisodeRunner(deps, instrumentation=instrumentation)
-    using_norm = normalize_using(setup.raw_using_label)
-    using_label = using_norm.display if using_norm else setup.raw_using_label
-    episode_request = EpisodeRequest(
-        goal=task,
-        beliefs=tuple(),
-        context=setup.episode_ctx,
-        using_label=using_label,
-    )
     stop_event, thread = _start_process_heartbeat(setup)
     try:
+        event_bus, instrumentation, _lineage = _build_runner_ports(setup)
+        direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
+        governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
+        governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
+        governance_failure_policy = _parse_governance_failure_policy(
+            getattr(setup.cfg, "governance_failure_policy", None),
+            governance_mode,
+        )
+        governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
+
+        if using is None:
+            actuator = MinimalActuator(tool_label=setup.adapter_label)
+        else:
+            from noesis.infrastructure.episode.adapter_actuator import AdapterActuator
+
+            graph = _load_graph(using)
+            actuator = AdapterActuator(graph=graph, tool_label=setup.adapter_label)
+
+        snapshot_writer = SnapshotArtifactWriter(
+            gateway=FileSystemSnapshotGateway(),
+            metadata_store=FileSystemSnapshotMetadataStore(),
+            clock=UtcSnapshotClock(),
+            immutability_guard=default_artifact_guard(),
+        )
+        file_reader_factory = lambda root: FileSystemFileReader(root=root)
+        deps = EpisodeDependencies(
+            planner=MinimalPlanner(),
+            actuator=actuator,
+            event_bus=event_bus,
+            state_repository=setup.state_repo,
+            snapshot_writer=snapshot_writer,
+            file_reader_factory=file_reader_factory,
+            direction_planner=direction_planner,
+            governance_policy=governance_policy,
+            governance_mode=governance_mode,
+            governance_failure_policy=governance_failure_policy,
+            governance_timeout_ms=governance_timeout_ms,
+            intuition_policy=setup.intuition_impl,
+            intuition_enabled=setup.intuition_enabled,
+        )
+        runner = EpisodeRunner(deps, instrumentation=instrumentation)
+        using_norm = normalize_using(setup.raw_using_label)
+        using_label = using_norm.display if using_norm else setup.raw_using_label
+        episode_request = EpisodeRequest(
+            goal=task,
+            beliefs=tuple(),
+            context=setup.episode_ctx,
+            using_label=using_label,
+        )
         result = runner.run(episode_request)
+
+        status_value = str(result.outcome.status or "unknown")
+        default_message = "Episode terminated."
+        message_raw = result.outcome.summary
+        message_value = str(message_raw).strip() if message_raw else ""
+        if not message_value:
+            message_value = f"{status_value}." if status_value != "unknown" else default_message
+        status_payload: Dict[str, Any] = {
+            "status": status_value,
+            "message": message_value,
+        }
+
+        existing_events = read_events(setup.ctx.run_dir)
+        if not any(is_terminate_event(evt) for evt in existing_events):
+            _terminate_event(
+                setup.ctx.run_dir,
+                setup.ctx.episode_id,
+                status_payload,
+                now_fn=setup.now_fn if setup.determinism else None,
+                id_factory=setup.event_id_factory,
+            )
+
+        state = result.state
+        ensure_learn_file(setup.ctx.run_dir)
+        state.set_links(
+            events="events.jsonl",
+            summary="summary.json",
+            learn="learn.jsonl",
+            manifest="manifest.json",
+        )
+        setup.state_repo.persist(state)
+
+        _finalize_episode(
+            setup=setup,
+            state=state,
+            task=task,
+            seed=seed,
+            tags=tags,
+            status=status_payload["status"],
+            adapter_result=result.adapter_result,
+            outcome=result.verification_outcome,
+            verification=result.verification,
+        )
+
+        return setup.ctx.episode_id
     finally:
         if stop_event is not None:
             stop_event.set()
         if thread is not None:
             thread.join(timeout=1.0)
-
-    status_value = str(result.outcome.status or "unknown")
-    default_message = "Episode terminated."
-    message_raw = result.outcome.summary
-    message_value = str(message_raw).strip() if message_raw else ""
-    if not message_value:
-        message_value = f"{status_value}." if status_value != "unknown" else default_message
-    status_payload: Dict[str, Any] = {
-        "status": status_value,
-        "message": message_value,
-    }
-
-    existing_events = read_events(setup.ctx.run_dir)
-    if not any(is_terminate_event(evt) for evt in existing_events):
-        _terminate_event(
-            setup.ctx.run_dir,
-            setup.ctx.episode_id,
-            status_payload,
-            now_fn=setup.now_fn if setup.determinism else None,
-            id_factory=setup.event_id_factory,
-        )
-
-    state = result.state
-    ensure_learn_file(setup.ctx.run_dir)
-    state.set_links(
-        events="events.jsonl",
-        summary="summary.json",
-        learn="learn.jsonl",
-        manifest="manifest.json",
-    )
-    setup.state_repo.persist(state)
-
-    _finalize_episode(
-        setup=setup,
-        state=state,
-        task=task,
-        seed=seed,
-        tags=tags,
-        status=status_payload["status"],
-        adapter_result=result.adapter_result,
-        outcome=result.verification_outcome,
-        verification=result.verification,
-    )
-
-    return setup.ctx.episode_id
 
 
 def _run_impl(
@@ -689,99 +689,99 @@ async def _run_episode_async(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
 ) -> str:
-    event_bus, instrumentation, _lineage = _build_runner_ports(setup)
-    direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
-    governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
-    governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
-    governance_failure_policy = _parse_governance_failure_policy(
-        getattr(setup.cfg, "governance_failure_policy", None),
-        governance_mode,
-    )
-    governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
-
-    if using is None:
-        actuator = MinimalActuator(tool_label=setup.adapter_label)
-    else:
-        from noesis.infrastructure.episode.adapter_actuator import AsyncAdapterActuator
-
-        graph = _load_graph(using)
-        actuator = AsyncAdapterActuator(graph=graph, tool_label=setup.adapter_label)
-
-    deps = EpisodeDependencies(
-        planner=MinimalPlanner(),
-        actuator=actuator,
-        event_bus=event_bus,
-        state_repository=setup.state_repo,
-        direction_planner=direction_planner,
-        governance_policy=governance_policy,
-        governance_mode=governance_mode,
-        governance_failure_policy=governance_failure_policy,
-        governance_timeout_ms=governance_timeout_ms,
-        intuition_policy=setup.intuition_impl,
-        intuition_enabled=setup.intuition_enabled,
-    )
-    runner = EpisodeRunner(deps, instrumentation=instrumentation)
-    using_norm = normalize_using(setup.raw_using_label)
-    using_label = using_norm.display if using_norm else setup.raw_using_label
-    episode_request = EpisodeRequest(
-        goal=task,
-        beliefs=tuple(),
-        context=setup.episode_ctx,
-        using_label=using_label,
-    )
     stop_event, thread = _start_process_heartbeat(setup)
     try:
+        event_bus, instrumentation, _lineage = _build_runner_ports(setup)
+        direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
+        governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
+        governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
+        governance_failure_policy = _parse_governance_failure_policy(
+            getattr(setup.cfg, "governance_failure_policy", None),
+            governance_mode,
+        )
+        governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
+
+        if using is None:
+            actuator = MinimalActuator(tool_label=setup.adapter_label)
+        else:
+            from noesis.infrastructure.episode.adapter_actuator import AsyncAdapterActuator
+
+            graph = _load_graph(using)
+            actuator = AsyncAdapterActuator(graph=graph, tool_label=setup.adapter_label)
+
+        deps = EpisodeDependencies(
+            planner=MinimalPlanner(),
+            actuator=actuator,
+            event_bus=event_bus,
+            state_repository=setup.state_repo,
+            direction_planner=direction_planner,
+            governance_policy=governance_policy,
+            governance_mode=governance_mode,
+            governance_failure_policy=governance_failure_policy,
+            governance_timeout_ms=governance_timeout_ms,
+            intuition_policy=setup.intuition_impl,
+            intuition_enabled=setup.intuition_enabled,
+        )
+        runner = EpisodeRunner(deps, instrumentation=instrumentation)
+        using_norm = normalize_using(setup.raw_using_label)
+        using_label = using_norm.display if using_norm else setup.raw_using_label
+        episode_request = EpisodeRequest(
+            goal=task,
+            beliefs=tuple(),
+            context=setup.episode_ctx,
+            using_label=using_label,
+        )
         result = await runner.run_async(episode_request)
+
+        status_value = str(result.outcome.status or "unknown")
+        default_message = "Episode terminated."
+        message_raw = result.outcome.summary
+        message_value = str(message_raw).strip() if message_raw else ""
+        if not message_value:
+            message_value = f"{status_value}." if status_value != "unknown" else default_message
+        status_payload: Dict[str, Any] = {
+            "status": status_value,
+            "message": message_value,
+        }
+
+        existing_events = read_events(setup.ctx.run_dir)
+        if not any(is_terminate_event(evt) for evt in existing_events):
+            _terminate_event(
+                setup.ctx.run_dir,
+                setup.ctx.episode_id,
+                status_payload,
+                now_fn=setup.now_fn if setup.determinism else None,
+                id_factory=setup.event_id_factory,
+            )
+
+        state = result.state
+        ensure_learn_file(setup.ctx.run_dir)
+        state.set_links(
+            events="events.jsonl",
+            summary="summary.json",
+            learn="learn.jsonl",
+            manifest="manifest.json",
+        )
+        setup.state_repo.persist(state)
+
+        _finalize_episode(
+            setup=setup,
+            state=state,
+            task=task,
+            seed=seed,
+            tags=tags,
+            status=status_payload["status"],
+            adapter_result=result.adapter_result,
+            outcome=result.verification_outcome,
+            verification=result.verification,
+        )
+
+        return setup.ctx.episode_id
     finally:
         if stop_event is not None:
             stop_event.set()
         if thread is not None:
             thread.join(timeout=1.0)
-
-    status_value = str(result.outcome.status or "unknown")
-    default_message = "Episode terminated."
-    message_raw = result.outcome.summary
-    message_value = str(message_raw).strip() if message_raw else ""
-    if not message_value:
-        message_value = f"{status_value}." if status_value != "unknown" else default_message
-    status_payload: Dict[str, Any] = {
-        "status": status_value,
-        "message": message_value,
-    }
-
-    existing_events = read_events(setup.ctx.run_dir)
-    if not any(is_terminate_event(evt) for evt in existing_events):
-        _terminate_event(
-            setup.ctx.run_dir,
-            setup.ctx.episode_id,
-            status_payload,
-            now_fn=setup.now_fn if setup.determinism else None,
-            id_factory=setup.event_id_factory,
-        )
-
-    state = result.state
-    ensure_learn_file(setup.ctx.run_dir)
-    state.set_links(
-        events="events.jsonl",
-        summary="summary.json",
-        learn="learn.jsonl",
-        manifest="manifest.json",
-    )
-    setup.state_repo.persist(state)
-
-    _finalize_episode(
-        setup=setup,
-        state=state,
-        task=task,
-        seed=seed,
-        tags=tags,
-        status=status_payload["status"],
-        adapter_result=result.adapter_result,
-        outcome=result.verification_outcome,
-        verification=result.verification,
-    )
-
-    return setup.ctx.episode_id
 
 
 def run(
