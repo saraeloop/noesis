@@ -60,7 +60,7 @@ def metrics(episode_id: str) -> Dict[str, Any]:
 
 
 def list_runs(
-    limit: int = 50,
+    limit: int | None = 50,
     since: Optional[str] = None,
     *,
     context: RuntimeContext | None = None,
@@ -116,7 +116,7 @@ def list_runs(
             })
 
     rows.sort(key=lambda r: r.get("started_at") or "", reverse=True)
-    return rows[:limit]
+    return rows[:limit] if limit is not None else rows
 
 
 def last(*, context: RuntimeContext | None = None) -> Optional[str]:
