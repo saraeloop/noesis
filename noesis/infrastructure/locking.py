@@ -39,6 +39,7 @@ def file_lock(path: Path) -> Iterator[None]:
             handle.seek(0)
             handle.write("0")
             handle.flush()
+            handle.seek(0)
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
                 yield
@@ -46,4 +47,4 @@ def file_lock(path: Path) -> Iterator[None]:
                 handle.seek(0)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
             return
-        yield
+        raise RuntimeError("file_lock requires a supported locking backend")
