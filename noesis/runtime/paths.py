@@ -34,9 +34,17 @@ class NoesisPaths:
 
 def resolve_noesis_paths(*, workspace: Path | None, runs_dir: Path) -> NoesisPaths:
     base = _default_workspace(workspace, runs_dir)
-    root = resolve_noesis_root(workspace=base, runs_dir=runs_dir)
-    episodes_dir = root / "episodes"
-    processes_dir = root / "processes"
+    resolved_runs = runs_dir.expanduser().resolve()
+    root = resolve_noesis_root(workspace=base, runs_dir=resolved_runs)
+    if resolved_runs.name == "episodes" and resolved_runs.parent.name == ".noesis":
+        episodes_dir = resolved_runs
+        processes_dir = resolved_runs.parent / "processes"
+    elif resolved_runs.name == ".noesis":
+        episodes_dir = resolved_runs / "episodes"
+        processes_dir = resolved_runs / "processes"
+    else:
+        episodes_dir = root / "episodes"
+        processes_dir = root / "processes"
     legacy_episodes = legacy_episode_roots(workspace=base, runs_dir=runs_dir, root=root, episodes_dir=episodes_dir)
     legacy_processes = legacy_process_roots(
         workspace=base,
