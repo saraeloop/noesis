@@ -56,6 +56,9 @@ class SnapshotMetadataStore(Protocol):
     def load(self, *, snapshots_dir: Path) -> SnapshotCaptureTimes | None:
         ...
 
+    def path_for(self, *, snapshots_dir: Path) -> Path:
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class SnapshotPaths:

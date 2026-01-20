@@ -21,6 +21,8 @@ from typing import Any, Dict
 import json
 
 from noesis.runtime.serialization import atomic_write_json
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.runtime.artifacts.immutability import default_artifact_guard
 
 SUMMARY_FILE = "summary.json"
 
@@ -57,6 +59,11 @@ def _prune_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
 
 def write_summary(dir_path: Path, summary: Dict[str, Any]) -> None:
     """Atomically write `summary.json` under the given episode directory."""
+    default_artifact_guard().ensure_write_allowed(
+        episode_dir=dir_path,
+        artifact=SUMMARY_FILE,
+        mode=ArtifactWriteMode.OVERWRITE,
+    )
     _atomic_write_json(dir_path / SUMMARY_FILE, _prune_summary(summary))
 
 

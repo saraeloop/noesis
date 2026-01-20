@@ -22,35 +22,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Callable
 import json
-import warnings
 
 from datetime import datetime
 from uuid import uuid4
 
 from noesis.domain.state.cognitive import CognitiveEvent
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.runtime.artifacts.immutability import default_artifact_guard
+from noesis.runtime.serialization import canonical_dumps
 
 JsonDefault = Callable[[Any], Any]
 
-
-def canonical_dumps(value: Any, *, default: JsonDefault | None = None) -> str:
-    """
-    Render a JSON string with stable ordering and formatting.
-
-    - ensure_ascii=False to preserve UTF-8
-    - sort_keys=True for deterministic key order
-    - separators=(",", ":") for compact, consistent output
-    """
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        default=default,
-    )
-
 EVENTS_FILE = "events.jsonl"
-_MANIFEST_FILE = "manifest.json"
-
 # Canonical phases for event.phase
 VERB_PHASES: set[str] = {
     "observe",
@@ -215,7 +198,11 @@ def write_event(dir_path: Path, event: Dict[str, Any], *, validate: bool = True)
         event["faculty"] = FACULTY_PHASES[phase]
     if validate:
         _validate_event_schema(event)
-    _ensure_manifest_not_sealed(dir_path)
+    default_artifact_guard().ensure_write_allowed(
+        episode_dir=dir_path,
+        artifact=EVENTS_FILE,
+        mode=ArtifactWriteMode.APPEND,
+    )
     dir_path.mkdir(parents=True, exist_ok=True)
     payload = canonical_dumps(event)
     with (dir_path / EVENTS_FILE).open("a", encoding="utf-8") as f:
@@ -340,14 +327,3 @@ def is_terminate_event(event: Dict[str, Any]) -> bool:
     payload = event.get("payload") or {}
     kind = payload.get("kind") or payload.get("type") or payload.get("event")
     return kind == "terminate"
-
-
-def _ensure_manifest_not_sealed(dir_path: Path) -> None:
-    manifest_path = dir_path / _MANIFEST_FILE
-    if manifest_path.exists():
-        warnings.warn(
-            f"Manifest {manifest_path} already exists; refusing to append events.",
-            RuntimeWarning,
-            stacklevel=3,
-        )
-        raise RuntimeError("cannot append events after manifest is finalized")

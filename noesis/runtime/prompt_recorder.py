@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Callable, Literal, Mapping, TYPE_CHECKING
-import warnings
 
-from noesis.trace.events import canonical_dumps
+from noesis.runtime.serialization import canonical_dumps
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.runtime.artifacts.immutability import default_artifact_guard
 
 if TYPE_CHECKING:
     from noesis.infrastructure.state_repository import EpisodeContext
@@ -42,25 +43,13 @@ def _fingerprint(rendered: str) -> tuple[str, str]:
     return f"sha256:{digest}", normalized
 
 
-def _ensure_manifest_open(run_dir: Path) -> None:
-    """
-    Prevent writes after manifest finalization.
-
-    Aligns with events.jsonl behavior to avoid mutating a sealed run directory.
-    """
-    manifest_path = run_dir / "manifest.json"
-    if manifest_path.exists():
-        warnings.warn(
-            f"Manifest {manifest_path} already exists; refusing to append prompts.",
-            RuntimeWarning,
-            stacklevel=3,
-        )
-        raise RuntimeError("cannot append prompts after manifest is finalized")
-
-
 def _append_prompt(run_dir: Path, record: Mapping[str, object]) -> None:
     """Append a single prompt record to prompts.jsonl."""
-    _ensure_manifest_open(run_dir)
+    default_artifact_guard().ensure_write_allowed(
+        episode_dir=run_dir,
+        artifact=PROMPTS_FILE_NAME,
+        mode=ArtifactWriteMode.APPEND,
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
     payload = canonical_dumps(record)
     with (run_dir / PROMPTS_FILE_NAME).open("a", encoding="utf-8") as handle:

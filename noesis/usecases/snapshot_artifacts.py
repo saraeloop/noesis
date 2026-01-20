@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Literal, Sequence
 
 from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotGateway
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.usecases.immutability import ArtifactImmutabilityGuard
 from noesis.domain.verification import (
     SnapshotCaptureTimes,
     SnapshotClock,
@@ -26,6 +28,7 @@ class SnapshotArtifactWriter:
     gateway: SnapshotGateway
     metadata_store: SnapshotMetadataStore
     clock: SnapshotClock
+    immutability_guard: ArtifactImmutabilityGuard
 
     def capture_and_store(
         self,
@@ -39,6 +42,11 @@ class SnapshotArtifactWriter:
         snapshots_dir = run_dir / "snapshots"
         snapshots_dir.mkdir(parents=True, exist_ok=True)
         snapshot_path = snapshots_dir / f"{phase}.json"
+        self.immutability_guard.ensure_write_allowed(
+            episode_dir=run_dir,
+            artifact=str(snapshot_path.relative_to(run_dir).as_posix()),
+            mode=ArtifactWriteMode.OVERWRITE,
+        )
         self.gateway.save(snapshot, snapshot_path)
 
         # Capture completed time to align timestamps with persisted artifacts.
@@ -48,6 +56,12 @@ class SnapshotArtifactWriter:
             times = times.with_pre(timestamp)
         else:
             times = times.with_post(timestamp)
+        metadata_path = self.metadata_store.path_for(snapshots_dir=snapshots_dir)
+        self.immutability_guard.ensure_write_allowed(
+            episode_dir=run_dir,
+            artifact=str(metadata_path.relative_to(run_dir).as_posix()),
+            mode=ArtifactWriteMode.OVERWRITE,
+        )
         self.metadata_store.save(snapshots_dir=snapshots_dir, times=times)
         return snapshot
 

@@ -14,6 +14,9 @@ class FileSystemSnapshotMetadataStore:
 
     filename: str = "metadata.json"
 
+    def path_for(self, *, snapshots_dir: Path) -> Path:
+        return snapshots_dir / self.filename
+
     def save(self, *, snapshots_dir: Path, times: SnapshotCaptureTimes) -> Path:
         snapshots_dir.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(
@@ -23,12 +26,12 @@ class FileSystemSnapshotMetadataStore:
             ensure_ascii=True,
             allow_nan=False,
         )
-        path = snapshots_dir / self.filename
+        path = self.path_for(snapshots_dir=snapshots_dir)
         path.write_text(payload, encoding="utf-8")
         return path
 
     def load(self, *, snapshots_dir: Path) -> SnapshotCaptureTimes | None:
-        path = snapshots_dir / self.filename
+        path = self.path_for(snapshots_dir=snapshots_dir)
         if not path.exists():
             return None
         data = json.loads(path.read_text(encoding="utf-8"))

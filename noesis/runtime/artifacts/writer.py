@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Dict, Iterator, Protocol
 
 from noesis.runtime.serialization import atomic_write_text
+from noesis.domain.artifacts.immutability import ArtifactWriteMode
+from noesis.runtime.artifacts.immutability import default_artifact_guard
 
 from .manifest import (
     ArtifactFile,
@@ -92,6 +94,11 @@ class ManifestWriter:
             signature = signer.sign(unsigned, canonical.encode("utf-8"))
             manifest = replace(manifest, signer=getattr(signer, "name", signature.key_id), signature=signature)
             payload = manifest.canonical_json()
+        default_artifact_guard().ensure_write_allowed(
+            episode_dir=self._run_dir,
+            artifact=MANIFEST_FILE_NAME,
+            mode=ArtifactWriteMode.SEAL,
+        )
         atomic_write_text(self.manifest_path, payload)
         return manifest
 

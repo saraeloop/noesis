@@ -11,7 +11,8 @@ from typing import Any, Dict, Optional, List
 import hashlib
 
 from noesis.state.episode import EpisodeSummary
-from noesis.trace.events import read_events, write_event, canonical_dumps
+from noesis.trace.events import read_events, write_event
+from noesis.runtime.serialization import canonical_dumps
 from noesis.trace.summary import write_summary
 from noesis.domain.faculties import validate_hook_sequence
 from noesis.intuition import Intuition, IntuitionMode
