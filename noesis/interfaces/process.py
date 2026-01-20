@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Protocol, Sequence
 
-from noesis.domain.process import Process
+from noesis.domain.process import Process, ProcessKind
 
 __all__ = ["ProcessRegistryPort", "ProcessRegistryFactoryPort"]
 
@@ -23,6 +23,19 @@ class ProcessRegistryPort(Protocol):
         ...
 
     def upsert(self, process: Process) -> None:
+        ...
+
+    def allocate_run(
+        self,
+        process_id: str,
+        *,
+        process_name: str | None = None,
+        kind: ProcessKind = "oneshot",
+        run_id: str | None = None,
+    ) -> Process:
+        ...
+
+    def heartbeat(self, process_id: str) -> Process:
         ...
 
 

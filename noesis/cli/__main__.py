@@ -27,6 +27,7 @@ from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 from noesis.runtime.paths import resolve_noesis_paths
 from noesis.infrastructure.layout_migration import migrate_layout
 from noesis.infrastructure.process_registry import FileProcessRegistry
+from noesis.usecases.process_registry import ProcessRegistryService
 
 
 try:  # pragma: no cover - optional Rich import
@@ -570,6 +571,7 @@ def processes(
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
     layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
     registry = FileProcessRegistry(layout.processes_dir)
+    process_service = ProcessRegistryService(registry)
     records = registry.list()
     if process:
         target = process.strip()
@@ -579,15 +581,18 @@ def processes(
     records = sorted(records, key=lambda item: item.last_seen_at, reverse=True)[:limit]
     process_rows: list[dict[str, object]] = []
     for record in records:
+        status = process_service.liveness_status(record)
         process_rows.append(
             {
                 "process_id": record.process_id,
                 "process_name": record.process_name,
                 "kind": record.kind,
-                "status": record.status,
+                "status": status,
                 "last_seen_at": record.last_seen_at.isoformat(),
+                "last_heartbeat_at": record.last_heartbeat_at.isoformat(),
                 "active_run_id": record.active_run_id,
                 "last_run_outcome": record.last_run_outcome,
+                "next_run_index": record.next_run_index,
             }
         )
     if json_output:
