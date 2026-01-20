@@ -21,16 +21,20 @@ def test_processes_and_ps_filter_by_process(tmp_path, capsys) -> None:
     with _preserve_config():
         ns.set(runs_dir=str(runs_dir))
 
-        run_code = cli_main(["run", "process test", "--json", "--process", "alpha"])
-        assert run_code == 0
+        alpha_code = cli_main(["run", "process alpha", "--json", "--process", "alpha"])
+        assert alpha_code == 0
+        capsys.readouterr()
+
+        beta_code = cli_main(["run", "process beta", "--json", "--process", "beta"])
+        assert beta_code == 0
         capsys.readouterr()
 
         from noesis.runtime.paths import resolve_noesis_paths
 
-        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
-        episode_dirs = list(layout.episodes_dir.glob("ep_*"))
-        assert len(episode_dirs) == 1
-        episode_id = episode_dirs[0].name
+        rows = ns.list_runs(limit=10)
+        alpha_rows = [row for row in rows if (row.get("process") or {}).get("name") == "alpha"]
+        assert len(alpha_rows) == 1
+        episode_id = alpha_rows[0]["episode_id"]
 
         processes_code = cli_main(["processes", "--json"])
         captured = capsys.readouterr()
@@ -45,6 +49,15 @@ def test_processes_and_ps_filter_by_process(tmp_path, capsys) -> None:
         ps_envelope = json.loads(captured.out.strip())
         episodes = ps_envelope["episodes"]
         assert any(row.get("episode_id") == episode_id for row in episodes)
+
+        # Regression: limit should be applied after filtering
+        ps_limited_code = cli_main(["ps", "--json", "--process", "alpha", "--limit", "1"])
+        captured = capsys.readouterr()
+        assert ps_limited_code == 0
+        ps_limited_envelope = json.loads(captured.out.strip())
+        episodes_limited = ps_limited_envelope["episodes"]
+        assert len(episodes_limited) == 1
+        assert episodes_limited[0].get("episode_id") == episode_id
 
         runs_code = cli_main(["runs", "--process", "alpha", "--json"])
         captured = capsys.readouterr()

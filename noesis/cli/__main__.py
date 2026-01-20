@@ -545,8 +545,10 @@ def ps(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    rows = ctx.ns.list_runs(limit=None if process else limit, context=ctx.runtime_context)
     episodes = _filter_runs_by_process(rows, process)
+    if limit is not None:
+        episodes = episodes[:limit]
     if json_output:
         envelope = _build_ps_envelope(episodes=episodes, limit=limit)
         sys.stdout.write(json.dumps(envelope) + "\n")
@@ -607,8 +609,10 @@ def runs(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
-    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    rows = ctx.ns.list_runs(limit=None, context=ctx.runtime_context)
     filtered = _filter_runs_by_process(rows, process)
+    if limit is not None:
+        filtered = filtered[:limit]
     if json_output:
         sys.stdout.write(json.dumps(filtered) + "\n")
         return
