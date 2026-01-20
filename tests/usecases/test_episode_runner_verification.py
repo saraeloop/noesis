@@ -15,7 +15,7 @@ from noesis.infrastructure.snapshot import (
     FileSystemSnapshotMetadataStore,
     UtcSnapshotClock,
 )
-from noesis.infrastructure.immutability import ManifestSealStatus
+from noesis.infrastructure.immutability import FinalizationSealStatus
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.infrastructure.verification import FileSystemFileReader
 from noesis.interfaces.config import ConfigSnapshot
@@ -114,7 +114,7 @@ def _run_episode(
             gateway=FileSystemSnapshotGateway(),
             metadata_store=FileSystemSnapshotMetadataStore(),
             clock=UtcSnapshotClock(),
-            immutability_guard=ArtifactImmutabilityGuard(ManifestSealStatus()),
+            immutability_guard=ArtifactImmutabilityGuard(FinalizationSealStatus()),
         ),
         file_reader_factory=lambda root: FileSystemFileReader(root=root),
     )

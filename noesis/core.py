@@ -68,7 +68,9 @@ from .usecases.episode_runner import (
 from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
+from .usecases.finalization import FinalizationWriter
 from .usecases.process_registry import ProcessRegistryService
+from .domain.artifacts.finalization import FinalizationRecord
 from .domain.process import derive_process_identity
 from .context import RuntimeContext, get_context
 
@@ -392,6 +394,22 @@ def _finalize_episode(
             )
     except Exception:
         # Registry updates should not prevent artifact completion.
+        pass
+
+    try:
+        final_writer = FinalizationWriter(immutability_guard=default_artifact_guard())
+        if setup.episode_ctx.process_id is None or setup.episode_ctx.process_run_index is None:
+            raise ValueError("finalization requires process_id and run_index")
+        final_record = FinalizationRecord(
+            episode_id=setup.ctx.episode_id,
+            process_id=setup.episode_ctx.process_id,
+            run_index=setup.episode_ctx.process_run_index,
+            finalized_at=_now(),
+            outcome=outcome,
+        )
+        final_writer.write(episode_dir=setup.ctx.run_dir, record=final_record)
+    except Exception:
+        # Finalization marker should not prevent artifact completion.
         pass
 
 

@@ -4,18 +4,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from noesis.domain.artifacts.finalization import FINAL_FILE_NAME
 from noesis.interfaces.immutability import SealStatusPort
-from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
 
-__all__ = ["ManifestSealStatus"]
+__all__ = ["FinalizationSealStatus"]
 
 
 @dataclass(frozen=True, slots=True)
-class ManifestSealStatus(SealStatusPort):
-    """Treat presence of manifest.json as the episode seal."""
+class FinalizationSealStatus(SealStatusPort):
+    """Treat presence of final.json as the canonical seal."""
 
-    def is_sealed(self, run_dir: Path) -> bool:
-        return (run_dir / MANIFEST_FILE_NAME).exists()
+    def is_sealed(self, episode_dir: Path) -> bool:
+        return (episode_dir / FINAL_FILE_NAME).exists()
 
-    def seal_marker(self, run_dir: Path) -> Path:
-        return run_dir / MANIFEST_FILE_NAME
+    def seal_marker(self, episode_dir: Path) -> Path:
+        return episode_dir / FINAL_FILE_NAME

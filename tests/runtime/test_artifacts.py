@@ -14,7 +14,13 @@ from noesis.trace.summary import write_summary
 from noesis.runtime.learning import ensure_learn_file, persist_episode_learning
 from noesis.runtime.prompt_recorder import PromptRecorder
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
-from noesis.domain.artifacts.immutability import ImmutabilityError
+from noesis.domain.artifacts.immutability import ArtifactWriteMode, ImmutabilityError
+from noesis.domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
+from noesis.usecases.finalization import FinalizationWriter
+from noesis.runtime.artifacts.immutability import default_artifact_guard
+from noesis.usecases.immutability import ArtifactImmutabilityGuard
+from noesis.infrastructure.immutability import FinalizationSealStatus
+from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
 
 
 def _write_json(path: Path, payload: str) -> None:
@@ -117,6 +123,16 @@ def test_manifest_verifier_errors_on_untracked_when_strict(tmp_path: Path) -> No
 def test_write_event_after_manifest_fails(tmp_path: Path) -> None:
     run_dir = _prepare_run_dir(tmp_path, "ep_guard")
     ManifestWriter(run_dir=run_dir, episode_id="ep_guard").finalize()
+    FinalizationWriter(immutability_guard=default_artifact_guard()).write(
+        episode_dir=run_dir,
+        record=FinalizationRecord(
+            episode_id="ep_guard",
+            process_id="proc_test",
+            run_index=1,
+            finalized_at="2025-01-01T00:00:00Z",
+            outcome="success_unverified",
+        ),
+    )
 
     event = {
         "timestamp": "2024-01-01T00:00:00Z",
@@ -171,6 +187,16 @@ def test_summary_state_and_learn_writes_block_after_seal(tmp_path: Path) -> None
     )
 
     ManifestWriter(run_dir=run_dir, episode_id="ep_state").finalize()
+    FinalizationWriter(immutability_guard=default_artifact_guard()).write(
+        episode_dir=run_dir,
+        record=FinalizationRecord(
+            episode_id="ep_state",
+            process_id="proc_test",
+            run_index=1,
+            finalized_at="2025-01-01T00:00:00Z",
+            outcome="success_unverified",
+        ),
+    )
 
     with pytest.raises(ImmutabilityError) as exc:
         write_summary(run_dir, {"schema_version": "1.0.0", "episode_id": "ep_state"})
@@ -200,9 +226,72 @@ def test_prompt_recording_blocked_after_seal(tmp_path: Path) -> None:
     recorder.record(phase="observe", agent_id="tester", rendered="hi")
 
     ManifestWriter(run_dir=run_dir, episode_id="ep_prompt_seal").finalize()
+    FinalizationWriter(immutability_guard=default_artifact_guard()).write(
+        episode_dir=run_dir,
+        record=FinalizationRecord(
+            episode_id="ep_prompt_seal",
+            process_id="proc_test",
+            run_index=1,
+            finalized_at="2025-01-01T00:00:00Z",
+            outcome="success_unverified",
+        ),
+    )
 
     with pytest.raises(ImmutabilityError):
         recorder.record(phase="observe", agent_id="tester", rendered="blocked")
+
+
+def test_write_after_final_marker_fails(tmp_path: Path) -> None:
+    run_dir = _prepare_run_dir(tmp_path, "ep_final")
+    ManifestWriter(run_dir=run_dir, episode_id="ep_final").finalize()
+
+    writer = FinalizationWriter(immutability_guard=default_artifact_guard())
+    writer.write(
+        episode_dir=run_dir,
+        record=FinalizationRecord(
+            episode_id="ep_final",
+            process_id=None,
+            run_index=None,
+            finalized_at="2025-01-01T00:00:00Z",
+            outcome="success",
+        ),
+    )
+    assert (run_dir / FINAL_FILE_NAME).exists()
+
+    with pytest.raises(ImmutabilityError):
+        write_summary(run_dir, {"schema_version": "1.0.0", "episode_id": "ep_final"})
+
+
+def test_manifest_does_not_finalize_episode(tmp_path: Path) -> None:
+    run_dir = _prepare_run_dir(tmp_path, "ep_manifest_only")
+    (run_dir / MANIFEST_FILE_NAME).write_text("{}", encoding="utf-8")
+
+    guard = ArtifactImmutabilityGuard(seal_status=FinalizationSealStatus())
+    guard.ensure_write_allowed(
+        episode_dir=run_dir,
+        artifact="summary.json",
+        mode=ArtifactWriteMode.OVERWRITE,
+    )
+
+    final_writer = FinalizationWriter(immutability_guard=guard)
+    final_writer.write(
+        episode_dir=run_dir,
+        record=FinalizationRecord(
+            episode_id="ep_manifest_only",
+            process_id="proc_test",
+            run_index=1,
+            finalized_at="2025-01-01T00:00:00Z",
+            outcome="success_unverified",
+        ),
+    )
+
+    with pytest.raises(ImmutabilityError) as exc:
+        guard.ensure_write_allowed(
+            episode_dir=run_dir,
+            artifact="summary.json",
+            mode=ArtifactWriteMode.OVERWRITE,
+        )
+    assert "episode sealed by" in str(exc.value)
 
 
 def test_manifest_signatures_survive_canonicalization(tmp_path: Path) -> None:
