@@ -102,20 +102,19 @@ def test_ps_json_envelope(tmp_path, capsys) -> None:
         assert cli["compat_max"] == "cli/1.x"
 
         # Verify required fields
-        assert "processes" in envelope
-        assert isinstance(envelope["processes"], list)
-        assert len(envelope["processes"]) >= 1
+        assert "episodes" in envelope
+        assert isinstance(envelope["episodes"], list)
+        assert len(envelope["episodes"]) >= 1
         assert envelope["limit"] == 10
         assert envelope["total_count"] >= 1
         assert "offset" in envelope
 
-        # Verify process row structure
-        process = envelope["processes"][0]
-        assert "process_id" in process
-        assert "process_name" in process
-        assert "kind" in process
-        assert "status" in process
-        assert "last_seen_at" in process
+        # Verify episode row structure
+        episode = envelope["episodes"][0]
+        assert "episode_id" in episode
+        assert "task" in episode
+        assert "started_at" in episode
+        assert "outcome" in episode
 
 
 def test_events_json_envelope(tmp_path, capsys) -> None:

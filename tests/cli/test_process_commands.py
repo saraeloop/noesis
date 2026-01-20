@@ -16,7 +16,7 @@ def _preserve_config():
         ns.set(**snapshot)
 
 
-def test_ps_and_runs_filter_by_process(tmp_path, capsys) -> None:
+def test_processes_and_ps_filter_by_process(tmp_path, capsys) -> None:
     runs_dir = tmp_path / "runs"
     with _preserve_config():
         ns.set(runs_dir=str(runs_dir))
@@ -32,12 +32,19 @@ def test_ps_and_runs_filter_by_process(tmp_path, capsys) -> None:
         assert len(episode_dirs) == 1
         episode_id = episode_dirs[0].name
 
-        ps_code = cli_main(["ps", "--json"])
+        processes_code = cli_main(["processes", "--json"])
         captured = capsys.readouterr()
-        assert ps_code == 0
+        assert processes_code == 0
         envelope = json.loads(captured.out.strip())
         processes = envelope["processes"]
         assert any(row["process_name"] == "alpha" for row in processes)
+
+        ps_code = cli_main(["ps", "--json", "--process", "alpha"])
+        captured = capsys.readouterr()
+        assert ps_code == 0
+        ps_envelope = json.loads(captured.out.strip())
+        episodes = ps_envelope["episodes"]
+        assert any(row.get("episode_id") == episode_id for row in episodes)
 
         runs_code = cli_main(["runs", "--process", "alpha", "--json"])
         captured = capsys.readouterr()

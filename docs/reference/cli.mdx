@@ -59,7 +59,7 @@ When PyPI is live, use `uv add noesis` or `pip install noesis`.
 
 ## Commands
 
-Available commands (in `noesis --help` order): `run`, `solve`, `list`, `show`, `events`, `insight`, `version`, `new`, `validate-ports`, `diagnostics`, `migrate`, `view`, `artifacts`, `ps`, `help`.
+Available commands (in `noesis --help` order): `run`, `solve`, `list`, `show`, `events`, `insight`, `version`, `new`, `validate-ports`, `diagnostics`, `migrate`, `view`, `artifacts`, `ps`, `processes`, `help`.
 
 ### noesis run
 
@@ -244,6 +244,91 @@ STARTED_AT                  EPISODE_ID                     TASK
 Started              ID                      Task
 2024-12-27 10:15:32  ep_2024_abc123_s0       Draft release notes
 2024-12-27 09:45:11  ep_2024_def456_s0       Analyze logs
+```
+
+### noesis ps
+
+List recent episodes (runs/evidence bundles). Episode answers "can I trust this attempt?"
+
+```bash
+noesis ps [options]
+```
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--limit INT` | Maximum episodes to show | 20 |
+| `--process TEXT` | Filter by process id or name | None |
+| `-j, --json` | Output as JSON envelope (`cli/1.1`) | False |
+| `-q, --quiet` | Print episode ids only | False |
+
+**JSON envelope**:
+
+`PsResult` contains `episodes`, each derived from `list_runs()`:
+
+```json
+{
+  "cli": {"schema_version": "cli/1.1", "compat_min": "cli/1.0", "compat_max": "cli/1.x"},
+  "episodes": [
+    {
+      "episode_id": "ep_01...",
+      "task": "Draft release notes",
+      "started_at": "2024-12-27T10:15:32Z",
+      "outcome": "success_unverified",
+      "status": "completed",
+      "process": {"id": "proc_...", "name": "alpha"}
+    }
+  ],
+  "total_count": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### noesis processes
+
+List processes (identity + liveness). Process answers "what's running?" This is mutable registry state, not immutable evidence.
+
+```bash
+noesis processes [options]
+```
+
+**Options**:
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--limit INT` | Maximum processes to show | 20 |
+| `--process TEXT` | Filter by process id or name | None |
+| `-j, --json` | Output as JSON envelope (`cli/1.1`) | False |
+| `-q, --quiet` | Print process ids only | False |
+
+**Process liveness**:
+
+`status` is one of `running`, `idle`, `stale`, `error`.
+
+**JSON envelope**:
+
+`ProcessesResult` contains `processes`:
+
+```json
+{
+  "cli": {"schema_version": "cli/1.1", "compat_min": "cli/1.0", "compat_max": "cli/1.x"},
+  "processes": [
+    {
+      "process_id": "eebfff3bbbb5",
+      "process_name": "alpha",
+      "kind": "oneshot",
+      "status": "idle",
+      "last_seen_at": "2024-12-27T10:20:05Z",
+      "active_run_id": null,
+      "last_run_outcome": "success_unverified"
+    }
+  ],
+  "total_count": 1,
+  "limit": 20,
+  "offset": 0
+}
 ```
 
 ### noesis show
