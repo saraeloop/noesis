@@ -16,7 +16,7 @@ from noesis.runtime.prompt_recorder import PromptRecorder
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.domain.artifacts.immutability import ArtifactWriteMode, ImmutabilityError
 from noesis.domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
-from noesis.usecases.finalization import FinalizationWriter
+from noesis.usecases.finalization import FinalizationWriter, map_outcome_to_final_outcome
 from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.usecases.immutability import ArtifactImmutabilityGuard
 from noesis.infrastructure.immutability import FinalizationSealStatus
@@ -243,23 +243,28 @@ def test_prompt_recording_blocked_after_seal(tmp_path: Path) -> None:
 
 def test_write_after_final_marker_fails(tmp_path: Path) -> None:
     run_dir = _prepare_run_dir(tmp_path, "ep_final")
-    ManifestWriter(run_dir=run_dir, episode_id="ep_final").finalize()
-
     writer = FinalizationWriter(immutability_guard=default_artifact_guard())
     writer.write(
         episode_dir=run_dir,
         record=FinalizationRecord(
             episode_id="ep_final",
-            process_id=None,
-            run_index=None,
+            process_id="proc_test",
+            run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success",
+            outcome="success_unverified",
         ),
     )
     assert (run_dir / FINAL_FILE_NAME).exists()
 
     with pytest.raises(ImmutabilityError):
         write_summary(run_dir, {"schema_version": "1.0.0", "episode_id": "ep_final"})
+
+
+def test_finalization_rejects_unsupported_outcome() -> None:
+    with pytest.raises(ValueError) as exc:
+        _ = map_outcome_to_final_outcome("unsupported")  # type: ignore[arg-type]
+    assert "unsupported outcome status for finalization" in str(exc.value)
+    assert "allowed:" in str(exc.value)
 
 
 def test_manifest_does_not_finalize_episode(tmp_path: Path) -> None:
