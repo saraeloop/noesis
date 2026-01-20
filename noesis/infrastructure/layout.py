@@ -23,3 +23,4 @@ class FileSystemLayoutResolver(LayoutPort):
         layout.root.mkdir(parents=True, exist_ok=True)
         layout.episodes_dir.mkdir(parents=True, exist_ok=True)
         layout.processes_dir.mkdir(parents=True, exist_ok=True)
+        layout.index_dir.mkdir(parents=True, exist_ok=True)

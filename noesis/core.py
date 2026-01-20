@@ -357,7 +357,7 @@ def _finalize_episode(
     manifest_path, manifest_sha = _finalize_manifest(setup.ctx)
 
     try:
-        store_root = setup.layout.episodes_dir / "_episodes"
+        store_root = setup.layout.index_dir
         summary_path = setup.ctx.run_dir / "summary.json"
         EpisodeIndex(store_root, ttl_days=EPISODE_STORE_TTL_DAYS).append(
             episode_id=setup.ctx.episode_id,
