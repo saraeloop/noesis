@@ -582,17 +582,19 @@ def processes(
     process_rows: list[dict[str, object]] = []
     for record in records:
         status = process_service.liveness_status(record)
+        payload = record.to_dict()
+        payload["status"] = status
         process_rows.append(
             {
-                "process_id": record.process_id,
-                "process_name": record.process_name,
-                "kind": record.kind,
-                "status": status,
-                "last_seen_at": record.last_seen_at.isoformat(),
-                "last_heartbeat_at": record.last_heartbeat_at.isoformat(),
-                "active_run_id": record.active_run_id,
-                "last_run_outcome": record.last_run_outcome,
-                "next_run_index": record.next_run_index,
+                "process_id": payload["process_id"],
+                "process_name": payload["process_name"],
+                "kind": payload["kind"],
+                "status": payload["status"],
+                "last_seen_at": payload["last_seen_at"],
+                "last_heartbeat_at": payload["last_heartbeat_at"],
+                "active_run_id": payload["active_run_id"],
+                "last_run_outcome": payload["last_run_outcome"],
+                "next_run_index": payload["next_run_index"],
             }
         )
     if json_output:
