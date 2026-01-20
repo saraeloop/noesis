@@ -22,6 +22,7 @@ class NoesisPaths:
     root: Path
     episodes_dir: Path
     processes_dir: Path
+    index_dir: Path
     legacy_episode_dirs: tuple[Path, ...] = ()
     legacy_process_dirs: tuple[Path, ...] = ()
 
@@ -56,6 +57,7 @@ def resolve_noesis_paths(*, workspace: Path | None, runs_dir: Path) -> NoesisPat
         root=root,
         episodes_dir=episodes_dir,
         processes_dir=processes_dir,
+        index_dir=root / "index",
         legacy_episode_dirs=tuple(legacy_episodes),
         legacy_process_dirs=tuple(legacy_processes),
     )
