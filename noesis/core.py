@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Final, TYPE_CHECKING, Callable
+import threading
 from uuid import uuid4
 from .domain.state import LineageTracker
 from .state.episode import begin_episode
@@ -69,7 +70,7 @@ from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
 from .usecases.finalization import FinalizationWriter, map_outcome_to_final_outcome
-from .usecases.process_registry import ProcessRegistryService
+from .usecases.process_registry import ProcessRegistryService, STALE_TTL_SECONDS
 from .domain.artifacts.finalization import FinalizationRecord
 from .domain.process import derive_process_identity
 from .context import RuntimeContext, get_context
@@ -307,6 +308,30 @@ def _build_runner_ports(setup: _EpisodeRuntime) -> tuple[RuntimeEventBus, Episod
         hooks=(),
     )
     return event_bus, instrumentation, lineage
+
+
+def _start_process_heartbeat(setup: _EpisodeRuntime) -> tuple[threading.Event | None, threading.Thread | None]:
+    process_id = setup.episode_ctx.process_id
+    if not process_id:
+        return None, None
+    try:
+        factory = setup.runtime_context.require("process_registry_factory", "process_registry_factory/1.0")
+        service = ProcessRegistryService(factory.create(setup.layout))
+    except Exception:
+        return None, None
+    interval = max(10, STALE_TTL_SECONDS // 2)
+    stop_event = threading.Event()
+
+    def _loop() -> None:
+        while not stop_event.wait(interval):
+            try:
+                service.heartbeat(process_id)
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=_loop, name="noesis-process-heartbeat", daemon=True)
+    thread.start()
+    return stop_event, thread
 
 
 def _finalize_episode(
@@ -563,7 +588,14 @@ def _run_episode(
         context=setup.episode_ctx,
         using_label=using_label,
     )
-    result = runner.run(episode_request)
+    stop_event, thread = _start_process_heartbeat(setup)
+    try:
+        result = runner.run(episode_request)
+    finally:
+        if stop_event is not None:
+            stop_event.set()
+        if thread is not None:
+            thread.join(timeout=1.0)
 
     status_value = str(result.outcome.status or "unknown")
     default_message = "Episode terminated."
@@ -697,7 +729,14 @@ async def _run_episode_async(
         context=setup.episode_ctx,
         using_label=using_label,
     )
-    result = await runner.run_async(episode_request)
+    stop_event, thread = _start_process_heartbeat(setup)
+    try:
+        result = await runner.run_async(episode_request)
+    finally:
+        if stop_event is not None:
+            stop_event.set()
+        if thread is not None:
+            thread.join(timeout=1.0)
 
     status_value = str(result.outcome.status or "unknown")
     default_message = "Episode terminated."
