@@ -4,7 +4,17 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
-import fcntl
+import os
+
+try:  # pragma: no cover - platform-specific import
+    import fcntl  # type: ignore
+except Exception:  # noqa: BLE001
+    fcntl = None  # type: ignore
+
+try:  # pragma: no cover - platform-specific import
+    import msvcrt  # type: ignore
+except Exception:  # noqa: BLE001
+    msvcrt = None  # type: ignore
 
 __all__ = ["file_lock"]
 
@@ -18,8 +28,22 @@ def file_lock(path: Path) -> Iterator[None]:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+", encoding="utf-8") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+            return
+        if msvcrt is not None and os.name == "nt":
+            handle.seek(0)
+            handle.write("0")
+            handle.flush()
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+        yield
