@@ -284,11 +284,31 @@ def _build_view_envelope(
 
 def _build_ps_envelope(
     *,
-    processes: list[dict],
+    episodes: list[dict],
     limit: int,
     offset: int = 0,
 ) -> dict[str, object]:
     """Build the cli/1.1 PsResult envelope."""
+    return {
+        "cli": {
+            "schema_version": _CLI_SCHEMA_VERSION,
+            "compat_min": _CLI_COMPAT_MIN,
+            "compat_max": _CLI_COMPAT_MAX,
+        },
+        "episodes": episodes,
+        "total_count": len(episodes),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+def _build_processes_envelope(
+    *,
+    processes: list[dict],
+    limit: int,
+    offset: int = 0,
+) -> dict[str, object]:
+    """Build the cli/1.1 ProcessesResult envelope."""
     return {
         "cli": {
             "schema_version": _CLI_SCHEMA_VERSION,
@@ -515,7 +535,7 @@ def view(
 
 @app.command()
 def ps(
-    limit: int = typer.Option(20, "--limit", help="Number of processes to show"),
+    limit: int = typer.Option(20, "--limit", help="Number of episodes to show"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
     json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
     force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
@@ -525,18 +545,39 @@ def ps(
     options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
     ctx = build_context(options, port_specs=port or [])
     renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
+    rows = ctx.ns.list_runs(limit=limit, context=ctx.runtime_context)
+    episodes = _filter_runs_by_process(rows, process)
+    if json_output:
+        envelope = _build_ps_envelope(episodes=episodes, limit=limit)
+        sys.stdout.write(json.dumps(envelope) + "\n")
+        return
+    renderer.print_list(episodes, quiet=quiet)
+
+
+@app.command()
+def processes(
+    limit: int = typer.Option(20, "--limit", help="Number of processes to show"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="JSON output"),
+    force_rich: bool = typer.Option(False, "--force-rich", help="Force Rich output"),
+    port: Optional[list[str]] = typer.Option(None, "--port", help="Register runtime port (NAME=SPEC)"),
+    process: Optional[str] = typer.Option(None, "--process", help="Filter processes by id or name"),
+) -> None:
+    options = GlobalOptions(quiet=quiet, json=json_output, force_rich=force_rich)
+    ctx = build_context(options, port_specs=port or [])
+    renderer = _select_renderer(ctx, json_output=json_output, quiet=quiet, force_rich=force_rich)
     layout = resolve_noesis_paths(workspace=None, runs_dir=ctx.config_snapshot.runs_dir)
     registry = FileProcessRegistry(layout.processes_dir)
-    processes = registry.list()
+    records = registry.list()
     if process:
         target = process.strip()
-        processes = [
-            item for item in processes if item.process_id == target or item.process_name == target
+        records = [
+            item for item in records if item.process_id == target or item.process_name == target
         ]
-    processes = sorted(processes, key=lambda item: item.last_seen_at, reverse=True)[:limit]
-    ps_rows: list[dict[str, object]] = []
-    for record in processes:
-        ps_rows.append(
+    records = sorted(records, key=lambda item: item.last_seen_at, reverse=True)[:limit]
+    process_rows: list[dict[str, object]] = []
+    for record in records:
+        process_rows.append(
             {
                 "process_id": record.process_id,
                 "process_name": record.process_name,
@@ -548,10 +589,10 @@ def ps(
             }
         )
     if json_output:
-        envelope = _build_ps_envelope(processes=ps_rows, limit=limit)
+        envelope = _build_processes_envelope(processes=process_rows, limit=limit)
         sys.stdout.write(json.dumps(envelope) + "\n")
         return
-    renderer.print_ps(ps_rows, quiet=quiet)
+    renderer.print_ps(process_rows, quiet=quiet)
 
 
 @app.command()
