@@ -709,11 +709,20 @@ async def _run_episode_async(
             graph = _load_graph(using)
             actuator = AsyncAdapterActuator(graph=graph, tool_label=setup.adapter_label)
 
+        snapshot_writer = SnapshotArtifactWriter(
+            gateway=FileSystemSnapshotGateway(),
+            metadata_store=FileSystemSnapshotMetadataStore(),
+            clock=UtcSnapshotClock(),
+            immutability_guard=default_artifact_guard(),
+        )
+        file_reader_factory = lambda root: FileSystemFileReader(root=root)
         deps = EpisodeDependencies(
             planner=MinimalPlanner(),
             actuator=actuator,
             event_bus=event_bus,
             state_repository=setup.state_repo,
+            snapshot_writer=snapshot_writer,
+            file_reader_factory=file_reader_factory,
             direction_planner=direction_planner,
             governance_policy=governance_policy,
             governance_mode=governance_mode,
