@@ -20,7 +20,7 @@ __all__ = [
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def parse_iso8601(ts: str) -> datetime | None:

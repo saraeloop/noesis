@@ -6,7 +6,7 @@ from pathlib import Path
 from noesis.infrastructure.snapshot.clock import UtcSnapshotClock
 from noesis.infrastructure.snapshot.file_system_gateway import FileSystemSnapshotGateway
 from noesis.infrastructure.snapshot.metadata_store import FileSystemSnapshotMetadataStore
-from noesis.infrastructure.immutability import ManifestSealStatus
+from noesis.infrastructure.immutability import FinalizationSealStatus
 from noesis.usecases.immutability import ArtifactImmutabilityGuard
 from noesis.usecases.snapshot_artifacts import SnapshotArtifactWriter, SnapshotClock
 
@@ -40,7 +40,7 @@ def test_snapshot_artifact_writer_records_capture_times(tmp_path: Path) -> None:
         gateway=FileSystemSnapshotGateway(),
         metadata_store=FileSystemSnapshotMetadataStore(),
         clock=clock,
-        immutability_guard=ArtifactImmutabilityGuard(ManifestSealStatus()),
+        immutability_guard=ArtifactImmutabilityGuard(FinalizationSealStatus()),
     )
 
     writer.capture_and_store(phase="pre", workspace=workspace, run_dir=run_dir)
