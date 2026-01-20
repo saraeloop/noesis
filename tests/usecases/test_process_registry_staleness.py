@@ -11,6 +11,7 @@ from noesis.usecases.process_registry import ProcessRegistryService, STALE_TTL_S
 def test_process_becomes_stale_after_ttl(tmp_path) -> None:
     registry = FileProcessRegistry(tmp_path / "processes")
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    registry.now = lambda: now
     service = ProcessRegistryService(registry, now=lambda: now)
     identity = derive_process_identity(workspace_identity="/tmp/workspace", process_name="alpha")
 
