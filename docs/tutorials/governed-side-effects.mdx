@@ -1,0 +1,35 @@
+---
+title: "Governed Side Effects: Action Candidates + Veto"
+description: "Use ns.governed_act to enforce governance at the side-effect boundary."
+slug: governed-side-effects
+---
+
+This tutorial demonstrates the OS-boundary contract of `ns.governed_act(...)`:
+
+`action_candidate → governance → act` (or `terminate` on veto).
+
+**Why this matters:** you get a hard safety gate with a verifiable audit trail.
+
+## What you'll build
+
+- Governed actions that emit action-candidate traces
+- A vetoed run with **no act events**
+- Artifacts that can be evaluated by trace-based scoring
+
+## Prerequisites
+
+- Python with `noesis` installed
+
+## Run the tutorial
+
+```bash
+uv run python -m tutorials.governed_side_effects
+```
+
+## Notes
+
+`ns.governed_act(...)` creates its own episode bundle. The tutorial locates the episode id by diffing `runs_dir` before and after each call.
+
+## Source
+
+The source file is located at `examples/noesis-quickstart/tutorials/governed_side_effects.py`.

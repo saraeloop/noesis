@@ -17,7 +17,7 @@ Canonical signals:
 - Enforced veto is determined by Governance:
     phase="governance", payload.decision="veto", payload.enforced=true
 - On enforce+veto runs, you should see:
-    plan → direction(blocked) → governance(veto) → terminate(vetoed)
+    action_candidate → governance(veto) → terminate(vetoed)
   and there are NO act events.
 
 Two policy levers:
@@ -31,7 +31,8 @@ def print_dataset(rows: Iterable[dict[str, Any]]) -> None:
     """Print the Dataset section with cases to be evaluated."""
     headline("Dataset")
     for r in rows:
-        info(f'{r["id"]}: {r["kind"]} — {r["prompt"]}')
+        label = r.get("prompt") or r.get("goal") or r.get("task") or "<missing>"
+        info(f'{r["id"]}: {r["kind"]} — {label}')
 
 
 def print_run_results(rows: Iterable[dict[str, Any]]) -> None:
@@ -48,24 +49,27 @@ def print_episode_flags(flags_rows: Iterable[dict[str, Any]]) -> None:
         info(
             f'{r["id"]} ({r["kind"]}) → '
             f'vetoed={r["vetoed"]} success={r["success"]} '
-            f'act_count={r["act_count"]} terminate={r["terminate_status"]}'
+            f'act_count={r["act_count"]} terminate={r["terminate_status"]} '
+            f'final={r.get("final_present")}'
         )
 
 
 def print_intro_guarded_langgraph() -> None:
     """Print the tutorial intro for the guarded LangGraph demo."""
-    headline("Governance Tutorial: Pre-Act Veto")
+    headline("LangGraph Episodes + Governed Side Effects")
     print(
         """
-This tutorial demonstrates Noēsis Governance in front of a real (LLM-backed) LangGraph plan→act agent.
+This tutorial has two demos:
+  A) LangGraph episodes (ns.solve) with governance off.
+  B) Governed side effects (ns.governed_act) with enforcement on.
 
 Two policy levers:
   - Built-in Governance (PreActGovernor) = enforcement + canonical veto artifacts
   - Custom Intuition policy (PathRiskSignals) = advisory hints only (no veto)
 
 Expected behavior:
-  - allow/audit: LangGraph act runs (LLM is called)
-  - veto: governance blocks BEFORE act (no act events)
+  - LangGraph runs: cognitive phases + artifacts, no governance in the main episode.
+  - Governed actions: action_candidate → governance → act (or terminate on veto).
 """
     )
 
@@ -189,7 +193,8 @@ def print_flags(rows: Iterable[dict[str, Any]]) -> None:
         info(
             f'{row.get("id")} ({row.get("kind")}) -> '
             f"vetoed={flags.vetoed} success={flags.success} "
-            f"act_count={flags.act_count} terminate={flags.terminate_status}"
+            f"act_count={flags.act_count} terminate={flags.terminate_status} "
+            f"final={flags.final_present}"
         )
 
 
