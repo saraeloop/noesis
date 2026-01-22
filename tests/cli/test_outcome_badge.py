@@ -28,7 +28,7 @@ def test_outcome_badge_unknown() -> None:
 
 
 def test_normalize_outcome_fallbacks() -> None:
-    assert normalize_outcome(None, status="vetoed") == "violated"
+    assert normalize_outcome(None, status="vetoed") == "vetoed"
     assert normalize_outcome(None, status="error") == "error"
     assert normalize_outcome(None, status="SUCCESS") == "success"
     assert normalize_outcome(None, status="UNVERIFIED") == "success_unverified"

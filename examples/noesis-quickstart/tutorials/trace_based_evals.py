@@ -216,11 +216,13 @@ def act_phase_ms_from_events(events: list[dict[str, Any]]) -> float | None:
     if not act_times:
         return None
 
-    if len(act_times) < 2:
-        return None
+    if len(act_times) == 1:
+        # Single act event: treat duration as 0ms so the episode still
+        # contributes to averages instead of being dropped.
+        return 0.0
 
     duration_ms = max(act_times) * 1000.0 - min(act_times) * 1000.0
-    if duration_ms <= 0:
+    if duration_ms < 0:
         return None
     return duration_ms
 
