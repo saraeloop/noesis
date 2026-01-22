@@ -966,7 +966,9 @@ def _status_style(label: str) -> str:
         return "ok"
     if normalized == "audit":
         return "warn"
-    if normalized in {"vetoed", "error", "veto"}:
+    if normalized in {"vetoed", "veto"}:
+        return "warn"
+    if normalized in {"error"}:
         return "err"
     return "muted"
 
@@ -977,7 +979,9 @@ def _execution_status_style(label: str) -> str:
         return "ok"
     if normalized in {"skipped", "unverified", "success_unverified"}:
         return "warn"
-    if normalized in {"failed", "error", "vetoed", "goal_not_achieved"}:
+    if normalized in {"vetoed"}:
+        return "warn"
+    if normalized in {"failed", "error", "goal_not_achieved"}:
         return "err"
     return "muted"
 

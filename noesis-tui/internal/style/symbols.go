@@ -77,6 +77,7 @@ var OutcomeBadges = map[string]OutcomeBadge{
 	"success":            {Label: "SUCCESS", Symbol: "●", Style: "ok"},
 	"success_unverified": {Label: "SUCCESS", Symbol: "○", Style: "ok"},
 	"goal_not_achieved":  {Label: "GOAL NOT ACHIEVED", Symbol: "●", Style: "err"},
+	"vetoed":             {Label: "VETOED", Symbol: "●", Style: "warn"},
 	"violated":           {Label: "VIOLATED", Symbol: "●", Style: "err"},
 	"error":              {Label: "ERROR", Symbol: "●", Style: "err"},
 }

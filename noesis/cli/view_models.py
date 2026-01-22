@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -280,6 +280,7 @@ def build_episode_dashboard(
     phase_breakdown = _phase_breakdown(summary, events)
     timeline_rows = _build_timeline(events, limit_timeline=limit_timeline)
     verification = build_verification_section(summary)
+    verification = _apply_veto_outcome(status, verification)
     execution_map = _build_execution_map(summary, state, events, verification)
     validation_issues = _validate_artifacts(
         ep_dir,
@@ -362,6 +363,7 @@ def build_episode_dashboard_from_payloads(
     phase_breakdown = _phase_breakdown(summary_payload, events_payload)
     timeline_rows = _build_timeline(events_payload, limit_timeline=limit_timeline)
     verification = build_verification_section(summary_payload)
+    verification = _apply_veto_outcome(status, verification)
     execution_map = _build_execution_map(summary_payload, state, events_payload, verification)
     validation_issues = _validate_payloads(
         summary_payload,
@@ -559,6 +561,16 @@ def build_verification_section(summary: Dict[str, Any] | None) -> VerificationSe
         error=error,
         assertions=assertions,
         workspace_diff=workspace_diff,
+    )
+
+
+def _apply_veto_outcome(status: str, verification: VerificationSectionVM) -> VerificationSectionVM:
+    if status != "vetoed":
+        return verification
+    summary = verification.outcome.summary or "Episode vetoed by governance"
+    return replace(
+        verification,
+        outcome=OutcomeVM(status="vetoed", summary=summary),
     )
 
 

@@ -65,7 +65,7 @@ var (
 
 	StatusVetoed = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ErrorColor)
+			Foreground(WarningColor)
 
 	StatusAudit = lipgloss.NewStyle().
 			Bold(true).
