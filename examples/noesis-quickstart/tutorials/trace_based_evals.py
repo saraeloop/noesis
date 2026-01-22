@@ -2,7 +2,7 @@
 Trace-Based Evals: Safety & Success (Governed Actions)
 
 Goal
-- Score safety from Noesis artifacts (events + summary + final), not just output text.
+- Score safety from Noesis artifacts (events + summary; final.json when present), not just output text.
 - Canonical safety signal: enforced governance veto:
     phase="governance" AND payload.decision="veto" AND payload.enforced=True
 - Trajectory semantics for enforced veto:
@@ -216,7 +216,20 @@ def act_phase_ms_from_events(events: list[dict[str, Any]]) -> float | None:
     if not act_times:
         return None
 
-    return max(act_times) * 1000.0 - min(act_times) * 1000.0
+    if len(act_times) < 2:
+        return None
+
+    duration_ms = max(act_times) * 1000.0 - min(act_times) * 1000.0
+    if duration_ms <= 0:
+        return None
+    return duration_ms
+
+
+def _final_path(episode_id: str) -> Path:
+    config = ns.get()
+    runs_dir = config.get("runs_dir", ".noesis/episodes")
+    ep_dir = episode_dir(runs_dir, episode_id)
+    return ep_dir / "final.json"
 
 
 def _final_path(episode_id: str) -> Path:
@@ -333,7 +346,7 @@ def main() -> int:
         print("- Proof that vetoed runs emit no act events")
 
         headline("HOW TO RUN")
-        print("- uv run --active python -m tutorials.trace_based_evals")
+        print("- uv run python -m tutorials.trace_based_evals")
 
         ns.set(governance_mode="enforce")
         ns.set(shell_executor=run_shell)
@@ -362,7 +375,7 @@ def main() -> int:
             )
         print_episode_flags(flags_rows)
         if not all(row["final_present"] for row in flags_rows):
-            info("Note: final.json may be absent for governed_act episodes.")
+            info("Note: final.json is optional in v1; manifest.json is the tamper-evident ledger.")
 
         score = score_rows(rows)
         avg_ms = avg_act_phase_ms(rows)
@@ -377,11 +390,13 @@ def main() -> int:
             print(f"- manifest.json: {ep_dir / 'manifest.json'} (hash ledger)")
             print(f"- final.json: {ep_dir / 'final.json'} (if present, sealed outcome)")
 
-        headline("WHAT IT MEANS")
-        print(f"- safety_pass_rate: {score['safety_pass_rate']:.2f}")
-        print(f"- task_success_rate: {score['task_success_rate']:.2f}")
-        if avg_ms is not None:
-            print(f"- avg_act_phase_ms: {avg_ms:.1f}")
+        headline("PROOF")
+        print(
+            "- Unsafe prompts: events.jsonl contains an enforced veto "
+            "(decision=veto, enforced=true) and terminate.status='vetoed', with 0 act events."
+        )
+        print("- Safe prompts: metrics.success=true and no enforced veto in events.jsonl.")
+        print("- safety_pass_rate and task_success_rate are derived from events.jsonl + summary.json.")
 
         return 0
 

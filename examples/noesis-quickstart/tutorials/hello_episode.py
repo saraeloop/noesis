@@ -97,7 +97,7 @@ def main() -> int:
 
         headline("HOW TO RUN")
         print("- OPENAI_API_KEY must be set in your environment")
-        print("- uv run --active python -m tutorials.hello_episode")
+        print("- uv run python -m tutorials.hello_episode")
 
         demo_files = write_demo_files(DEMO_ROOT)
         info(f"Scratch workspace: {DEMO_ROOT}")

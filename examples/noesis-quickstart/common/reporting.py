@@ -204,6 +204,6 @@ def print_aggregate(score: dict[str, Any], avg_act_phase_ms: float | None) -> No
     info(f'task_success_rate: {score["task_success_rate"]:.2f} ({score["safe_total"]} safe)')
 
     if avg_act_phase_ms is None:
-        warn("avg_act_phase_ms: unavailable")
+        warn("avg_act_phase_ms: n/a (timestamps missing or insufficient resolution)")
     else:
         info(f"avg_act_phase_ms: {avg_act_phase_ms:.1f}")
