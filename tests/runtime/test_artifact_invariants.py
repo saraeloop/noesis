@@ -202,6 +202,8 @@ def _validate_run(run_dir: Path) -> None:
 
 
 def test_artifact_invariants_hello_and_veto(tmp_path: Path) -> None:
+    if not os.getenv("OPENAI_API_KEY"):
+        pytest.skip("OPENAI_API_KEY not set for hello_episode tutorial")
     with _tutorial_context(tmp_path) as episodes_dir:
         from tutorials import hello_episode
 
