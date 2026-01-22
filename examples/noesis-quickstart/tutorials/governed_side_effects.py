@@ -116,7 +116,7 @@ def main() -> int:
         print("- Action-candidate governance traces you can inspect and diff")
 
         headline("HOW TO RUN")
-        print("- uv run --active python -m tutorials.governed_side_effects")
+        print("- uv run python -m tutorials.governed_side_effects")
 
         ns.set(governance_mode="enforce")
         ns.set(shell_executor=run_shell)

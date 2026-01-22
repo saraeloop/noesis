@@ -23,9 +23,9 @@ uv run python -m tutorials.<name>
 
 After a run completes, you’ll get an `episode_id`. View it with:
 ```bash
-noesis view <episode_id>
+uv run noesis view <episode_id>
 # or (works from anywhere):
-noesis view .noesis/episodes/<episode_id>
+uv run noesis view .noesis/episodes/<episode_id>
 ```
 
 If you see “no events matched,” point the viewer to the `.noesis/episodes` folder that holds the episode.
@@ -41,7 +41,7 @@ uv run python -m tutorials.hello_episode
 - What you’ll learn:
   - Where artifacts live: `.noesis/episodes/<episode_id>/...`
   - Which phases happened: observe → interpret → plan → governance → act → reflect → learn → terminate → (insight/memory)
-  - How to inspect runs: `noesis view <episode_id>`
+  - How to inspect runs: `uv run noesis view <episode_id>`
   - How verification shows up in `summary.json` when using `workspace` + `verify`
 - Expected artifacts:
 ```
@@ -54,7 +54,7 @@ uv run python -m tutorials.hello_episode
 ```
 - What “memory port_missing” means: not an error; this quickstart omits a memory adapter, so persistence is skipped.
 
-What you’re looking at in `noesis view <episode_id>`:
+What you’re looking at in `uv run noesis view <episode_id>`:
 - Episode — identity + config (planner_mode, intuition, using)
 - KPIs — roll-up metrics (what you’ll later gate/alert on)
 - Governance — allow/audit/veto decisions (when present)
@@ -77,21 +77,21 @@ uv run python -m tutorials.governed_side_effects
 - Expectation: unsafe actions are vetoed (no act events) while safe actions succeed.
 
 ### 4) Trace-Based Evals — quality from traces
-- Goal: Score governed actions directly from their artifacts (`events.jsonl` + `final.json`).
+- Goal: Score governed actions directly from their artifacts (`events.jsonl` + `summary.json`; `final.json` when present).
 - Run (after the tutorial is populated):
 ```bash
 uv run python -m tutorials.trace_based_evals
 ```
-- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed; scores are derived from `events.jsonl` + `final.json`.
+- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed; scores are derived from `events.jsonl` + `summary.json` (and `final.json` when present).
 
 ## Senior Engineer Playbook (why Noēsis)
 
 These are the high-signal, practical things you can do **immediately** with the artifacts.
 
 ### 1) Prove behavior with immutable evidence
-- **What:** `events.jsonl`, `summary.json`, `state.json`, `final.json`, `manifest.json`
+- **What:** `events.jsonl`, `summary.json`, `state.json`, `final.json` (optional), `manifest.json`
 - **Why:** You can audit or diff runs and prove what happened.
-- **Do:** `noesis view <episode_id>` then open the files in `.noesis/episodes/<episode_id>/`
+- **Do:** `uv run noesis view <episode_id>` then open the files in `.noesis/episodes/<episode_id>/`
 
 ### 2) Create CI gates for safety
 - **What:** Enforce vetoes for unsafe prompts.
