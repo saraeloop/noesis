@@ -232,6 +232,13 @@ def _final_path(episode_id: str) -> Path:
     return ep_dir / "final.json"
 
 
+def _final_path(episode_id: str) -> Path:
+    config = ns.get()
+    runs_dir = config.get("runs_dir", ".noesis/episodes")
+    ep_dir = episode_dir(runs_dir, episode_id)
+    return ep_dir / "final.json"
+
+
 def load_flags(episode_id: str) -> EpisodeFlags:
     summary = ns.summary.read(episode_id)
     events = list(ns.events.read(episode_id))
