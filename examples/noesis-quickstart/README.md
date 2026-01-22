@@ -33,7 +33,7 @@ If you see “no events matched,” point the viewer to the `.noesis/episodes` f
 ## Tutorials
 
 ### 1) Hello Episode — artifacts + phases
-- Goal: See the Noēsis cognitive loop and confirm artifacts were written.
+- Goal: See the Noēsis cognitive loop and confirm artifacts + verification were written.
 - Run:
 ```bash
 uv run python -m tutorials.hello_episode
@@ -42,6 +42,7 @@ uv run python -m tutorials.hello_episode
   - Where artifacts live: `.noesis/episodes/<episode_id>/...`
   - Which phases happened: observe → interpret → plan → governance → act → reflect → learn → terminate → (insight/memory)
   - How to inspect runs: `noesis view <episode_id>`
+  - How verification shows up in `summary.json` when using `workspace` + `verify`
 - Expected artifacts:
 ```
 .noesis/episodes/<episode_id>/
@@ -59,18 +60,55 @@ What you’re looking at in `noesis view <episode_id>`:
 - Governance — allow/audit/veto decisions (when present)
 - Timeline — the event-by-event trace (what happened, in order)
 
-### 2) Guarded LangGraph — governance + guardrails
-- Goal: Show how a LangGraph flow can be wrapped with Noēsis governance (allow/audit/veto) and surfaced in the trace.
+### 2) LangGraph Episode — cognition + artifacts
+- Goal: Run a LangGraph agent with Noēsis and capture cognitive artifacts.
 - Run (after the tutorial is populated):
 ```bash
-uv run python -m tutorials.guarded_langgraph
+uv run python -m tutorials.langgraph_episode
 ```
-- Expectation: see governance decisions recorded in the timeline and surfaced in `noesis view`, alongside the normal agent phases.
+- Expectation: cognitive phases + artifacts with verification.
 
-### 3) Trace-Based Evals — quality from traces
-- Goal: Demonstrate scoring and evaluating episodes directly from their traces.
+### 3) Governed Side Effects — action candidates + veto
+- Goal: Enforce the OS-boundary contract: `action_candidate → governance → act` (or veto).
+- Run (after the tutorial is populated):
+```bash
+uv run python -m tutorials.governed_side_effects
+```
+- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed.
+
+### 4) Trace-Based Evals — quality from traces
+- Goal: Score governed actions directly from their artifacts (`events.jsonl` + `final.json`).
 - Run (after the tutorial is populated):
 ```bash
 uv run python -m tutorials.trace_based_evals
 ```
-- Expectation: produce an episode whose summary includes evaluation metrics; review them in `noesis view` and in the written artifacts under `.noesis/episodes/<episode_id>/`.
+- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed; scores are derived from `events.jsonl` + `final.json`.
+
+## Senior Engineer Playbook (why Noēsis)
+
+These are the high-signal, practical things you can do **immediately** with the artifacts.
+
+### 1) Prove behavior with immutable evidence
+- **What:** `events.jsonl`, `summary.json`, `state.json`, `final.json`, `manifest.json`
+- **Why:** You can audit or diff runs and prove what happened.
+- **Do:** `noesis view <episode_id>` then open the files in `.noesis/episodes/<episode_id>/`
+
+### 2) Create CI gates for safety
+- **What:** Enforce vetoes for unsafe prompts.
+- **Why:** Prevent regressions when models/tools change.
+- **Do:** Run `tutorials.trace_based_evals` in CI and fail if any unsafe case is not vetoed.
+
+### 3) Debug regressions with causal chains
+- **What:** `caused_by` links across phases in `events.jsonl`.
+- **Why:** You can trace **exactly** why an action happened or was blocked.
+- **Do:** Grep for `phase="governance"` and follow `caused_by` backward to plan/intent.
+
+### 4) Enforce the side-effect boundary
+- **What:** `action_candidate → governance → act` is the contract.
+- **Why:** No side effects should occur without a candidate + governance decision.
+- **Do:** Assert that any `act` event has a preceding `action_candidate` in the same episode.
+
+### 5) Track product metrics, not just logs
+- **What:** `summary.json` and `insight.metrics` expose KPIs.
+- **Why:** You can build dashboards and SLOs (success rate, veto count, tool coverage).
+- **Do:** Parse `summary.json` into your metrics pipeline.

@@ -60,12 +60,13 @@ def import_noesis() -> Any:
 
 def create_session(ns, *, governance_policy=None, planner_mode: str = "meta"):
     """
-    Build a Noēsis Session with governance wired.
+    Build a Noēsis Session using the current env/TOML config.
 
     - planner_mode="meta" is required if you want Governance + Insight phases.
     - governance_policy must implement `.evaluate(goal=..., plan=...)` returning GovernanceResult.
+      Note: governance_policy is a runtime override (global actuation registry), not a
+      per-session config value.
     """
-    # Most Noēsis installs expose SessionBuilder here.
     try:
         from noesis.session import SessionBuilder  # type: ignore
     except Exception as e:
@@ -74,28 +75,13 @@ def create_session(ns, *, governance_policy=None, planner_mode: str = "meta"):
             "Your Noēsis install/exports differ from the quickstart expectations."
         ) from e
 
-    b = SessionBuilder.from_env()
+    session = SessionBuilder.from_env().build()
+    session.configure(planner_mode=planner_mode)
 
-    if hasattr(b, "with_planner_mode"):
-        b = b.with_planner_mode(planner_mode)
-    elif hasattr(b, "with_planner"):
-        b = b.with_planner(planner_mode)
-    else:
-        pass
-
-    # Attach governance if the builder supports it.
     if governance_policy is not None:
-        if hasattr(b, "with_governance_policy"):
-            b = b.with_governance_policy(governance_policy)
-        elif hasattr(b, "with_governance"):
-            b = b.with_governance(governance_policy)
-        else:
-            raise RuntimeError(
-                "Could not attach governance policy. Your SessionBuilder doesn't expose a governance hook.\n"
-                "Fix: update Noēsis or expose builder.with_governance_policy(...)."
-            )
+        ns.set(governance_policy=governance_policy)
 
-    return b.build()
+    return session
 
 def get_runs_dir(session: Any) -> Path:
     """

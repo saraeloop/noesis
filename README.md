@@ -4,14 +4,13 @@
 [![Planner Modes](https://img.shields.io/badge/planner-meta%20%E2%80%A2%20minimal-0ea5e9)](#core-concepts)
 [![Python](https://img.shields.io/badge/python-3.12+-18181b)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-64748b)](LICENSE)
-
 # Noēsis (νόησις)
 
 _Understanding, made observable._
 
-Noēsis is a lightweight Python cognitive framework for orchestrating and tracing agentic reasoning. **TL;DR:** it drops an explicit cognitive loop on top of any agent stack, so every run is an observable episode – context in, actions out – with Intuition, Direction, and Insight captured as immutable artifacts.
+Noēsis is a lightweight cognitive control layer for agent workflows: each run becomes an auditable episode with immutable, structured artifacts and optional governance for side effects.
 
-Noēsis works with the graphs, tools, and runtimes you already use. It doesn’t replace your models or orchestrator; it makes their cognition legible.
+Bring your own graphs, loops, and tools. Noēsis adds observability, verification, and governance boundaries—without replacing your orchestrator or agent framework.
 
 ## Who it’s for
 - **Builders / platform teams:** wrap LangGraph, CrewAI, or custom graphs with cognition without rewrites.

@@ -6,37 +6,71 @@ slug: hello-episode
 
 You want proof that Noēsis is actually recording how your agent thinks. This quickstart runs a minimal agent once, shows where the episode lands on disk, and reads the timeline so you see observe → interpret → plan → act → reflect in a few lines of code.
 
+**Why this matters (the “wow”):** after one run you get a sealed evidence bundle you can diff, audit, and gate in CI.
+
 <Tip>
 Learning path:
 1) Hello Episode (this page) → traces in 5 minutes.
-2) Guarded LangGraph Agent → veto dangerous deletes.
+2) Governed Side Effects → enforce action_candidate → governance → act.
 3) Trace-Based Evals → score behavior over traces.
 </Tip>
 
 ## What you'll build
 
-- A one-call agent that returns an LLM answer
+- A one-call episode using a local adapter (no LLM required)
 - A recorded episode under `.noesis/episodes/<episode-id>/`
+- A sealed evidence bundle you can diff (`final.json` + `manifest.json`)
 - A timeline with phases and a couple of quick metrics
 
 ## Prerequisites
 
 - Python environment with `noesis` installed (`uv add noesis` or `pip install noesis`)
-- An OpenAI-compatible key in `OPENAI_API_KEY` (or configure your provider in the runtime context)
+- Optional: An OpenAI-compatible key in `OPENAI_API_KEY` if you later wire an LLM-backed adapter
 
 ## 1) Run your first episode (Python-first)
 
 ```python quickstart.py
+from __future__ import annotations
+
+from pathlib import Path
 import noesis as ns
-from noesis.runtime import create_runtime_context
 
 
-def main():
-    # Minimal agent: just one LLM call via Noēsis helpers
-    ctx = create_runtime_context(model="gpt-4o-mini")
-    session = ns.NoesisSession(runtime=ctx)
+DEMO_ROOT = Path("/tmp/noesis-demo")
 
-    episode_id = session.run("Summarize why tracing agent steps matters.")
+
+def summarize_demo_files(task: str) -> str:
+    _ = task
+    readme = (DEMO_ROOT / "readme.txt").read_text(encoding="utf-8").strip()
+    todo = (DEMO_ROOT / "todo.txt").read_text(encoding="utf-8").strip()
+    todos = [line.strip("- ").strip() for line in todo.splitlines() if line.strip().startswith("-")]
+    lines = [
+        "Summary:",
+        f"- README: {readme.splitlines()[0] if readme else '(empty)'}",
+        f"- TODO items: {len(todos)}",
+    ]
+    if todos:
+        lines.append("Next actions:")
+        lines.extend([f"- {item}" for item in todos[:2]])
+    return "\n".join(lines)
+
+
+def main() -> None:
+    DEMO_ROOT.mkdir(parents=True, exist_ok=True)
+    (DEMO_ROOT / "readme.txt").write_text("Noesis demo workspace", encoding="utf-8")
+    (DEMO_ROOT / "todo.txt").write_text("TODO\n- Add a safety policy\n- Write a short summary\n", encoding="utf-8")
+
+    verify = [
+        ns.file_exists("readme.txt"),
+        ns.file_exists("todo.txt"),
+        ns.file_contains("todo.txt", "TODO"),
+    ]
+    episode_id = ns.solve(
+        "Summarize the demo files and propose next actions.",
+        using=summarize_demo_files,
+        workspace=str(DEMO_ROOT),
+        verify=verify,
+    )
     print("Episode ID:", episode_id)
 
 
@@ -51,7 +85,7 @@ python quickstart.py
 ```
 
 <Note>
-Auth reminder: Noēsis does not create API keys for you. Set `OPENAI_API_KEY` (or configure your provider in `create_runtime_context`) before running.
+Auth reminder: Noēsis does not create API keys for you. Set `OPENAI_API_KEY` before running any LLM-backed adapters.
 </Note>
 
 ## 2) Open the episode folder
@@ -68,6 +102,7 @@ ls .noesis/episodes/<episode-id>/
 | `summary.json` | Outcome and metrics (success, plan_count, act_count, latencies) |
 | `state.json` | The persisted plan/state at the end of the run |
 | `manifest.json` | Checksums for integrity |
+| `final.json` | The seal: if present, the episode is finalized |
 
 ## 3) Read the timeline
 
@@ -116,5 +151,5 @@ This is enough to prove that Noēsis is capturing the agent’s trajectory, not 
 
 ## Next steps
 
-- Move to guardrails: [Guarded LangGraph Agent](/tutorials/guarded-langgraph-agent) to see vetoes in traces.
+- Move to guardrails: [Governed Side Effects](/tutorials/governed-side-effects) to see vetoes in traces.
 - Move to evals: [Trace-Based Evals](/tutorials/trace-based-evals) to score behavior across tasks.

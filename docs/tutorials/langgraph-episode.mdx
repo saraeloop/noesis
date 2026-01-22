@@ -1,0 +1,31 @@
+---
+title: "LangGraph Episode: Trace the Cognitive Loop"
+description: "Run a LangGraph agent with Noesis and capture cognitive artifacts."
+slug: langgraph-episode
+---
+
+This tutorial runs a LangGraph plan→act agent under Noesis and captures the cognitive artifacts. Governance is **off** in this demo; the focus is traceability and verification.
+
+**Why this matters:** after one run you have a sealed evidence bundle you can diff and audit.
+
+## What you'll build
+
+- A LangGraph-backed cognitive run (observe → plan → act → reflect → learn)
+- Workspace verification (`verify`) and immutable artifacts
+- A clean episode you can inspect with `noesis view`
+
+## Prerequisites
+
+- Python with `noesis` installed
+- LangGraph installed (`uv add langgraph` or `pip install langgraph`)
+- OpenAI API key (for the planner/actor)
+
+## Run the tutorial
+
+```bash
+uv run python -m tutorials.langgraph_episode
+```
+
+## Source
+
+The source file is located at `examples/noesis-quickstart/tutorials/langgraph_episode.py`.
