@@ -101,6 +101,7 @@ _OUTCOME_BADGES: Mapping[str, OutcomeBadge] = {
     "success": OutcomeBadge(label="SUCCESS", symbol="●", style="ok"),
     "success_unverified": OutcomeBadge(label="UNVERIFIED", symbol="●", style="warn"),
     "goal_not_achieved": OutcomeBadge(label="GOAL NOT ACHIEVED", symbol="●", style="err"),
+    "vetoed": OutcomeBadge(label="VETOED", symbol="●", style="warn"),
     "violated": OutcomeBadge(label="VIOLATED", symbol="●", style="err"),
     "error": OutcomeBadge(label="ERROR", symbol="●", style="err"),
 }
@@ -127,7 +128,8 @@ def normalize_outcome(
             "ok": "success",
             "success": "success",
             "audit": "success",
-            "vetoed": "violated",
+            "vetoed": "vetoed",
+            "veto": "vetoed",
             "violated": "violated",
             "error": "error",
             "unverified": "success_unverified",
@@ -226,8 +228,8 @@ def build_theme_tokens() -> ThemeTokens:
             "info": "bright_blue",
             # ── Status styles with symbols ───────────────────────────────────
             "status.success": "bold bright_green",
-            "status.vetoed": "bold bright_red",
-            "status.veto": "bold bright_red",
+            "status.vetoed": "bold bright_yellow",
+            "status.veto": "bold bright_yellow",
             "status.audit": "bold bright_yellow",
             "status.error": "bold bright_red",
             "status.pending": "bright_black",
