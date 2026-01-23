@@ -52,26 +52,25 @@ type episodeItem struct {
 }
 
 func (i episodeItem) Title() string {
-	outcome := i.episode.OutcomeOrDefault()
-	badge := style.GetOutcomeBadge(outcome)
-	symbol := style.StatusSymbol(strings.ToUpper(badge.Style))
+	status := classifyEpisode(i.episode)
+	symbol := symbolForSeverity(status.Severity)
 
 	var symbolStyle lipgloss.Style
-	switch badge.Style {
+	switch status.Severity {
 	case "ok":
 		symbolStyle = style.StatusSuccess
 	case "warn":
 		symbolStyle = style.StatusAudit
 	case "err":
-		symbolStyle = style.StatusVetoed
+		symbolStyle = style.StatusError
 	default:
 		symbolStyle = style.StatusPending
 	}
 
 	return fmt.Sprintf("%s %s  %s",
 		symbolStyle.Render(symbol),
-		style.MutedText.Render(i.episode.EpisodeShort),
-		badge.Label,
+		style.MutedText.Render(shortEpisodeID(i.episode)),
+		status.Label,
 	)
 }
 
@@ -111,10 +110,11 @@ const heroLogoCompact = `
 var filterLabels = []string{
 	"ALL",
 	"NEEDS_ATTENTION",
-	"VERIFIED",
+	"ERRORS",
+	"AUDIT",
+	"VERIFY FAILED",
+	"BLOCKED",
 	"UNVERIFIED",
-	"FAILED",
-	"VIOLATED",
 }
 
 // NewHome creates a new Home model.
@@ -540,7 +540,7 @@ func (h *Home) renderNeedsAttention(width int) string {
 		}
 		line := fmt.Sprintf("%s %s  %s  %s  %s",
 			statusBadge(ep),
-			ep.EpisodeShort,
+			shortEpisodeID(ep),
 			truncate(ep.Task, 32),
 			ep.StartedAt,
 			style.MutedText.Render(reason),
@@ -573,20 +573,24 @@ func (h *Home) applyFilter(episodes []cli.EpisodeRow) []cli.EpisodeRow {
 			if isNeedsAttention(ep) {
 				filtered = append(filtered, ep)
 			}
-		case "VERIFIED":
-			if isVerified(ep) {
+		case "ERRORS":
+			if isError(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "AUDIT":
+			if isAudit(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "VERIFY FAILED":
+			if isVerifyFailed(ep) {
+				filtered = append(filtered, ep)
+			}
+		case "BLOCKED":
+			if isBlocked(ep) {
 				filtered = append(filtered, ep)
 			}
 		case "UNVERIFIED":
 			if isUnverified(ep) {
-				filtered = append(filtered, ep)
-			}
-		case "FAILED":
-			if isFailed(ep) {
-				filtered = append(filtered, ep)
-			}
-		case "VIOLATED":
-			if isViolated(ep) {
 				filtered = append(filtered, ep)
 			}
 		}
@@ -631,16 +635,14 @@ func computeStats(episodes []cli.EpisodeRow) episodeStats {
 	}
 
 	for _, ep := range episodes {
-		outcome := strings.ToLower(ep.OutcomeOrDefault())
-		switch outcome {
-		case "success":
+		status := classifyEpisode(ep)
+		switch status.Bucket {
+		case BucketOK:
 			stats.Succeeded++
-		case "success_unverified":
+		case BucketUnverified:
 			stats.Unverified++
-		case "goal_not_achieved", "error":
+		case BucketVerifyFailed, BucketError:
 			stats.Failed++
-		case "violated":
-			stats.Violated++
 		default:
 			if ep.IsSuccess() {
 				stats.Succeeded++
@@ -649,24 +651,23 @@ func computeStats(episodes []cli.EpisodeRow) episodeStats {
 			}
 		}
 	}
-	stats.NeedsAttention = stats.Failed + stats.Violated + stats.Unknown
+	stats.NeedsAttention = stats.Failed + stats.Unknown
 
 	return stats
 }
 
 func statusBadge(ep cli.EpisodeRow) string {
-	outcome := ep.OutcomeOrDefault()
-	badge := style.GetOutcomeBadge(outcome)
-	symbol := style.StatusSymbol(strings.ToUpper(badge.Style))
+	status := classifyEpisode(ep)
+	symbol := symbolForSeverity(status.Severity)
 
 	var symbolStyle lipgloss.Style
-	switch badge.Style {
+	switch status.Severity {
 	case "ok":
 		symbolStyle = style.StatusSuccess
 	case "warn":
 		symbolStyle = style.StatusAudit
 	case "err":
-		symbolStyle = style.StatusVetoed
+		symbolStyle = style.StatusError
 	default:
 		symbolStyle = style.StatusPending
 	}
@@ -675,23 +676,26 @@ func statusBadge(ep cli.EpisodeRow) string {
 }
 
 func isNeedsAttention(ep cli.EpisodeRow) bool {
-	outcome := strings.ToLower(ep.OutcomeOrDefault())
-	return outcome == "violated" || outcome == "goal_not_achieved" || outcome == "error" || outcome == "success_unverified"
-}
-
-func isVerified(ep cli.EpisodeRow) bool {
-	return strings.ToLower(ep.OutcomeOrDefault()) == "success"
+	status := classifyEpisode(ep)
+	return status.Bucket == BucketError || status.Bucket == BucketAudit || status.Bucket == BucketVerifyFailed
 }
 
 func isUnverified(ep cli.EpisodeRow) bool {
-	return strings.ToLower(ep.OutcomeOrDefault()) == "success_unverified"
+	return classifyEpisode(ep).Bucket == BucketUnverified
 }
 
-func isFailed(ep cli.EpisodeRow) bool {
-	outcome := strings.ToLower(ep.OutcomeOrDefault())
-	return outcome == "goal_not_achieved" || outcome == "error"
+func isVerifyFailed(ep cli.EpisodeRow) bool {
+	return classifyEpisode(ep).Bucket == BucketVerifyFailed
 }
 
-func isViolated(ep cli.EpisodeRow) bool {
-	return strings.ToLower(ep.OutcomeOrDefault()) == "violated"
+func isError(ep cli.EpisodeRow) bool {
+	return classifyEpisode(ep).Bucket == BucketError
+}
+
+func isAudit(ep cli.EpisodeRow) bool {
+	return classifyEpisode(ep).Bucket == BucketAudit
+}
+
+func isBlocked(ep cli.EpisodeRow) bool {
+	return classifyEpisode(ep).Bucket == BucketBlocked
 }

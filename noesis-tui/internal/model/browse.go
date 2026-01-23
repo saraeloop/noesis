@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"noesis.dev/tui/internal/cli"
 	"noesis.dev/tui/internal/msg"
@@ -318,26 +317,25 @@ type episodeBrowseItem struct {
 }
 
 func (i episodeBrowseItem) Title() string {
-	outcome := i.episode.OutcomeOrDefault()
-	badge := style.GetOutcomeBadge(outcome)
-	symbol := style.StatusSymbol(strings.ToUpper(badge.Style))
+	status := classifyEpisode(i.episode)
+	symbol := symbolForSeverity(status.Severity)
 
 	var symbolStyle lipgloss.Style
-	switch badge.Style {
+	switch status.Severity {
 	case "ok":
 		symbolStyle = style.StatusSuccess
 	case "warn":
 		symbolStyle = style.StatusAudit
 	case "err":
-		symbolStyle = style.StatusVetoed
+		symbolStyle = style.StatusError
 	default:
 		symbolStyle = style.StatusPending
 	}
 
 	return fmt.Sprintf("%s %s  %s",
 		symbolStyle.Render(symbol),
-		style.MutedText.Render(i.episode.EpisodeShort),
-		badge.Label,
+		style.MutedText.Render(shortEpisodeID(i.episode)),
+		status.Label,
 	)
 }
 

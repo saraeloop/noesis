@@ -98,7 +98,13 @@ func NewProofFromViewResult(v *cli.ViewResult) *Proof {
 		provided = true
 	}
 
-	if !provided {
+	if verification.Passed != nil {
+		if *verification.Passed {
+			p.Verification = VerificationVerified
+		} else {
+			p.Verification = VerificationFailed
+		}
+	} else if !provided {
 		p.Verification = VerificationUnverified
 	} else if verificationFailed(verification) {
 		p.Verification = VerificationFailed
