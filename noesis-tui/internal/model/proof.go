@@ -556,6 +556,19 @@ func (p *ProofModel) trustScore() int {
 	if p.proof == nil {
 		return 0
 	}
+	switch p.proof.TrustVerdict {
+	case proof.TrustVerified:
+		return 100
+	case proof.TrustFailed:
+		return 30
+	case proof.TrustViolated:
+		return 20
+	}
+
+	if p.proof.Verification == proof.VerificationVerified {
+		return 100
+	}
+
 	total := len(p.proof.Assertions)
 	if total > 0 {
 		passed := 0
@@ -567,16 +580,7 @@ func (p *ProofModel) trustScore() int {
 		return int(float64(passed) / float64(total) * 100)
 	}
 
-	switch p.proof.TrustVerdict {
-	case proof.TrustVerified:
-		return 100
-	case proof.TrustFailed:
-		return 30
-	case proof.TrustViolated:
-		return 20
-	default:
-		return 60
-	}
+	return 60
 }
 
 func (p *ProofModel) renderTabs() string {

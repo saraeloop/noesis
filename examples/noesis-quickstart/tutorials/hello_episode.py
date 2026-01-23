@@ -88,7 +88,9 @@ def main() -> int:
                 f"readme.txt:\n{readme}\n\n"
                 f"todo.txt:\n{todo}\n"
             )
-            return client.chat_text(system, user)
+            summary = client.chat_text(system, user)
+            (DEMO_ROOT / "summary.txt").write_text(summary.strip() + "\n", encoding="utf-8")
+            return summary
 
         headline("WHAT YOU GET")
         print("- A model-backed episode with an auditable evidence bundle")
@@ -104,7 +106,8 @@ def main() -> int:
 
         task = (
             f"Summarize the contents of {demo_files['readme']} and {demo_files['todo']}. "
-            "Then propose 1-2 concrete next actions."
+            "Then propose 1-2 concrete next actions. "
+            "Write the summary to summary.txt in the workspace."
         )
         info(f"Task: {task}")
 
@@ -112,6 +115,7 @@ def main() -> int:
         verify = [
             ns.file_exists("readme.txt"),
             ns.file_exists("todo.txt"),
+            ns.file_exists("summary.txt"),
             ns.file_contains("todo.txt", "TODO"),
         ]
         episode_id = ns.solve(
@@ -145,6 +149,7 @@ def main() -> int:
         headline("WHAT IT MEANS")
         print(f"- metrics.success: {metrics.get('success')}")
         print(f"- verification.provided: {verification.get('provided')} (assertions: {len(assertions)})")
+        print("- workspace diff should show summary.txt as added")
         print("- causal chain (observe → plan → act → terminate):")
         for line in causal_chain(events):
             print(f"  {line}")

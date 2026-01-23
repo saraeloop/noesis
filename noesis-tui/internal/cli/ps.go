@@ -11,16 +11,18 @@ type PsResult struct {
 
 // EpisodeRow represents a single episode in the list view.
 type EpisodeRow struct {
-	EpisodeID    string  `json:"episode_id"`
-	EpisodeShort string  `json:"episode_short"`
-	Status       string  `json:"status"`
-	StatusRaw    *string `json:"status_raw,omitempty"`
-	Outcome      *string `json:"outcome,omitempty"`
-	Success      *bool   `json:"success,omitempty"`
-	Using        *string `json:"using,omitempty"`
-	Task         string  `json:"task"`
-	StartedAt    string  `json:"started_at"`
-	Duration     string  `json:"duration"`
+	EpisodeID    string         `json:"episode_id"`
+	EpisodeShort string         `json:"episode_short"`
+	Status       string         `json:"status"`
+	StatusRaw    *string        `json:"status_raw,omitempty"`
+	Outcome      *string        `json:"outcome,omitempty"`
+	Success      *bool          `json:"success,omitempty"`
+	VetoCount    *int           `json:"veto_count,omitempty"`
+	Flags        map[string]any `json:"flags,omitempty"`
+	Using        *string        `json:"using,omitempty"`
+	Task         string         `json:"task"`
+	StartedAt    string         `json:"started_at"`
+	Duration     string         `json:"duration"`
 }
 
 // OutcomeOrDefault returns the outcome value or "unknown" if nil.
