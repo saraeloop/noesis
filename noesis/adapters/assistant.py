@@ -1,30 +1,208 @@
 """
-Experimental OpenAI Assistants adapter for Noēsis.
+Experimental OpenAI Assistants adapter for Noesis.
 
 Contract:
-- task in → assistant run with tool calls (simulated here)
+- task in -> assistant run with tool calls (simulated here)
 - respects IntuitionEvent patches
 - logs events; surfaces NoesisVeto on blocking advice
 """
 
 from __future__ import annotations
+
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
-from copy import deepcopy
-import json
 from uuid import uuid4
+import json
 
-from ..intuition import Intuition, IntuitionEvent
 from ..direction import DirectiveKind
+from ..domain.artifacts.immutability import ArtifactWriteMode
 from ..exceptions import NoesisVeto
+from ..infrastructure.immutability import FinalizationSealStatus
+from ..intuition import Intuition, IntuitionEvent
+from ..usecases.immutability import ArtifactImmutabilityGuard
 from .protocols import AdapterPath, DEFAULT_MIN_CONFIDENCE, STATE_HISTORY_LIMIT
 
 __all__ = ["AssistantsAdapter"]
 
+_EVENTS_FILE = "events.jsonl"
+_FACULTY_PHASES: dict[str, str] = {
+    "intuition": "intuition",
+    "direction": "direction",
+    "governance": "governance",
+    "insight": "insight",
+}
+_VERB_PAYLOAD_MINIMA: dict[str, set[str]] = {
+    "observe": {"task", "tags", "timestamp"},
+    "interpret": {"signals"},
+    "plan": {"steps"},
+    "act": {"input_excerpt", "outcome"},
+    "reflect": {"success"},
+}
+_ACTION_CANDIDATE_MINIMA: set[str] = {
+    "action_candidate_id",
+    "kind",
+    "payload",
+    "state_ref",
+    "state_hash",
+    "redaction",
+}
+_REQUIRED_EVENT_KEYS: set[str] = {
+    "timestamp",
+    "episode_id",
+    "phase",
+    "payload",
+    "evidence_ids",
+}
+_EVENT_GUARD = ArtifactImmutabilityGuard(
+    seal_status=FinalizationSealStatus(),
+    append_only=frozenset({_EVENTS_FILE, "prompts.jsonl", "learn.jsonl"}),
+)
+
+
+
 def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+
+def _parse_iso(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+
+def _last_event_timestamp(dir_path: Path) -> str | None:
+    path = dir_path / _EVENTS_FILE
+    if not path.exists():
+        return None
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        end = handle.tell()
+        if end == 0:
+            return None
+        buffer = bytearray()
+        pos = end - 1
+        while pos >= 0:
+            handle.seek(pos)
+            chunk = handle.read(1)
+            if chunk == b"\n" and buffer:
+                break
+            if chunk != b"\n":
+                buffer.extend(chunk)
+            pos -= 1
+        if not buffer:
+            return None
+        try:
+            payload = json.loads(buffer[::-1].decode("utf-8"))
+        except json.JSONDecodeError:
+            return None
+        ts = payload.get("timestamp")
+        return ts if isinstance(ts, str) else None
+
+
+
+def _normalize_event_timestamp(event: Dict[str, Any], *, last_timestamp: str | None) -> None:
+    """
+    Normalize event timestamps to ensure monotonic ordering.
+
+    Rules:
+    - If metrics.completed_at is present, event.timestamp must equal it.
+    - Event timestamps must be >= the last emitted timestamp.
+    """
+    metrics = event.get("metrics")
+    has_metrics = isinstance(metrics, dict)
+    if has_metrics:
+        completed_at = metrics.get("completed_at")
+        if isinstance(completed_at, str):
+            event["timestamp"] = completed_at
+    timestamp = event.get("timestamp")
+    if not isinstance(timestamp, str):
+        raise ValueError("event.timestamp must be an ISO 8601 string")
+
+    if last_timestamp:
+        current = _parse_iso(timestamp)
+        prior = _parse_iso(last_timestamp)
+        if current is not None and prior is not None and current < prior:
+            if has_metrics:
+                raise ValueError(
+                    f"event.timestamp {timestamp} is older than prior event timestamp {last_timestamp}"
+                )
+            event["timestamp"] = last_timestamp
+
+
+
+def _validate_event_schema(event: Dict[str, Any]) -> None:
+    """Light schema guard for adapter-written events."""
+    missing = _REQUIRED_EVENT_KEYS - event.keys()
+    if missing:
+        raise ValueError(f"event missing required keys: {sorted(missing)}")
+
+    if not isinstance(event.get("timestamp"), str):
+        raise ValueError("event.timestamp must be str (ISO 8601)")
+    if not isinstance(event.get("payload"), dict):
+        raise ValueError("event.payload must be a dict")
+    if not isinstance(event.get("evidence_ids"), list):
+        raise ValueError("event.evidence_ids must be a list")
+
+    caused_by = event.get("caused_by")
+    if caused_by is not None and not isinstance(caused_by, str):
+        raise ValueError("event.caused_by must be a string UUID when provided")
+
+    metrics = event.get("metrics")
+    if metrics is not None:
+        if not isinstance(metrics, dict):
+            raise ValueError("event.metrics must be a dict when provided")
+        for key in ("started_at", "completed_at", "duration_ms"):
+            if key not in metrics:
+                raise ValueError(f"event.metrics is missing '{key}'")
+        if not isinstance(metrics.get("duration_ms"), (int, float)):
+            raise ValueError("event.metrics.duration_ms must be numeric")
+
+    phase = event.get("phase")
+    if isinstance(phase, str) and phase in _VERB_PAYLOAD_MINIMA:
+        minima = _VERB_PAYLOAD_MINIMA.get(phase, set())
+        payload_keys = set(event["payload"].keys())
+        missing_payload = minima - payload_keys
+        if missing_payload:
+            raise ValueError(
+                f"{phase} payload missing required keys: {sorted(missing_payload)}"
+            )
+        if phase == "act" and not {"tool", "adapter"} & payload_keys:
+            raise ValueError("act payload requires either 'tool' or 'adapter'")
+
+    if phase == "action_candidate":
+        payload_keys = set(event["payload"].keys())
+        missing_payload = _ACTION_CANDIDATE_MINIMA - payload_keys
+        if missing_payload:
+            raise ValueError(
+                "action_candidate payload missing required keys: "
+                f"{sorted(missing_payload)}"
+            )
+
+    faculty = event.get("faculty")
+    if faculty is not None and not isinstance(faculty, str):
+        raise ValueError("event.faculty must be a string when provided")
+    if isinstance(faculty, str) and faculty not in _FACULTY_PHASES.values():
+        raise ValueError(
+            f"event.faculty must be one of {sorted(set(_FACULTY_PHASES.values()))}"
+        )
+
+
+
+def _canonical_event_dumps(value: Any) -> str:
+    """Canonical JSON serializer aligned with runtime canonical_dumps."""
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
 
 
 def _append_event(
@@ -35,9 +213,8 @@ def _append_event(
     agent_id: str,
     payload: Dict[str, Any],
 ) -> None:
-    """Write an adapter event line without importing runtime/trace internals."""
+    """Write an adapter event line with core safeguards preserved."""
     path = Path(run_dir)
-    path.mkdir(parents=True, exist_ok=True)
     event = {
         "id": str(uuid4()),
         "timestamp": _ts(),
@@ -47,14 +224,27 @@ def _append_event(
         "payload": payload,
         "evidence_ids": [],
     }
-    with (path / "events.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+
+    _normalize_event_timestamp(event, last_timestamp=_last_event_timestamp(path))
+    if phase in _FACULTY_PHASES and "faculty" not in event:
+        event["faculty"] = _FACULTY_PHASES[phase]
+    _validate_event_schema(event)
+
+    _EVENT_GUARD.ensure_write_allowed(
+        episode_dir=path,
+        artifact=_EVENTS_FILE,
+        mode=ArtifactWriteMode.APPEND,
+    )
+    path.mkdir(parents=True, exist_ok=True)
+    with (path / _EVENTS_FILE).open("a", encoding="utf-8") as handle:
+        handle.write(_canonical_event_dumps(event) + "\n")
 
 
 @dataclass
 class _State:
     history: list
     tools_seen: list
+
 
 class AssistantsAdapter:
     def __init__(
@@ -77,15 +267,30 @@ class AssistantsAdapter:
             agent_id="adapter.assistants",
             payload=payload,
         )
-        if phase in {"intuition", "direction", "reason", "interpret", "plan", "act", "observe", "reflect", "error"}:
+        if phase in {
+            "intuition",
+            "direction",
+            "reason",
+            "interpret",
+            "plan",
+            "act",
+            "observe",
+            "reflect",
+            "error",
+        }:
             self._state.history.append({"phase": phase, "payload": payload})
             if len(self._state.history) > STATE_HISTORY_LIMIT:
                 del self._state.history[0]
 
     def _policy_tag(self, intuition: Optional[Intuition]) -> str:
-        if not intuition: return "None"
+        if not intuition:
+            return "None"
         name = intuition.__class__.__name__
-        version = getattr(intuition, "__version__", None) or getattr(intuition, "version", None) or "unspecified"
+        version = (
+            getattr(intuition, "__version__", None)
+            or getattr(intuition, "version", None)
+            or "unspecified"
+        )
         return f"{name}@{version}"
 
     def _apply_patch(self, inp: Any, patch: Dict[str, Any]):
@@ -112,15 +317,33 @@ class AssistantsAdapter:
         directive: Optional[IntuitionEvent] = None
 
         if intuition:
-            directive = intuition.advise({"task": task, "seed": seed, "history": list(self._state.history), "tools_seen": [], "tags": tags or {}})
+            directive = intuition.advise(
+                {
+                    "task": task,
+                    "seed": seed,
+                    "history": list(self._state.history),
+                    "tools_seen": [],
+                    "tags": tags or {},
+                }
+            )
             if directive:
-                self._log(run_dir, episode_id, "intuition", {
-                    "kind": directive.kind, "advice": directive.advice, "confidence": directive.confidence,
-                    "applied": directive.applied, "rationale": directive.rationale,
-                    "target": directive.target, "scope": directive.scope, "blocking": directive.blocking,
-                    "patch_keys": sorted(directive.patch.keys()) if directive.patch else [],
-                    "policy": policy
-                })
+                self._log(
+                    run_dir,
+                    episode_id,
+                    "intuition",
+                    {
+                        "kind": directive.kind,
+                        "advice": directive.advice,
+                        "confidence": directive.confidence,
+                        "applied": directive.applied,
+                        "rationale": directive.rationale,
+                        "target": directive.target,
+                        "scope": directive.scope,
+                        "blocking": directive.blocking,
+                        "patch_keys": sorted(directive.patch.keys()) if directive.patch else [],
+                        "policy": policy,
+                    },
+                )
 
         self._log(run_dir, episode_id, "reason", {"note": "enter Assistants", "task": task})
 
@@ -140,19 +363,44 @@ class AssistantsAdapter:
                 if directive.blocking or directive.kind == DirectiveKind.VETO.value:
                     payload.update({"applied": False, "status": "blocked", "reason": "veto"})
                     self._log(run_dir, episode_id, "direction", payload)
-                    raise NoesisVeto(advice=directive.advice, target=directive.target, scope=directive.scope)
+                    raise NoesisVeto(
+                        advice=directive.advice,
+                        target=directive.target,
+                        scope=directive.scope,
+                    )
 
                 if directive.kind == DirectiveKind.INTERVENTION.value:
                     patch = directive.patch or {}
                     if directive.confidence < self._min_conf:
-                        payload.update({"applied": False, "patch": patch, "reason": "policy_low_confidence", "diff": []})
+                        payload.update(
+                            {
+                                "applied": False,
+                                "patch": patch,
+                                "reason": "policy_low_confidence",
+                                "diff": [],
+                            }
+                        )
                         self._log(run_dir, episode_id, "direction", payload)
                     elif not patch:
-                        payload.update({"applied": False, "patch": {}, "reason": "empty_patch", "diff": []})
+                        payload.update(
+                            {
+                                "applied": False,
+                                "patch": {},
+                                "reason": "empty_patch",
+                                "diff": [],
+                            }
+                        )
                         self._log(run_dir, episode_id, "direction", payload)
                     else:
                         adjusted, applied, diff, reason = self._apply_patch(input_obj, patch)
-                        payload.update({"applied": applied, "patch": patch, "reason": reason, "diff": diff})
+                        payload.update(
+                            {
+                                "applied": applied,
+                                "patch": patch,
+                                "reason": reason,
+                                "diff": diff,
+                            }
+                        )
                         self._log(run_dir, episode_id, "direction", payload)
                         if applied:
                             input_obj = adjusted
