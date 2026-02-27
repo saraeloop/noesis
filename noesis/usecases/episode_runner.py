@@ -12,7 +12,7 @@ import inspect
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, Mapping, Optional, Sequence
 from uuid import UUID, uuid4
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
@@ -36,14 +36,6 @@ from noesis.domain.faculties.intuition import Intuition, IntuitionEvent
 from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotPolicy
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis.domain.verification import Assertion, FileContentReader, SnapshotPaths, VerificationSummary
-from noesis import events as runtime_events
-from noesis.trace.events import is_terminate_event
-from noesis.infrastructure.state_repository import EpisodeContext
-from noesis.runtime.clock import RuntimeClock
-from noesis.runtime.events_emitter import CognitiveEventEmitter
-from noesis.runtime.artifacts.ids import directive_uuid, governance_uuid
-from noesis.trace.events import read_events
-from noesis.runtime.normalization import normalize_using
 from noesis.usecases.actuation.candidate_builder import DefaultActionCandidateBuilder
 from noesis.usecases.actuation.governed_actuator import ActionCandidateBuilder, GovernedActuator
 from noesis.usecases.snapshot_artifacts import SnapshotArtifactWriter
@@ -51,6 +43,7 @@ from noesis.usecases.verification_evaluator import AdapterResult, OutcomeStatus,
 from .hooks.meta_phase import CompositeMetaPhaseHook, MetaPhaseHook, NullMetaPhaseHook
 from .ports import (
     ClockPort,
+    EpisodeContextPort,
     EventHistoryPort,
     EventIdFactoryPort,
     EventSinkPort,
@@ -63,14 +56,125 @@ class _EventHistoryAdapter:
     """Structural adapter to expose read_events as a port."""
 
     def read(self, run_dir) -> Sequence[Dict[str, object]]:
+        from noesis.trace.events import read_events
+
         return read_events(run_dir)
+
+
+_NULL_TIME = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+class _NullClock:
+    """Predictable no-op clock used by fallback instrumentation."""
+
+    def start(self, label: object) -> object:
+        return label
+
+    def stop(self, token: object) -> CognitiveMetrics:
+        _ = token
+        return CognitiveMetrics(
+            started_at=_NULL_TIME,
+            completed_at=_NULL_TIME,
+            duration_ms=0.0,
+        )
+
+    def now(self) -> datetime:
+        return _NULL_TIME
+
+
+class _NullEventSink:
+    """No-op event sink used by fallback instrumentation."""
+
+    def emit(self, event: CognitiveEvent, agent_id: str = "system") -> None:
+        _ = (event, agent_id)
+
+
+class _NullEventHistory:
+    """No-op event history used by fallback instrumentation."""
+
+    def read(self, run_dir: Path) -> Sequence[Mapping[str, object]]:
+        _ = run_dir
+        return ()
+
+
+def _null_instrumentation(context: EpisodeContextPort) -> "EpisodeInstrumentation":
+    """Explicit fallback when callers do not provide instrumentation."""
+    return EpisodeInstrumentation(
+        clock=_NullClock(),
+        emitter=_NullEventSink(),
+        lineage=LineageTracker(),
+        event_history=_NullEventHistory(),
+        prompt_recorder=getattr(context, "prompt_recorder", None),
+        now=lambda: _NULL_TIME,
+        event_id_factory=uuid4,
+        hooks=(NullMetaPhaseHook(),),
+    )
+
+
+def _directive_uuid(episode_id: str, step_index: int, rule: str):
+    from noesis.runtime.artifacts.ids import directive_uuid
+
+    return directive_uuid(episode_id, step_index, rule)
+
+
+def _governance_uuid(episode_id: str, rule_id: str):
+    from noesis.runtime.artifacts.ids import governance_uuid
+
+    return governance_uuid(episode_id, rule_id)
+
+
+def _normalize_using_display(value: str | None) -> str | None:
+    if value is None:
+        return None
+    raw = str(value)
+    if raw.startswith("adapter:"):
+        return raw.split("adapter:", 1)[1]
+    return raw
+
+
+def _is_terminate_event(event: Mapping[str, object]) -> bool:
+    phase = event.get("phase")
+    if phase == "terminate":
+        return True
+    if phase != "runtime":
+        return False
+    payload = event.get("payload")
+    if not isinstance(payload, Mapping):
+        return False
+    kind = payload.get("kind") or payload.get("type") or payload.get("event")
+    return kind == "terminate"
+
+
+def _emit_terminate_event(
+    *,
+    context: EpisodeContextPort,
+    payload: Dict[str, object],
+    clock: ClockPort,
+    id_factory: EventIdFactoryPort | Callable[[], UUID],
+) -> None:
+    from noesis import events as runtime_events
+
+    now_fn = None
+    if hasattr(clock, "now"):
+        def _deterministic_now() -> str:
+            ts = clock.now()
+            return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+
+        now_fn = _deterministic_now
+    runtime_events.terminate(
+        context.run_dir,
+        context.episode_id,
+        payload,
+        now_fn=now_fn,
+        id_factory=id_factory,
+    )
 
 
 @dataclass(slots=True)
 class EpisodeRequest:
     goal: str
     beliefs: tuple[str, ...]
-    context: EpisodeContext
+    context: EpisodeContextPort
     using_label: str | None = None
 
     @property
@@ -150,16 +254,7 @@ class EpisodeRunner:
         if instrumentation is None:
             if context is None:
                 raise ValueError("EpisodeRunner requires instrumentation or a repository context")
-            instrumentation = EpisodeInstrumentation(
-                clock=RuntimeClock(),
-                emitter=CognitiveEventEmitter(run_dir=context.run_dir),
-                lineage=LineageTracker(),
-                event_history=_EventHistoryAdapter(),
-                prompt_recorder=getattr(context, "prompt_recorder", None),
-                now=datetime.now,
-                event_id_factory=uuid4,
-                hooks=(NullMetaPhaseHook(),),
-            )
+            instrumentation = _null_instrumentation(context)
         self._clock = instrumentation.clock
         self._emitter = instrumentation.emitter
         self._lineage = instrumentation.lineage
@@ -226,7 +321,7 @@ class EpisodeRunner:
         observe_event = self._run_observe(request, state)
         intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
         signals = tuple(request.beliefs) + tuple(intuition_signals)
-        interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
+        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
         plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
         workspace = request.context.workspace
         verify = request.context.verify
@@ -357,7 +452,7 @@ class EpisodeRunner:
         observe_event = self._run_observe(request, state)
         intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
         signals = tuple(request.beliefs) + tuple(intuition_signals)
-        interpret_event = self._run_interpret(request, signals, caused_by=intuition_event_id)
+        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
         plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
         workspace = request.context.workspace
         verify = request.context.verify
@@ -553,10 +648,10 @@ class EpisodeRunner:
         signals = [f"directive:{result.kind}", result.advice]
         return signals, event_id
 
-    def _maybe_emit_terminate(self, context: EpisodeContext, payload: Dict[str, object]) -> None:
+    def _maybe_emit_terminate(self, context: EpisodeContextPort, payload: Dict[str, object]) -> None:
         """Emit terminate once if not already recorded."""
         events = self._event_history.read(context.run_dir)
-        if any(is_terminate_event(evt) for evt in events):
+        if any(_is_terminate_event(evt) for evt in events):
             return
         status_value = str(payload.get("status", "unknown") or "unknown")
         default_message = "Episode terminated."
@@ -569,21 +664,14 @@ class EpisodeRunner:
         terminate_payload = dict(payload)
         terminate_payload["status"] = status_value
         terminate_payload["message"] = message_value
-        now_fn = None
-        if hasattr(self._clock, "now"):
-            def _deterministic_now() -> str:
-                ts = self._clock.now()
-                return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
-            now_fn = _deterministic_now
-        runtime_events.terminate(
-            context.run_dir,
-            context.episode_id,
-            terminate_payload,
-            now_fn=now_fn,
+        _emit_terminate_event(
+            context=context,
+            payload=terminate_payload,
+            clock=self._clock,
             id_factory=self._event_id_factory,
         )
 
-    def _seed_lineage(self, context: EpisodeContext) -> None:
+    def _seed_lineage(self, context: EpisodeContextPort) -> None:
         events = self._event_history.read(context.run_dir)
         last_id: UUID | None = None
         for event in reversed(events):
@@ -600,7 +688,7 @@ class EpisodeRunner:
         self,
         *,
         verb: CognitiveVerb,
-        context: EpisodeContext,
+        context: EpisodeContextPort,
         payload: Dict[str, object],
         metrics: CognitiveMetrics,
         agent_id: str = "system",
@@ -1078,7 +1166,7 @@ class EpisodeRunner:
     def _record_prompt(
         self,
         *,
-        recorder: PromptRecorder,
+        recorder: PromptRecorderPort,
         phase: str,
         agent_id: str,
         rendered: str,
@@ -1109,7 +1197,7 @@ class EpisodeRunner:
             now=self._now,
         )
 
-    def _resolve_prompt_recorder(self, context: EpisodeContext) -> PromptRecorderPort | None:
+    def _resolve_prompt_recorder(self, context: EpisodeContextPort) -> PromptRecorderPort | None:
         recorder = getattr(context, "prompt_recorder", None) or self._prompt_recorder
         if recorder is None:
             return None
@@ -1119,8 +1207,7 @@ class EpisodeRunner:
 
     def _build_snapshot(self, request: EpisodeRequest, state: NoesisState) -> Dict[str, object]:
         using_label = request.using_label or request.context.adapter_label
-        normalized = normalize_using(using_label)
-        display_label = normalized.display if normalized else using_label
+        display_label = _normalize_using_display(using_label)
         snapshot_state = state.to_dict()
         episode_block = snapshot_state.get("episode")
         if isinstance(episode_block, dict):
@@ -1212,14 +1299,14 @@ def _with_stable_directive_id(directive: PlannerDirective, episode_id: str) -> P
     """Attach a deterministic UUIDv5 legacy ID derived from the episode."""
     step_index = _extract_directive_step_index(directive)
     rule = f"{directive.policy_id}:{directive.reason or 'directive'}"
-    stable_id = directive_uuid(episode_id, step_index, rule)
+    stable_id = _directive_uuid(episode_id, step_index, rule)
     return replace(directive, legacy_directive_id=stable_id)
 
 
 def _with_stable_governance_id(result: GovernanceResult, episode_id: str) -> GovernanceResult:
     """Attach a deterministic UUIDv5 decision ID derived from the episode."""
     rule_token = result.rule_id or result.policy_id or result.decision.value
-    stable_id = governance_uuid(episode_id, rule_token)
+    stable_id = _governance_uuid(episode_id, rule_token)
     return replace(result, decision_id=stable_id)
 
 

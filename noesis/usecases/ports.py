@@ -69,6 +69,20 @@ class PromptRecorderPort(Protocol):
         ...
 
 
+class EpisodeContextPort(Protocol):
+    """Episode execution context exposed to use-case orchestration."""
+
+    run_dir: Path
+    episode_id: str
+    seed: int
+    task: str
+    tags: Mapping[str, object]
+    adapter_label: str
+    workspace: Path | None
+    verify: Sequence[Any] | None
+    prompt_recorder: PromptRecorderPort | None
+
+
 class ClockPort(Protocol):
     """Clock used for phase timing."""
 
