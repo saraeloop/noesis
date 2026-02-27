@@ -3,7 +3,7 @@
 These tutorials are the fastest way to see Noēsis *in practice*: each run becomes an **episode** with a real **trace** and durable **artifacts** you can inspect.
 
 ## Prerequisites
-- Python 3.12+
+- Python 3.11+
 - `uv`
 - `OPENAI_API_KEY` in your environment (or `.env`)
 
