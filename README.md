@@ -2,7 +2,7 @@
 [![Stars](https://img.shields.io/github/stars/saraeloop/noesis?style=social)](https://github.com/saraeloop/noesis/stargazers)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/saraeloop/noesis)
 [![Planner Modes](https://img.shields.io/badge/planner-meta%20%E2%80%A2%20minimal-0ea5e9)](#core-concepts)
-[![Python](https://img.shields.io/badge/python-3.12+-18181b)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.11+-18181b)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-64748b)](LICENSE)
 # Noēsis (νόησις)
 
@@ -53,7 +53,7 @@ flowchart LR
   - `learn.jsonl` (optional) – learning payloads
 
 ## Quickstart
-> Python ≥ 3.12. Source-first.
+> Python ≥ 3.11. Source-first.
 
 Install and run a demo:
 
@@ -197,7 +197,7 @@ except NoesisVeto as veto:
 ## Versioning & stability
 - Package: `noesis` v1.0.0
 - Schema pack: summary/state/events/kpi v1.0.0
-- Python: ≥ 3.12
+- Python: ≥ 3.11
 - CI: contracts, schema guard, and release prep run in GitHub Actions
 
 ## Community & support
