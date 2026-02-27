@@ -10,10 +10,12 @@ Contract:
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 from copy import deepcopy
+import json
+from uuid import uuid4
 
-from ..trace.events import write_event
 from ..intuition import Intuition, IntuitionEvent
 from ..direction import DirectiveKind
 from ..exceptions import NoesisVeto
@@ -23,6 +25,31 @@ __all__ = ["AssistantsAdapter"]
 
 def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _append_event(
+    run_dir: AdapterPath,
+    *,
+    episode_id: str,
+    phase: str,
+    agent_id: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Write an adapter event line without importing runtime/trace internals."""
+    path = Path(run_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    event = {
+        "id": str(uuid4()),
+        "timestamp": _ts(),
+        "episode_id": episode_id,
+        "agent_id": agent_id,
+        "phase": phase,
+        "payload": payload,
+        "evidence_ids": [],
+    }
+    with (path / "events.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+
 
 @dataclass
 class _State:
@@ -43,7 +70,13 @@ class AssistantsAdapter:
         self._min_conf = float(min_confidence)
 
     def _log(self, run_dir: AdapterPath, episode: str, phase: str, payload: Dict[str, Any]) -> None:
-        write_event(run_dir, {"timestamp": _ts(), "episode_id": episode, "agent_id": "adapter.assistants", "phase": phase, "payload": payload, "evidence_ids": []})
+        _append_event(
+            run_dir,
+            episode_id=episode,
+            phase=phase,
+            agent_id="adapter.assistants",
+            payload=payload,
+        )
         if phase in {"intuition", "direction", "reason", "interpret", "plan", "act", "observe", "reflect", "error"}:
             self._state.history.append({"phase": phase, "payload": payload})
             if len(self._state.history) > STATE_HISTORY_LIMIT:
