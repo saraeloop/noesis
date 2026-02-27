@@ -116,6 +116,7 @@ source_modules = [
 ]
 forbidden_modules = [
   "noesis.runtime",
+  "noesis.trace",
 ]
 
 [[tool.importlinter.contracts]]
