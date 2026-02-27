@@ -9,6 +9,7 @@ Internally, this re-exports the Clean Architecture ports used by the use-case la
 
 from .usecases.ports import (  # type: ignore[F401]
     ClockPort,
+    EpisodeContextPort,
     EpisodeInstrumentationPorts,
     EventHistoryPort,
     EventIdFactoryPort,
@@ -19,6 +20,7 @@ from .usecases.ports import (  # type: ignore[F401]
 
 __all__ = [
     "StateRepositoryPort",
+    "EpisodeContextPort",
     "EventSinkPort",
     "EventHistoryPort",
     "PromptRecorderPort",
