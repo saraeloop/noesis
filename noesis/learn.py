@@ -6,6 +6,8 @@ __all__ = [
     "LearnMode",
     "LearnStatus",
     "LearnProposal",
+    "LearnCausalityError",
+    "MissingCausalLinkError",
     "build_learn_payload",
     "persist_episode_learning",
     "load_policy_snapshot",
@@ -17,6 +19,7 @@ __all__ = [
 ]
 
 
+from noesis.domain.learning.errors import LearnCausalityError, MissingCausalLinkError
 from noesis.runtime.learning import (
     LearnMode,
     LearnProposal,
