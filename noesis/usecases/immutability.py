@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Iterable
 
 from noesis.domain.artifacts.immutability import (
     ArtifactWriteMode,
@@ -14,6 +13,8 @@ from noesis.domain.artifacts.immutability import (
 from noesis.interfaces.immutability import SealStatusPort
 
 __all__ = ["ArtifactImmutabilityGuard"]
+
+_MANIFEST_FILE = "manifest.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,14 @@ class ArtifactImmutabilityGuard:
         artifact = request.artifact
         mode = request.mode
         if self.seal_status.is_sealed(run_dir):
+            # Sealing writes manifest.json after final.json. Allow a single
+            # manifest seal write if manifest does not yet exist.
+            if (
+                artifact == _MANIFEST_FILE
+                and mode is ArtifactWriteMode.SEAL
+                and not (run_dir / _MANIFEST_FILE).exists()
+            ):
+                return ImmutabilityDecision(allowed=True, reason=None)
             marker = self.seal_status.seal_marker(run_dir)
             reason = f"episode sealed by {marker}"
             return ImmutabilityDecision(allowed=False, reason=reason)

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from noesis.runtime.serialization import atomic_write_json, canonical_dumps
 
 
@@ -16,3 +18,21 @@ def test_atomic_write_json_normalizes_newline(tmp_path: Path) -> None:
     assert contents.endswith(b"\n")
     # canonical ordering expected
     assert contents.rstrip(b"\n") == b'{"a":1,"b":2}'
+
+
+def test_atomic_write_json_cleans_temp_file_on_replace_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "out.json"
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(Path, "replace", _boom)
+
+    with pytest.raises(OSError, match="replace failed"):
+        atomic_write_json(target, {"a": 1})
+
+    # Failed atomic writes should not leave temp files behind.
+    assert list(tmp_path.iterdir()) == []

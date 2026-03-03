@@ -37,7 +37,6 @@ from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
 from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
-from .infrastructure.process_registry import FileProcessRegistry
 from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
 from .infrastructure.verification import FileSystemFileReader
@@ -57,7 +56,7 @@ from .runtime.learning import ensure_learn_file
 from .trace.schema import SUMMARY_SCHEMA_VERSION
 from .runtime.artifacts.ids import EpisodeIds
 from .runtime.artifacts.writer import ManifestWriter
-from .runtime.artifacts.manifest import MANIFEST_SCHEMA_VERSION, MANIFEST_FILE_NAME, compute_sha256
+from .runtime.artifacts.manifest import MANIFEST_SCHEMA_VERSION, compute_sha256
 from .runtime.artifacts.immutability import default_artifact_guard
 from .runtime.paths import NoesisPaths
 from .usecases.episode_runner import (
@@ -71,12 +70,8 @@ from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
 from .usecases.finalization import FinalizationWriter, map_outcome_to_final_outcome
 from .usecases.process_registry import ProcessRegistryService, STALE_TTL_SECONDS
-from .domain.artifacts.finalization import FinalizationRecord
-from .domain.process import derive_process_identity
+from .domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
 from .context import RuntimeContext, get_context
-
-if TYPE_CHECKING:
-    from .runtime.session.models import DeterminismConfig
 
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EPISODE_STORE_TTL_DAYS: Final[int] = 30
@@ -87,6 +82,56 @@ def _finalize_manifest(ctx: _EpCtx) -> tuple[Path, str]:
     writer.finalize()
     digest = compute_sha256(writer.manifest_path)
     return writer.manifest_path, digest
+
+
+def _seal_episode(
+    *,
+    ctx: _EpCtx,
+    final_writer: FinalizationWriter,
+    final_record: FinalizationRecord,
+) -> tuple[Path, str]:
+    """
+    Seal an episode atomically at the contract level.
+
+    Order:
+    1) write final.json
+    2) write manifest.json including final.json
+
+    If manifest writing fails, remove final.json so the run is not marked sealed.
+    """
+    final_path = ctx.run_dir / FINAL_FILE_NAME
+    final_writer.write(episode_dir=ctx.run_dir, record=final_record)
+    try:
+        return _finalize_manifest(ctx)
+    except Exception:
+        try:
+            final_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+
+def _update_process_run_status(
+    *,
+    setup: _EpisodeRuntime,
+    run_id: str,
+    outcome: str,
+    status: str,
+) -> None:
+    try:
+        process_id = setup.episode_ctx.process_id
+        if process_id:
+            factory = setup.runtime_context.require("process_registry_factory", "process_registry_factory/1.0")
+            service = ProcessRegistryService(factory.create(setup.layout))
+            service.end_run(
+                process_id,
+                run_id=run_id,
+                outcome=outcome,
+                status=status,
+            )
+    except Exception:
+        # Registry updates should not prevent artifact completion.
+        pass
 
 
 def _normalize_intuition(
@@ -380,8 +425,32 @@ def _finalize_episode(
     )
 
     persist_episode_memory(run_dir=setup.ctx.run_dir, context=setup.runtime_context)
+    final_writer = FinalizationWriter(immutability_guard=default_artifact_guard())
+    if setup.episode_ctx.process_id is None or setup.episode_ctx.process_run_index is None:
+        raise ValueError("finalization requires process_id and run_index")
+    final_outcome = map_outcome_to_final_outcome(outcome)
+    final_record = FinalizationRecord(
+        episode_id=setup.ctx.episode_id,
+        process_id=setup.episode_ctx.process_id,
+        run_index=setup.episode_ctx.process_run_index,
+        finalized_at=_now(),
+        outcome=final_outcome,
+    )
 
-    manifest_path, manifest_sha = _finalize_manifest(setup.ctx)
+    try:
+        manifest_path, manifest_sha = _seal_episode(
+            ctx=setup.ctx,
+            final_writer=final_writer,
+            final_record=final_record,
+        )
+    except Exception:
+        _update_process_run_status(
+            setup=setup,
+            run_id=setup.ctx.episode_id,
+            outcome=outcome,
+            status="error",
+        )
+        raise
 
     try:
         store_root = setup.layout.index_dir
@@ -405,38 +474,12 @@ def _finalize_episode(
         # Indexing is best-effort and should not fail the run.
         pass
 
-    try:
-        process_id = setup.episode_ctx.process_id
-        if process_id:
-            factory = setup.runtime_context.require("process_registry_factory", "process_registry_factory/1.0")
-            service = ProcessRegistryService(factory.create(setup.layout))
-            status = "error" if outcome == "error" else "idle"
-            service.end_run(
-                process_id,
-                run_id=setup.ctx.episode_id,
-                outcome=outcome,
-                status=status,
-            )
-    except Exception:
-        # Registry updates should not prevent artifact completion.
-        pass
-
-    try:
-        final_writer = FinalizationWriter(immutability_guard=default_artifact_guard())
-        if setup.episode_ctx.process_id is None or setup.episode_ctx.process_run_index is None:
-            raise ValueError("finalization requires process_id and run_index")
-        final_outcome = map_outcome_to_final_outcome(outcome)
-        final_record = FinalizationRecord(
-            episode_id=setup.ctx.episode_id,
-            process_id=setup.episode_ctx.process_id,
-            run_index=setup.episode_ctx.process_run_index,
-            finalized_at=_now(),
-            outcome=final_outcome,
-        )
-        final_writer.write(episode_dir=setup.ctx.run_dir, record=final_record)
-    except Exception:
-        # Finalization marker should not prevent artifact completion.
-        pass
+    _update_process_run_status(
+        setup=setup,
+        run_id=setup.ctx.episode_id,
+        outcome=outcome,
+        status="error" if outcome == "error" else "idle",
+    )
 
 
 def _bootstrap_episode(
@@ -565,7 +608,9 @@ def _run_episode(
             clock=UtcSnapshotClock(),
             immutability_guard=default_artifact_guard(),
         )
-        file_reader_factory = lambda root: FileSystemFileReader(root=root)
+        def file_reader_factory(root):
+            return FileSystemFileReader(root=root)
+
         deps = EpisodeDependencies(
             planner=MinimalPlanner(),
             actuator=actuator,
@@ -715,7 +760,9 @@ async def _run_episode_async(
             clock=UtcSnapshotClock(),
             immutability_guard=default_artifact_guard(),
         )
-        file_reader_factory = lambda root: FileSystemFileReader(root=root)
+        def file_reader_factory(root):
+            return FileSystemFileReader(root=root)
+
         deps = EpisodeDependencies(
             planner=MinimalPlanner(),
             actuator=actuator,

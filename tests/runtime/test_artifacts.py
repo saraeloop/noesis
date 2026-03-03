@@ -20,7 +20,6 @@ from noesis.usecases.finalization import FinalizationWriter, map_outcome_to_fina
 from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.usecases.immutability import ArtifactImmutabilityGuard
 from noesis.infrastructure.immutability import FinalizationSealStatus
-from noesis.runtime.artifacts.manifest import MANIFEST_FILE_NAME
 
 
 def _write_json(path: Path, payload: str) -> None:
@@ -297,6 +296,26 @@ def test_manifest_does_not_finalize_episode(tmp_path: Path) -> None:
             mode=ArtifactWriteMode.OVERWRITE,
         )
     assert "episode sealed by" in str(exc.value)
+
+
+def test_manifest_can_be_written_once_after_finalization(tmp_path: Path) -> None:
+    run_dir = _prepare_run_dir(tmp_path, "ep_final_then_manifest")
+    FinalizationWriter(immutability_guard=default_artifact_guard()).write(
+        episode_dir=run_dir,
+        record=FinalizationRecord(
+            episode_id="ep_final_then_manifest",
+            process_id="proc_test",
+            run_index=1,
+            finalized_at="2025-01-01T00:00:00Z",
+            outcome="success_unverified",
+        ),
+    )
+
+    manifest = ManifestWriter(run_dir=run_dir, episode_id="ep_final_then_manifest").finalize()
+    assert any(item.name == FINAL_FILE_NAME for item in manifest.files)
+
+    with pytest.raises(ImmutabilityError):
+        ManifestWriter(run_dir=run_dir, episode_id="ep_final_then_manifest").finalize()
 
 
 def test_manifest_signatures_survive_canonicalization(tmp_path: Path) -> None:

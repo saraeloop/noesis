@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import json
 from pathlib import Path
 
 import noesis as ns
@@ -27,6 +28,8 @@ def test_episodes_dir_contains_only_episode_bundles(tmp_path: Path) -> None:
     episodes_dir = layout.episodes_dir
     assert (episodes_dir / episode_id).is_dir()
     assert (episodes_dir / episode_id / FINAL_FILE_NAME).exists()
+    manifest = json.loads((episodes_dir / episode_id / "manifest.json").read_text(encoding="utf-8"))
+    assert any(item.get("name") == FINAL_FILE_NAME for item in manifest.get("files", []))
 
     for entry in episodes_dir.iterdir():
         assert entry.is_dir()
