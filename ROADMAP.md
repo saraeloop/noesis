@@ -46,6 +46,21 @@ Noēsis is a cognitive framework. To protect its identity and prevent scope drif
 
 ---
 
+## ADR Queue (Current)
+
+| ADR | Title | Status | Sequence |
+|-----|-------|--------|----------|
+| ADR-014 | Artifact Contract v1.0 and Sealing Semantics | **Proposed** | PR-1: make acceptance-ready + enforce runtime gates |
+| ADR-015 | Process->Run Interrupt/Checkpoint/Resume Contract | **Proposed (Draft)** | Define after ADR-014 acceptance; implementation follows |
+| ADR-016 | Protocol-First Tool Contract (subprocess/HTTP/MCP) | **Proposed (Draft)** | Define after ADR-014 acceptance; informs Adoption Pillar 1 |
+
+Sequencing rule:
+
+- Implement ADR-014 gates first (strict sealing + learn causality + regressions).
+- Keep ADR-015 and ADR-016 as contract drafts until ADR-014 is accepted.
+
+---
+
 ## Completed (Stable)
 
 ### Cognitive Core (v0.7.0 — Stable)
