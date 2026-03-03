@@ -58,13 +58,22 @@ def atomic_write_text(path: Path, payload: str) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     normalized = _ensure_trailing_newline(payload)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent)) as tmp:
-        tmp.write(normalized)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp_path = Path(tmp.name)
-    tmp_path.replace(path)
-    fsync_dir(path.parent)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent)) as tmp:
+            tmp.write(normalized)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp_path = Path(tmp.name)
+        tmp_path.replace(path)
+        fsync_dir(path.parent)
+    except Exception:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        raise
 
 
 def _ensure_trailing_newline(payload: str) -> str:
