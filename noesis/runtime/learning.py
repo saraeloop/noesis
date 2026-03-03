@@ -19,6 +19,7 @@ from noesis.domain.learning.model import (
     LearnStatus,
     derive_target_key,
 )
+from noesis.domain.learning.errors import MissingCausalLinkError
 from noesis.trace.events import write_event
 from noesis.domain.artifacts.immutability import ArtifactWriteMode
 from noesis.runtime.artifacts.immutability import default_artifact_guard
@@ -101,7 +102,10 @@ def persist_episode_learning(
     episode_id: str,
     agent_id: str,
     payload: Dict[str, Any],
+    caused_by: str,
 ) -> None:
+    if not isinstance(caused_by, str) or not caused_by.strip():
+        raise MissingCausalLinkError("learn persistence requires non-empty caused_by")
     path = run_dir / "learn.jsonl"
     default_artifact_guard().ensure_write_allowed(
         episode_dir=run_dir,
@@ -115,6 +119,7 @@ def persist_episode_learning(
         "id": record_id,
         "episode_id": episode_id,
         "agent_id": agent_id,
+        "caused_by": caused_by,
         "timestamp": _now(),
         "payload": payload,
     }
@@ -191,6 +196,14 @@ def summarise_learn_kinds(proposals: List[Dict[str, Any]]) -> Dict[str, int]:
     return dict(counts)
 
 
+def _resolve_learn_cause_id(events: List[Dict[str, Any]]) -> str | None:
+    for event in reversed(events):
+        event_id = event.get("id")
+        if isinstance(event_id, str) and event_id.strip():
+            return event_id
+    return None
+
+
 def maybe_emit_learn_event(
     *,
     run_dir: Path,
@@ -210,6 +223,7 @@ def maybe_emit_learn_event(
 
     policy_version = (direction_event or {}).get("payload", {}).get("policy_version")
     reflect_event = last_event_of_phase(events, "reflect") or {}
+    cause_event_id = _resolve_learn_cause_id(events)
     reasons = reflect_event.get("payload", {}).get("reasons", []) or []
 
     latencies = metrics.get("latencies", {}) or {}
@@ -340,24 +354,27 @@ def maybe_emit_learn_event(
     }
 
     ensure_learn_file(run_dir)
-    write_event(
-        run_dir,
-        {
-            "timestamp": now(),
-            "episode_id": episode_id,
-            "agent_id": "system",
-            "phase": "learn",
-            "payload": learn_event_payload,
-            "evidence_ids": [],
-        },
-    )
+    learn_event: Dict[str, Any] = {
+        "timestamp": now(),
+        "episode_id": episode_id,
+        "agent_id": "system",
+        "phase": "learn",
+        "payload": learn_event_payload,
+        "evidence_ids": [],
+    }
+    if isinstance(cause_event_id, str) and cause_event_id.strip():
+        learn_event["caused_by"] = cause_event_id
+    write_event(run_dir, learn_event)
 
     if proposal_dicts:
+        if not isinstance(cause_event_id, str) or not cause_event_id.strip():
+            raise MissingCausalLinkError("learn persistence requires upstream event id for caused_by")
         persist_episode_learning(
             run_dir,
             episode_id=episode_id,
             agent_id=policy_id or "system",
             payload=payload,
+            caused_by=cause_event_id,
         )
         learn_home.mkdir(parents=True, exist_ok=True)
         update_policy_snapshot(learn_home, policy_id, proposal_dicts, gate_updates=gate_updates)

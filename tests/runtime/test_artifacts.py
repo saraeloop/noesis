@@ -16,6 +16,7 @@ from noesis.runtime.prompt_recorder import PromptRecorder
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.domain.artifacts.immutability import ArtifactWriteMode, ImmutabilityError
 from noesis.domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
+from noesis.domain.learning.errors import MissingCausalLinkError
 from noesis.usecases.finalization import FinalizationWriter, map_outcome_to_final_outcome
 from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.usecases.immutability import ArtifactImmutabilityGuard
@@ -183,6 +184,7 @@ def test_summary_state_and_learn_writes_block_after_seal(tmp_path: Path) -> None
         episode_id="ep_state",
         agent_id="system",
         payload={"policy_id": "policy:test"},
+        caused_by="reflect-1",
     )
 
     ManifestWriter(run_dir=run_dir, episode_id="ep_state").finalize()
@@ -210,7 +212,25 @@ def test_summary_state_and_learn_writes_block_after_seal(tmp_path: Path) -> None
             episode_id="ep_state",
             agent_id="system",
             payload={"policy_id": "policy:test"},
+            caused_by="reflect-1",
         )
+
+
+def test_persist_episode_learning_requires_caused_by(tmp_path: Path) -> None:
+    run_dir = tmp_path / "ep_learn_causality"
+    run_dir.mkdir()
+
+    with pytest.raises(MissingCausalLinkError) as exc:
+        persist_episode_learning(
+            run_dir,
+            episode_id="ep_learn_causality",
+            agent_id="system",
+            payload={"policy_id": "policy:test"},
+            caused_by="",
+        )
+
+    assert "caused_by" in str(exc.value)
+    assert not (run_dir / "learn.jsonl").exists()
 
 
 def test_prompt_recording_blocked_after_seal(tmp_path: Path) -> None:
