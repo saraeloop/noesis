@@ -5,17 +5,30 @@ from dataclasses import dataclass
 from typing import Literal
 
 FINAL_FILE_NAME = "final.json"
-FINAL_SCHEMA_VERSION = "final/1.0"
+FINAL_SCHEMA_VERSION = "final/2.0.0"
 
 FinalOutcome = Literal[
-    "success_unverified",
-    "success_verified",
+    "success",
     "failed",
+    "vetoed",
     "cancelled",
     "interrupted",
+    "error",
 ]
 
-__all__ = ["FINAL_FILE_NAME", "FINAL_SCHEMA_VERSION", "FinalizationRecord", "FinalOutcome"]
+FinalVerificationStatus = Literal[
+    "verified",
+    "unverified",
+    "not_applicable",
+]
+
+__all__ = [
+    "FINAL_FILE_NAME",
+    "FINAL_SCHEMA_VERSION",
+    "FinalizationRecord",
+    "FinalOutcome",
+    "FinalVerificationStatus",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +40,7 @@ class FinalizationRecord:
     run_index: int
     finalized_at: str
     outcome: FinalOutcome
+    verification_status: FinalVerificationStatus
     schema_version: str = FINAL_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, object]:
@@ -37,4 +51,5 @@ class FinalizationRecord:
             "run_index": self.run_index,
             "finalized_at": self.finalized_at,
             "outcome": self.outcome,
+            "verification_status": self.verification_status,
         }

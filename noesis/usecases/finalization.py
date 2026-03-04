@@ -4,24 +4,50 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from noesis.domain.artifacts.finalization import FINAL_FILE_NAME, FinalOutcome, FinalizationRecord
+from noesis.domain.artifacts.finalization import (
+    FINAL_FILE_NAME,
+    FinalOutcome,
+    FinalVerificationStatus,
+    FinalizationRecord,
+)
 from noesis.domain.artifacts.immutability import ArtifactWriteMode, ImmutabilityError
+from noesis.domain.state import OUTCOME_STATUS_VETOED
 from noesis.runtime.serialization import atomic_write_json
 from noesis.usecases.immutability import ArtifactImmutabilityGuard
 from noesis.usecases.verification_evaluator import OutcomeStatus
 
-__all__ = ["FinalizationWriter", "map_outcome_to_final_outcome"]
+__all__ = [
+    "FinalizationWriter",
+    "map_outcome_to_final_outcome",
+    "map_outcome_to_final_contract",
+]
 
-_OUTCOME_STATUS_TO_FINAL: dict[OutcomeStatus, FinalOutcome] = {
-    "success": "success_verified",
-    "success_unverified": "success_unverified",
-    "goal_not_achieved": "failed",
-    "error": "failed",
+_OUTCOME_STATUS_TO_FINAL: dict[OutcomeStatus, tuple[FinalOutcome, FinalVerificationStatus]] = {
+    "success": ("success", "verified"),
+    "success_unverified": ("success", "unverified"),
+    "goal_not_achieved": ("failed", "verified"),
+    "error": ("error", "not_applicable"),
 }
 
 
 def map_outcome_to_final_outcome(outcome: OutcomeStatus) -> FinalOutcome:
-    """Translate episode runner outcome into the canonical final marker outcome."""
+    """Translate verification outcome into final outcome class (legacy helper)."""
+    final_outcome, _ = map_outcome_to_final_contract(outcome=outcome)
+    return final_outcome
+
+
+def map_outcome_to_final_contract(
+    *,
+    outcome: OutcomeStatus,
+    terminal_status: str | None = None,
+) -> tuple[FinalOutcome, FinalVerificationStatus]:
+    """
+    Translate runtime status + verification outcome into final contract fields.
+
+    Veto is an execution-class override when terminal status is explicitly vetoed.
+    """
+    if terminal_status == OUTCOME_STATUS_VETOED:
+        return "vetoed", "not_applicable"
     mapped = _OUTCOME_STATUS_TO_FINAL.get(outcome)
     if mapped is None:  # pragma: no cover - defensive guard
         allowed = ", ".join(sorted(getattr(key, "value", str(key)) for key in _OUTCOME_STATUS_TO_FINAL.keys()))
