@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema_name": "final",
+  "$schema_version": "2.0.0",
+  "title": "Noesis final marker",
+  "description": "Canonical schema for final.json (sealed terminal contract).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "episode_id",
+    "process_id",
+    "run_index",
+    "finalized_at",
+    "outcome",
+    "verification_status"
+  ],
+  "properties": {
+    "schema_version": { "const": "final/2.0.0" },
+    "episode_id": { "type": "string" },
+    "process_id": { "type": "string" },
+    "run_index": { "type": "integer", "minimum": 1 },
+    "finalized_at": { "type": "string", "format": "date-time" },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "failed", "vetoed", "cancelled", "interrupted", "error"]
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": ["verified", "unverified", "not_applicable"]
+    }
+  }
+}

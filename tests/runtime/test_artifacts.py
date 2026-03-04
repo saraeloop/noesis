@@ -17,7 +17,11 @@ from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateR
 from noesis.domain.artifacts.immutability import ArtifactWriteMode, ImmutabilityError
 from noesis.domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
 from noesis.domain.learning.errors import MissingCausalLinkError
-from noesis.usecases.finalization import FinalizationWriter, map_outcome_to_final_outcome
+from noesis.usecases.finalization import (
+    FinalizationWriter,
+    map_outcome_to_final_contract,
+    map_outcome_to_final_outcome,
+)
 from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.usecases.immutability import ArtifactImmutabilityGuard
 from noesis.infrastructure.immutability import FinalizationSealStatus
@@ -130,7 +134,8 @@ def test_write_event_after_manifest_fails(tmp_path: Path) -> None:
             process_id="proc_test",
             run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success_unverified",
+            outcome="success",
+            verification_status="unverified",
         ),
     )
 
@@ -195,7 +200,8 @@ def test_summary_state_and_learn_writes_block_after_seal(tmp_path: Path) -> None
             process_id="proc_test",
             run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success_unverified",
+            outcome="success",
+            verification_status="unverified",
         ),
     )
 
@@ -252,7 +258,8 @@ def test_prompt_recording_blocked_after_seal(tmp_path: Path) -> None:
             process_id="proc_test",
             run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success_unverified",
+            outcome="success",
+            verification_status="unverified",
         ),
     )
 
@@ -270,7 +277,8 @@ def test_write_after_final_marker_fails(tmp_path: Path) -> None:
             process_id="proc_test",
             run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success_unverified",
+            outcome="success",
+            verification_status="unverified",
         ),
     )
     assert (run_dir / FINAL_FILE_NAME).exists()
@@ -284,6 +292,19 @@ def test_finalization_rejects_unsupported_outcome() -> None:
         _ = map_outcome_to_final_outcome("unsupported")  # type: ignore[arg-type]
     assert "unsupported outcome status for finalization" in str(exc.value)
     assert "allowed:" in str(exc.value)
+
+
+def test_finalization_contract_maps_verification_and_veto() -> None:
+    outcome, verification = map_outcome_to_final_contract(outcome="success_unverified")
+    assert outcome == "success"
+    assert verification == "unverified"
+
+    veto_outcome, veto_verification = map_outcome_to_final_contract(
+        outcome="error",
+        terminal_status="vetoed",
+    )
+    assert veto_outcome == "vetoed"
+    assert veto_verification == "not_applicable"
 
 
 def test_manifest_does_not_finalize_episode(tmp_path: Path) -> None:
@@ -305,7 +326,8 @@ def test_manifest_does_not_finalize_episode(tmp_path: Path) -> None:
             process_id="proc_test",
             run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success_unverified",
+            outcome="success",
+            verification_status="unverified",
         ),
     )
 
@@ -327,7 +349,8 @@ def test_manifest_can_be_written_once_after_finalization(tmp_path: Path) -> None
             process_id="proc_test",
             run_index=1,
             finalized_at="2025-01-01T00:00:00Z",
-            outcome="success_unverified",
+            outcome="success",
+            verification_status="unverified",
         ),
     )
 

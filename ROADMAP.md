@@ -50,14 +50,14 @@ Noēsis is a cognitive framework. To protect its identity and prevent scope drif
 
 | ADR | Title | Status | Sequence |
 |-----|-------|--------|----------|
-| ADR-014 | Artifact Contract v1.0 and Sealing Semantics | **Proposed** | PR-1: make acceptance-ready + enforce runtime gates |
-| ADR-015 | Process->Run Interrupt/Checkpoint/Resume Contract | **Proposed (Draft)** | Define after ADR-014 acceptance; implementation follows |
-| ADR-016 | Protocol-First Tool Contract (subprocess/HTTP/MCP) | **Proposed (Draft)** | Define after ADR-014 acceptance; informs Adoption Pillar 1 |
+| ADR-014 | Artifact Contract v1.0 and Sealing Semantics | **Accepted (v1.0 contract)** | Runtime gates enforced (sealing, causality, finalization contract) |
+| ADR-015 | Process->Run Interrupt/Checkpoint/Resume Contract | **Proposed (Draft)** | Next: define + implement after ADR-014 acceptance |
+| ADR-016 | Protocol-First Tool Contract (subprocess/HTTP/MCP) | **Proposed (Draft)** | After ADR-015 contract boundary is fixed |
 
 Sequencing rule:
 
-- Implement ADR-014 gates first (strict sealing + learn causality + regressions).
-- Keep ADR-015 and ADR-016 as contract drafts until ADR-014 is accepted.
+- ADR-014 is now the accepted artifact/sealing contract baseline.
+- Implement ADR-015 next (durable execution contract), then ADR-016 (protocol-first tool contract).
 
 ---
 

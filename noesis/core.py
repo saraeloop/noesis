@@ -68,7 +68,7 @@ from .usecases.episode_runner import (
 from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
-from .usecases.finalization import FinalizationWriter, map_outcome_to_final_outcome
+from .usecases.finalization import FinalizationWriter, map_outcome_to_final_contract
 from .usecases.process_registry import ProcessRegistryService, STALE_TTL_SECONDS
 from .domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
 from .context import RuntimeContext, get_context
@@ -428,13 +428,17 @@ def _finalize_episode(
     final_writer = FinalizationWriter(immutability_guard=default_artifact_guard())
     if setup.episode_ctx.process_id is None or setup.episode_ctx.process_run_index is None:
         raise ValueError("finalization requires process_id and run_index")
-    final_outcome = map_outcome_to_final_outcome(outcome)
+    final_outcome, verification_status = map_outcome_to_final_contract(
+        outcome=outcome,
+        terminal_status=status,
+    )
     final_record = FinalizationRecord(
         episode_id=setup.ctx.episode_id,
         process_id=setup.episode_ctx.process_id,
         run_index=setup.episode_ctx.process_run_index,
         finalized_at=_now(),
         outcome=final_outcome,
+        verification_status=verification_status,
     )
 
     try:

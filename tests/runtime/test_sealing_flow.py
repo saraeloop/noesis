@@ -66,7 +66,8 @@ def test_double_seal_fails_explicitly_without_mutation(tmp_path: Path) -> None:
         process_id="proc_test",
         run_index=1,
         finalized_at="2025-01-01T00:00:00Z",
-        outcome="success_unverified",
+        outcome="success",
+        verification_status="unverified",
     )
 
     manifest_path, _ = core._seal_episode(ctx=ctx, final_writer=final_writer, final_record=record)
@@ -84,3 +85,26 @@ def test_double_seal_fails_explicitly_without_mutation(tmp_path: Path) -> None:
 
     manifest_payload = json.loads(manifest_after.decode("utf-8"))
     assert any(item.get("name") == FINAL_FILE_NAME for item in manifest_payload.get("files", []))
+
+
+def test_enforce_veto_maps_to_final_v2_contract(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs-veto-final"
+
+    class NoopGraph:
+        def invoke(self, payload):
+            return payload
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir), governance_mode="enforce")
+        episode_id = ns.solve(
+            task="Danger operation: delete production database",
+            using=lambda: NoopGraph(),
+            intuition=False,
+        )
+        layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+
+    final_path = layout.episodes_dir / episode_id / FINAL_FILE_NAME
+    final_payload = json.loads(final_path.read_text(encoding="utf-8"))
+    assert final_payload["schema_version"] == "final/2.0.0"
+    assert final_payload["outcome"] == "vetoed"
+    assert final_payload["verification_status"] == "not_applicable"
