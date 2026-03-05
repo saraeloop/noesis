@@ -63,6 +63,7 @@ from .usecases.episode_runner import (
     EpisodeDependencies,
     EpisodeInstrumentation,
     EpisodeRequest,
+    ResumeAnchor,
     EpisodeRunner,
 )
 from .verification import VerifyInput, normalize_verify
@@ -72,6 +73,7 @@ from .usecases.finalization import FinalizationWriter, map_outcome_to_final_cont
 from .usecases.process_registry import ProcessRegistryService, STALE_TTL_SECONDS
 from .usecases.run_lifecycle import create_run_lifecycle_service
 from .domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
+from .domain.run_lifecycle import ResumeAdapterMismatchError, ResumeAdapterRequiredError
 from .context import RuntimeContext, get_context
 
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
@@ -230,6 +232,70 @@ def resume(
     workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
     service = create_run_lifecycle_service(context=app, workspace=workspace_path)
     return service.resume(episode_id, checkpoint_id=checkpoint_id, caused_by=caused_by)
+
+
+def resume_run(
+    episode_id: str,
+    *,
+    checkpoint_id: str,
+    using: GraphSource | None = None,
+    caused_by: str | None = None,
+    context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
+    determinism: "_DeterminismConfig | None" = None,
+) -> str:
+    """Resume and continue execution on the same run from a checkpoint anchor."""
+    app = context or get_context()
+    workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
+    verify_specs = normalize_verify(verify)
+    service = create_run_lifecycle_service(context=app, workspace=workspace_path)
+    checkpoint = service.load_checkpoint_for_resume(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+    )
+    resume_event_id = service.resume(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+        caused_by=caused_by,
+    )
+    setup = _bootstrap_resumed_episode(
+        episode_id=episode_id,
+        context=app,
+        workspace=workspace_path,
+        verify=verify_specs,
+        determinism=determinism,
+    )
+    expected_using_label = checkpoint.adapter_label or setup.raw_using_label
+    if using is None:
+        resolved_using_label = "core.minimal"
+    else:
+        resolved_using_label = _safe_using_label(using)
+    if using is None and setup.adapter_label != "adapter:core.minimal":
+        raise ResumeAdapterRequiredError(
+            "resume_run requires `using` for non-minimal runs; "
+            f"checkpoint expects {expected_using_label!r}"
+        )
+    if resolved_using_label != expected_using_label:
+        raise ResumeAdapterMismatchError(
+            "resume_run adapter mismatch: "
+            f"checkpoint expects {expected_using_label!r}, got {resolved_using_label!r}"
+        )
+    anchor = ResumeAnchor(
+        checkpoint_id=checkpoint.checkpoint_id,
+        state_hash=checkpoint.state_hash,
+        last_event_id=checkpoint.last_event_id,
+        resume_event_id=resume_event_id,
+        event_offset=checkpoint.event_offset,
+    )
+    return _run_episode(
+        setup=setup,
+        task=setup.episode_ctx.task,
+        seed=setup.episode_ctx.seed,
+        tags=dict(setup.episode_ctx.tags),
+        using=using,
+        resume_anchor=anchor,
+    )
 
 
 def solve(
@@ -623,6 +689,101 @@ def _bootstrap_episode(
     )
 
 
+def _bootstrap_resumed_episode(
+    *,
+    episode_id: str,
+    context: RuntimeContext,
+    workspace: Path | None,
+    verify: VerifyInput,
+    determinism: "_DeterminismConfig | None",
+) -> _EpisodeRuntime:
+    """Rehydrate runtime setup for continuation on an existing run."""
+    config_port = context.require("config", getattr(context.config_port, "__api_version__", "config/1.0-rc1"))
+    cfg = config_port.get()
+    port_versions = context.list_ports()
+    workspace_path = workspace.expanduser().resolve() if workspace is not None else None
+    layout_port = context.require("layout", "layout/1.0")
+    layout = layout_port.resolve(workspace=workspace_path, runs_dir=cfg.runs_dir)
+    layout_port.ensure(layout)
+
+    lifecycle = create_run_lifecycle_service(context=context, workspace=workspace_path)
+    run_dir = lifecycle.resolve_run_dir(episode_id)
+
+    ids = EpisodeIds.from_episode(episode_id)
+    run_clock, now_fn = _init_clock(determinism)
+    event_id_factory = determinism.rng.event_id_factory(ids.directive_namespace) if determinism else None
+    verify_specs = normalize_verify(verify)
+
+    probe_ctx = EpisodeContext(
+        run_dir=run_dir,
+        episode_id=episode_id,
+        seed=0,
+        task="",
+        tags={},
+        adapter_label="adapter:core.minimal",
+        started_at=_now(),
+        workspace=workspace_path,
+        verify=verify_specs,
+        intuition_mode=cfg.intuition_mode,
+        prompt_provenance_enabled=cfg.prompt_provenance_enabled,
+        prompt_provenance_mode=cfg.prompt_provenance_mode,
+    )
+    probe_state = RuntimeStateRepository(context=probe_ctx).init(probe_ctx)
+
+    if probe_state.process_id is None or probe_state.process_run_index is None:
+        raise ValueError("resume_run requires process metadata in state.json (process.id and process.run_index)")
+
+    using_norm = normalize_using(probe_state.adapter_label)
+    raw_using_label = using_norm.display if using_norm else probe_state.adapter_label
+
+    episode_ctx = EpisodeContext(
+        run_dir=run_dir,
+        episode_id=episode_id,
+        seed=probe_state.seed,
+        task=probe_state.task,
+        tags=dict(probe_state.tags),
+        adapter_label=probe_state.adapter_label,
+        started_at=probe_state.started_at,
+        process_id=probe_state.process_id,
+        process_name=probe_state.process_name,
+        process_kind=probe_state.process_kind,
+        process_run_index=probe_state.process_run_index,
+        workspace=workspace_path,
+        verify=verify_specs,
+        intuition_mode=probe_state.intuition_mode,
+        prompt_provenance_enabled=cfg.prompt_provenance_enabled,
+        prompt_provenance_mode=cfg.prompt_provenance_mode,
+    )
+    episode_ctx.prompt_recorder = PromptRecorder.from_context(episode_ctx)
+    state_repo = RuntimeStateRepository(context=episode_ctx)
+    state_path = run_dir / "state.json"
+    intuition_impl, intuition_enabled = _normalize_intuition(probe_state.intuition_mode, False)
+    ctx = _EpCtx(ids=ids, run_dir=run_dir, started_at=probe_state.started_at)
+
+    return _EpisodeRuntime(
+        cfg=cfg,
+        port_versions=port_versions,
+        layout=layout,
+        ctx=ctx,
+        episode_ctx=episode_ctx,
+        state_repo=state_repo,
+        state_path=state_path,
+        adapter_label=probe_state.adapter_label,
+        raw_using_label=raw_using_label,
+        process_id=probe_state.process_id,
+        process_name=probe_state.process_name or "",
+        process_kind=probe_state.process_kind or "oneshot",
+        process_run_index=probe_state.process_run_index,
+        determinism=determinism,
+        now_fn=now_fn,
+        run_clock=run_clock,
+        event_id_factory=event_id_factory,
+        intuition_impl=intuition_impl,
+        intuition_enabled=intuition_enabled,
+        runtime_context=context,
+    )
+
+
 def _run_episode(
     *,
     setup: _EpisodeRuntime,
@@ -630,6 +791,7 @@ def _run_episode(
     seed: int,
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
+    resume_anchor: ResumeAnchor | None = None,
 ) -> str:
     stop_event, thread = _start_process_heartbeat(setup)
     try:
@@ -684,7 +846,10 @@ def _run_episode(
             context=setup.episode_ctx,
             using_label=using_label,
         )
-        result = runner.run(episode_request)
+        if resume_anchor is None:
+            result = runner.run(episode_request)
+        else:
+            result = runner.resume(episode_request, anchor=resume_anchor)
 
         status_value = str(result.outcome.status or "unknown")
         default_message = "Episode terminated."

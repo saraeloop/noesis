@@ -192,6 +192,33 @@ class NoesisSession:
                 workspace=workspace_path,
             )
 
+    def resume_run(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        using: Any | None = None,
+        caused_by: str | None = None,
+        workspace: str | Path | None = None,
+        verify: "VerifyInput" = None,
+    ) -> str:
+        """Resume lifecycle evidence and continue execution on the same run."""
+        from noesis.core import resume_run as core_resume_run
+
+        workspace_path = Path(workspace) if workspace is not None else None
+        verify_specs = normalize_verify(verify)
+        with self._lock.scoped():
+            return core_resume_run(
+                run_id,
+                checkpoint_id=checkpoint_id,
+                using=using,
+                caused_by=caused_by,
+                context=self._context,
+                workspace=workspace_path,
+                verify=verify_specs,
+                determinism=self._config.determinism,
+            )
+
     async def solve_async(
         self,
         *,

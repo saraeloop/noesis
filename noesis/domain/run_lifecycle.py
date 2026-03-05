@@ -44,6 +44,18 @@ class CheckpointConsistencyError(RunLifecycleError):
     """Raised when checkpoint metadata no longer matches run history."""
 
 
+class ResumeAdapterError(RunLifecycleError):
+    """Base error for resume adapter contract violations."""
+
+
+class ResumeAdapterRequiredError(ResumeAdapterError):
+    """Raised when resume continuation requires an explicit adapter and none was supplied."""
+
+
+class ResumeAdapterMismatchError(ResumeAdapterError):
+    """Raised when resume continuation adapter differs from checkpoint adapter metadata."""
+
+
 @dataclass(frozen=True, slots=True)
 class RunCheckpoint:
     """Checkpoint pointer contract for append-only run artifacts."""
@@ -56,9 +68,10 @@ class RunCheckpoint:
     last_event_id: str
     state_hash: str
     artifact_manifest_hash: str
+    adapter_label: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "schema_version": self.schema_version,
             "run_id": self.run_id,
             "checkpoint_id": self.checkpoint_id,
@@ -68,6 +81,9 @@ class RunCheckpoint:
             "state_hash": self.state_hash,
             "artifact_manifest_hash": self.artifact_manifest_hash,
         }
+        if self.adapter_label:
+            payload["adapter_label"] = self.adapter_label
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> "RunCheckpoint":
@@ -89,6 +105,12 @@ class RunCheckpoint:
             raise ValueError("checkpoint.state_hash must be a non-empty string")
         if not isinstance(artifact_manifest_hash, str) or not artifact_manifest_hash:
             raise ValueError("checkpoint.artifact_manifest_hash must be a non-empty string")
+        adapter_label_raw = payload.get("adapter_label")
+        adapter_label = (
+            adapter_label_raw
+            if isinstance(adapter_label_raw, str) and adapter_label_raw.strip()
+            else None
+        )
         event_offset = payload.get("event_offset")
         if not isinstance(event_offset, int) or event_offset < 1:
             raise ValueError("checkpoint.event_offset must be an integer >= 1")
@@ -104,6 +126,7 @@ class RunCheckpoint:
             last_event_id=last_event_id,
             state_hash=state_hash,
             artifact_manifest_hash=artifact_manifest_hash,
+            adapter_label=adapter_label,
         )
 
 
@@ -117,5 +140,8 @@ __all__ = [
     "CheckpointNotFoundError",
     "MissingCausalParentError",
     "CheckpointConsistencyError",
+    "ResumeAdapterError",
+    "ResumeAdapterRequiredError",
+    "ResumeAdapterMismatchError",
     "RunCheckpoint",
 ]
