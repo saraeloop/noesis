@@ -122,7 +122,13 @@ episode_id = ns.solve("process this", using="my.module:adapter_fn")
 
 ### Run lifecycle APIs
 
-Use these APIs for approvals-gated interruption and same-run continuation.
+Use these APIs for approval gates and same-run continuation.
+
+Simple mental model:
+
+- `interrupt` and `checkpoint` pause a run with audit evidence.
+- `resume` emits lifecycle evidence only (`run.resume`).
+- `resume_run` emits `run.resume` and continues execution.
 
 ```python
 event_id = ns.interrupt(
@@ -163,7 +169,52 @@ episode_id = ns.resume_run(
 ) -> str
 ```
 
-Failure semantics:
+### Lifecycle flow (easy)
+
+```python
+import noesis as ns
+
+# 1) Optional: enable pause-on-veto in enforce mode
+ns.set(
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
+)
+
+# 2) Start a run
+episode_id = ns.solve("Danger operation: delete production database", using=my_graph)
+
+# 3) Manual pause (if your approval system decides to pause)
+interrupt_id = ns.interrupt(episode_id, reason="Awaiting human approval")
+checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+
+# 4a) Emit resume evidence only (no execution continuation)
+resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
+
+# 4b) Continue execution from checkpoint on the same run ID
+episode_id = ns.resume_run(
+    episode_id,
+    checkpoint_id=checkpoint["checkpoint_id"],
+    using=my_graph,  # required for non-minimal runs
+)
+```
+
+Determinism scope:
+
+- Noēsis enforces immutable, append-only artifacts and replay discipline.
+- External tool/LLM outputs may still vary unless your environment captures/freezes them.
+
+Continuation contract:
+
+- Same run ID.
+- Append-only artifacts preserved.
+- Resume continues post-plan by default (no replan) with anchor validation.
+
+Adapter continuity:
+
+- `resume_run(..., using=...)` must match the persisted adapter from checkpoint/state.
+- For minimal runs (`ns.run(...)`), omitting `using` is allowed.
+
+### Common failure modes
 
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
@@ -261,7 +312,9 @@ ns.set(runs_dir=".noesis/episodes", planner_mode="minimal", direction_min_confid
 config = ns.get()  # returns a mapping of current config values
 ```
 
-Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `governance_mode` (`off`/`audit`/`enforce`), `governance_failure_policy`, `governance_timeout_ms` (reserved/unused), `policy_aliases`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents` (reserved/unused), `tasks` (reserved/unused).
+`runs_dir` points to the episodes root directory (for example, `.noesis/episodes`).
+
+Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `governance_mode` (`off`/`audit`/`enforce`), `governance_failure_policy`, `governance_timeout_ms` (reserved/unused), `governance_pause_on_veto`, `policy_aliases`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents` (reserved/unused), `tasks` (reserved/unused).
 
 ## Intuition and policies
 

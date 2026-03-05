@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from uuid import UUID
 
+from noesis.domain.run_lifecycle import RunCheckpoint
 from noesis.domain.state import CognitiveEvent, NoesisState
 
 
@@ -100,6 +101,27 @@ class EventIdFactoryPort(Protocol):
     """Factory for deterministic event IDs."""
 
     def __call__(self) -> UUID:
+        ...
+
+
+class RunLifecyclePort(Protocol):
+    """Run lifecycle boundary for interrupt/checkpoint evidence."""
+
+    def interrupt(
+        self,
+        run_id: str,
+        *,
+        reason: str | None = None,
+        caused_by: str | None = None,
+    ) -> str:
+        ...
+
+    def checkpoint(
+        self,
+        run_id: str,
+        *,
+        caused_by: str | None = None,
+    ) -> RunCheckpoint:
         ...
 
 

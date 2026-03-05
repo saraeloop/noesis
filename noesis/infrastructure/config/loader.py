@@ -47,6 +47,7 @@ _ENV_KEY_MAP: dict[str, str] = {
     "NOESIS_GOVERNANCE_MODE": "governance_mode",
     "NOESIS_GOVERNANCE_FAILURE_POLICY": "governance_failure_policy",
     "NOESIS_GOVERNANCE_TIMEOUT_MS": "governance_timeout_ms",
+    "NOESIS_GOVERNANCE_PAUSE_ON_VETO": "governance_pause_on_veto",
 }
 
 
@@ -164,6 +165,7 @@ class EnvTomlConfig(ConfigPort):
             if config.governance_failure_policy is None
             else GovernanceFailurePolicy(config.governance_failure_policy),
             governance_timeout_ms=config.governance_timeout_ms,
+            governance_pause_on_veto=config.governance_pause_on_veto,
         )
 
     @staticmethod

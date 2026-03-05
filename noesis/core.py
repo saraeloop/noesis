@@ -78,6 +78,7 @@ from .context import RuntimeContext, get_context
 
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EPISODE_STORE_TTL_DAYS: Final[int] = 30
+_NONTERMINAL_RUN_STATUSES: frozenset[str] = frozenset({"interrupted", "paused"})
 
 
 def _finalize_manifest(ctx: _EpCtx) -> tuple[Path, str]:
@@ -803,6 +804,12 @@ def _run_episode(
         event_bus, instrumentation, _lineage = _build_runner_ports(setup)
         direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
         governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
+        governance_pause_on_veto = bool(getattr(setup.cfg, "governance_pause_on_veto", False))
+        lifecycle_service = (
+            create_run_lifecycle_service(context=setup.runtime_context, workspace=setup.episode_ctx.workspace)
+            if governance_pause_on_veto
+            else None
+        )
         governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
         governance_failure_policy = _parse_governance_failure_policy(
             getattr(setup.cfg, "governance_failure_policy", None),
@@ -839,6 +846,8 @@ def _run_episode(
             governance_mode=governance_mode,
             governance_failure_policy=governance_failure_policy,
             governance_timeout_ms=governance_timeout_ms,
+            governance_pause_on_veto=governance_pause_on_veto,
+            run_lifecycle=lifecycle_service,
             intuition_policy=setup.intuition_impl,
             intuition_enabled=setup.intuition_enabled,
         )
@@ -866,6 +875,15 @@ def _run_episode(
             "status": status_value,
             "message": message_value,
         }
+        if status_value in _NONTERMINAL_RUN_STATUSES:
+            state = result.state
+            ensure_learn_file(setup.ctx.run_dir)
+            state.set_links(
+                events="events.jsonl",
+                learn="learn.jsonl",
+            )
+            setup.state_repo.persist(state)
+            return setup.ctx.episode_id
 
         existing_events = read_events(setup.ctx.run_dir)
         if not any(is_terminate_event(evt) for evt in existing_events):
@@ -958,6 +976,12 @@ async def _run_episode_async(
         event_bus, instrumentation, _lineage = _build_runner_ports(setup)
         direction_planner = MetaPlanner() if setup.cfg.planner_mode == PlannerMode.META else None
         governance_mode = _parse_governance_mode(getattr(setup.cfg, "governance_mode", GovernanceMode.OFF))
+        governance_pause_on_veto = bool(getattr(setup.cfg, "governance_pause_on_veto", False))
+        lifecycle_service = (
+            create_run_lifecycle_service(context=setup.runtime_context, workspace=setup.episode_ctx.workspace)
+            if governance_pause_on_veto
+            else None
+        )
         governance_policy = PreActGovernor() if governance_mode != GovernanceMode.OFF else None
         governance_failure_policy = _parse_governance_failure_policy(
             getattr(setup.cfg, "governance_failure_policy", None),
@@ -994,6 +1018,8 @@ async def _run_episode_async(
             governance_mode=governance_mode,
             governance_failure_policy=governance_failure_policy,
             governance_timeout_ms=governance_timeout_ms,
+            governance_pause_on_veto=governance_pause_on_veto,
+            run_lifecycle=lifecycle_service,
             intuition_policy=setup.intuition_impl,
             intuition_enabled=setup.intuition_enabled,
         )
@@ -1018,6 +1044,15 @@ async def _run_episode_async(
             "status": status_value,
             "message": message_value,
         }
+        if status_value in _NONTERMINAL_RUN_STATUSES:
+            state = result.state
+            ensure_learn_file(setup.ctx.run_dir)
+            state.set_links(
+                events="events.jsonl",
+                learn="learn.jsonl",
+            )
+            setup.state_repo.persist(state)
+            return setup.ctx.episode_id
 
         existing_events = read_events(setup.ctx.run_dir)
         if not any(is_terminate_event(evt) for evt in existing_events):

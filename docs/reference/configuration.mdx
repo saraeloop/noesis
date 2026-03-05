@@ -18,7 +18,7 @@ Configuration is resolved in this order (highest to lowest priority):
 
 ### runs_dir
 
-Directory where artifacts are stored.
+Directory where episode artifacts are stored (episodes root).
 
 | Source | Setting |
 | --- | --- |
@@ -201,6 +201,22 @@ Reserved/unused in v1.0.0. Parsed into the runtime config but not enforced durin
 | TOML | `governance_timeout_ms = 250` |
 | Default | `None` |
 
+### governance_pause_on_veto
+
+Enable pause semantics for enforce-mode vetoes. When enabled, Noēsis emits:
+
+- `run.interrupt`
+- `run.checkpoint`
+
+and halts side effects instead of finalizing/sealing the run.
+
+| Source | Setting |
+| --- | --- |
+| Python | `ns.set(governance_pause_on_veto=True)` |
+| Environment | `NOESIS_GOVERNANCE_PAUSE_ON_VETO=true` |
+| TOML | `governance_pause_on_veto = true` |
+| Default | `false` |
+
 ### policy_aliases
 
 Mapping of policy alias → import spec. Used by the CLI `--policy` flag to resolve short names.
@@ -274,6 +290,7 @@ intuition_mode = "advisory"
 direction_min_confidence = 0.7
 governance_mode = "off"
 governance_failure_policy = "fail_open"
+governance_pause_on_veto = false
 learn_auto_apply_min_confidence = 0.85
 learn_auto_apply_min_successes = 3
 prompt_provenance_enabled = false
@@ -298,6 +315,7 @@ The following runtime configuration options have environment variable equivalent
 | `governance_mode` | `NOESIS_GOVERNANCE_MODE` |
 | `governance_failure_policy` | `NOESIS_GOVERNANCE_FAILURE_POLICY` |
 | `governance_timeout_ms` | `NOESIS_GOVERNANCE_TIMEOUT_MS` |
+| `governance_pause_on_veto` | `NOESIS_GOVERNANCE_PAUSE_ON_VETO` |
 | `learn_auto_apply_min_confidence` | `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` |
 | `learn_auto_apply_min_successes` | `NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES` |
 | `prompt_provenance_enabled` | `NOESIS_PROMPT_PROVENANCE_ENABLED` |
@@ -367,6 +385,7 @@ ns.set(
     planner_mode="meta",
     direction_min_confidence=0.5,
     governance_mode="off",
+    governance_pause_on_veto=False,
     learn_mode="record",
     learn_auto_apply_min_confidence=0.75,
     learn_auto_apply_min_successes=3,
@@ -446,6 +465,7 @@ runs_dir = "./.noesis/episodes"
 planner_mode = "minimal"
 direction_min_confidence = 0.5
 governance_mode = "off"
+governance_pause_on_veto = false
 prompt_provenance_enabled = false
 ```
 
@@ -458,6 +478,7 @@ planner_mode = "meta"
 learn_mode = "record"
 direction_min_confidence = 0.5
 governance_mode = "audit"
+governance_pause_on_veto = false
 prompt_provenance_enabled = false
 ```
 
@@ -470,6 +491,7 @@ planner_mode = "meta"
 learn_mode = "record"
 governance_mode = "enforce"
 governance_failure_policy = "fail_closed"
+governance_pause_on_veto = true
 learn_auto_apply_min_confidence = 0.95
 learn_auto_apply_min_successes = 5
 prompt_provenance_enabled = true

@@ -375,3 +375,66 @@ def test_resume_run_non_minimal_preserves_adapter_label(tmp_path: Path) -> None:
         act_event = next(event for event in events if event.get("phase") == "act")
         assert (act_event.get("payload") or {}).get("tool") == "GraphAlpha"
         assert (act_event.get("payload") or {}).get("tool") != "core.minimal"
+
+
+def test_governance_pause_mode_emits_interrupt_checkpoint_and_halts_side_effects(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    side_effect = workspace / "actuator-side-effect.txt"
+
+    class MutatingGraph:
+        def invoke(self, payload):
+            side_effect.write_text(str(payload), encoding="utf-8")
+            return payload
+
+    with _preserve_config():
+        ns.set(
+            runs_dir=str(runs_dir),
+            planner_mode="minimal",
+            governance_mode="enforce",
+            governance_pause_on_veto=True,
+        )
+        episode_id = ns.solve(
+            task="Danger operation: delete production database",
+            using=MutatingGraph(),
+            intuition=False,
+            workspace=workspace,
+        )
+
+        layout = resolve_noesis_paths(workspace=workspace, runs_dir=runs_dir)
+        run_dir = layout.episodes_dir / episode_id
+        events = read_events(run_dir)
+        governance_event = next(
+            event
+            for event in events
+            if event.get("phase") == "governance"
+        )
+
+        interrupt_event = next(
+            event
+            for event in events
+            if event.get("phase") == "runtime" and event.get("event_type") == "run.interrupt"
+        )
+        checkpoint_event = next(
+            event
+            for event in events
+            if event.get("phase") == "runtime" and event.get("event_type") == "run.checkpoint"
+        )
+        checkpoint_id = (checkpoint_event.get("payload") or {}).get("checkpoint_id")
+
+        assert not side_effect.exists()
+        assert interrupt_event.get("caused_by") == governance_event["id"]
+        assert checkpoint_event.get("caused_by") == interrupt_event["id"]
+        assert not any(event.get("phase") == "act" for event in events)
+        assert not any(event.get("phase") == "terminate" for event in events)
+        assert not (run_dir / "final.json").exists()
+        assert not (run_dir / "manifest.json").exists()
+        assert isinstance(checkpoint_id, str) and checkpoint_id
+        assert (run_dir / "checkpoints" / checkpoint_id / "checkpoint.json").exists()
+
+        state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+        outcomes = state.get("outcomes", {})
+        assert outcomes.get("status") == "partial"
+        assert "paused at checkpoint" in str(outcomes.get("summary", ""))
+        assert outcomes.get("actions") == []

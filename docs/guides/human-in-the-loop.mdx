@@ -16,7 +16,7 @@ Add human approval when:
 
 ## Basic approval pattern
 
-The simplest pattern pauses execution and waits for approval:
+The recommended pattern is pause -> checkpoint -> approve -> resume (same run):
 
 ```python
 import noesis as ns
@@ -35,40 +35,29 @@ def require_approval(episode_id: str, action: str) -> bool:
     return response.lower() == "y"
 
 
-def run_with_approval(task: str, high_risk: bool = False):
-    """Run an episode with optional approval gate."""
-    
-    # First run to check if approval needed
-    episode_id = ns.run(
-        task,
-        intuition=True,
-        tags={"high_risk": high_risk},
+def run_with_approval(task: str, using):
+    # Start run
+    episode_id = ns.solve(task, using=using, intuition=True)
+
+    # Pause and checkpoint before high-risk continuation
+    interrupt_id = ns.interrupt(episode_id, reason="High-risk action requires approval")
+    checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+
+    if not require_approval(episode_id, task):
+        print("❌ Action rejected by human reviewer")
+        return None
+
+    # Continue same run ID from checkpoint (no rerun)
+    return ns.resume_run(
+        episode_id,
+        checkpoint_id=checkpoint["checkpoint_id"],
+        using=using,
     )
-    
-    # Check events for approval requirement
-    events = list(ns.events.read(episode_id))
-    needs_approval = any(
-        e.get("payload", {}).get("requires_approval")
-        for e in events
-    )
-    
-    if needs_approval:
-        summary = ns.summary.read(episode_id)
-        proposed_action = summary.get("flags", {}).get("proposed_action", task)
-        
-        if require_approval(episode_id, proposed_action):
-            # Re-run with approval flag
-            episode_id = ns.run(
-                f"{task} [APPROVED]",
-                intuition=True,
-                tags={"approved": True, "original_episode": episode_id},
-            )
-        else:
-            print("❌ Action rejected by human reviewer")
-            return None
-    
-    return episode_id
 ```
+
+<Tip>
+Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
+</Tip>
 
 ## Policy-driven approval
 
