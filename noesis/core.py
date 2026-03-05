@@ -70,6 +70,7 @@ from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
 from .usecases.finalization import FinalizationWriter, map_outcome_to_final_contract
 from .usecases.process_registry import ProcessRegistryService, STALE_TTL_SECONDS
+from .usecases.run_lifecycle import create_run_lifecycle_service
 from .domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
 from .context import RuntimeContext, get_context
 
@@ -185,6 +186,50 @@ def set(*, context: RuntimeContext | None = None, **overrides: Any) -> None:
         return
     config_port = app.require("config", getattr(app.config_port, "__api_version__", "config/1.0-rc1"))
     config_port.set(**remaining)
+
+
+def interrupt(
+    episode_id: str,
+    *,
+    reason: str | None = None,
+    caused_by: str | None = None,
+    context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+) -> str:
+    """Emit a run interruption lifecycle event for an unsealed run."""
+    app = context or get_context()
+    workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
+    service = create_run_lifecycle_service(context=app, workspace=workspace_path)
+    return service.interrupt(episode_id, reason=reason, caused_by=caused_by)
+
+
+def checkpoint(
+    episode_id: str,
+    *,
+    caused_by: str | None = None,
+    context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+) -> Dict[str, object]:
+    """Create a deterministic checkpoint pointer for an unsealed run."""
+    app = context or get_context()
+    workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
+    service = create_run_lifecycle_service(context=app, workspace=workspace_path)
+    return service.checkpoint(episode_id, caused_by=caused_by).to_dict()
+
+
+def resume(
+    episode_id: str,
+    *,
+    checkpoint_id: str,
+    caused_by: str | None = None,
+    context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+) -> str:
+    """Emit a run resume lifecycle event for an unsealed run checkpoint."""
+    app = context or get_context()
+    workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
+    service = create_run_lifecycle_service(context=app, workspace=workspace_path)
+    return service.resume(episode_id, checkpoint_id=checkpoint_id, caused_by=caused_by)
 
 
 def solve(

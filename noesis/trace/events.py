@@ -47,6 +47,7 @@ VERB_PHASES: set[str] = {
 # Canonical phases for event.phase
 PHASES: set[str] = {
     "start",
+    "runtime",
     "intuition",
     "direction",
     "action_candidate",
@@ -82,6 +83,7 @@ _ACTION_CANDIDATE_MINIMA: set[str] = {
     "state_hash",
     "redaction",
 }
+_RUNTIME_PAYLOAD_MINIMA: set[str] = {"status"}
 
 # Minimal schema contract for events
 REQUIRED_EVENT_KEYS: set[str] = {
@@ -180,6 +182,17 @@ def _validate_event_schema(event: Dict[str, Any]) -> None:
         if missing_payload:
             raise ValueError(
                 f"action_candidate payload missing required keys: {sorted(missing_payload)}"
+            )
+    if phase == "runtime":
+        event_type = event.get("event_type")
+        if not isinstance(event_type, str) or not event_type:
+            raise ValueError("runtime events require event_type")
+        payload = event["payload"]
+        payload_keys = set(payload.keys())
+        missing_payload = _RUNTIME_PAYLOAD_MINIMA - payload_keys
+        if missing_payload:
+            raise ValueError(
+                f"runtime payload missing required keys: {sorted(missing_payload)}"
             )
     faculty = event.get("faculty")
     if faculty is not None and not isinstance(faculty, str):

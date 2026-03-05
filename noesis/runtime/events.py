@@ -24,6 +24,7 @@ __all__ = [
     "reflect_event",
     "direction_event",
     "governance_event",
+    "runtime_lifecycle_event",
     "ensure_act_event",
     "terminate_event",
     "last_event_of_phase",
@@ -295,6 +296,36 @@ def governance_event(
         "episode_id": episode_id,
         "agent_id": agent,
         "phase": "governance",
+        "payload": payload,
+        "evidence_ids": [],
+    }
+    if caused_by:
+        record["caused_by"] = caused_by
+    write_event(run_dir, record)
+    return event_id
+
+
+def runtime_lifecycle_event(
+    run_dir: Path,
+    episode_id: str,
+    *,
+    event_type: str,
+    payload: Dict[str, Any],
+    agent: str = "system",
+    caused_by: Optional[str] = None,
+    now_fn: Callable[[], str] | None = None,
+    id_factory: Callable[[], UUID] | None = None,
+) -> UUID:
+    now_fn = now_fn or now
+    id_factory = id_factory or uuid4
+    event_id = id_factory()
+    record: Dict[str, Any] = {
+        "id": str(event_id),
+        "timestamp": now_fn(),
+        "episode_id": episode_id,
+        "agent_id": agent,
+        "event_type": event_type,
+        "phase": "runtime",
         "payload": payload,
         "evidence_ids": [],
     }
