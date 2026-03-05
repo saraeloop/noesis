@@ -254,11 +254,6 @@ def resume_run(
         episode_id,
         checkpoint_id=checkpoint_id,
     )
-    resume_event_id = service.resume(
-        episode_id,
-        checkpoint_id=checkpoint_id,
-        caused_by=caused_by,
-    )
     setup = _bootstrap_resumed_episode(
         episode_id=episode_id,
         context=app,
@@ -266,12 +261,16 @@ def resume_run(
         verify=verify_specs,
         determinism=determinism,
     )
-    expected_using_label = checkpoint.adapter_label or setup.raw_using_label
+    expected_using_raw = checkpoint.adapter_label or setup.raw_using_label
+    expected_norm = normalize_using(expected_using_raw)
+    expected_using_label = expected_norm.display if expected_norm else expected_using_raw
     if using is None:
         resolved_using_label = "core.minimal"
     else:
-        resolved_using_label = _safe_using_label(using)
-    if using is None and setup.adapter_label != "adapter:core.minimal":
+        resolved_raw = _safe_using_label(using)
+        resolved_norm = normalize_using(resolved_raw)
+        resolved_using_label = resolved_norm.display if resolved_norm else resolved_raw
+    if using is None and expected_using_label != "core.minimal":
         raise ResumeAdapterRequiredError(
             "resume_run requires `using` for non-minimal runs; "
             f"checkpoint expects {expected_using_label!r}"
@@ -281,6 +280,11 @@ def resume_run(
             "resume_run adapter mismatch: "
             f"checkpoint expects {expected_using_label!r}, got {resolved_using_label!r}"
         )
+    resume_event_id = service.resume(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+        caused_by=caused_by,
+    )
     anchor = ResumeAnchor(
         checkpoint_id=checkpoint.checkpoint_id,
         state_hash=checkpoint.state_hash,
@@ -720,7 +724,8 @@ def _bootstrap_resumed_episode(
         seed=0,
         task="",
         tags={},
-        adapter_label="adapter:core.minimal",
+        # Empty adapter label intentionally allows state.json episode.using to win.
+        adapter_label="",
         started_at=_now(),
         workspace=workspace_path,
         verify=verify_specs,

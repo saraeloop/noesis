@@ -297,13 +297,14 @@ def test_resume_run_rejects_adapter_mismatch(tmp_path: Path) -> None:
 
     with _preserve_config():
         ns.set(runs_dir=str(runs_dir), planner_mode="minimal", governance_mode="off")
-        _ = _prepare_resumable_run(
+        run_dir = _prepare_resumable_run(
             runs_dir=runs_dir,
             episode_id=episode_id,
             adapter_label="adapter:graph.alpha",
         )
         checkpoint = ns.checkpoint(episode_id)
         checkpoint_id = str(checkpoint["checkpoint_id"])
+        events_before = read_events(run_dir)
 
         with pytest.raises(ResumeAdapterMismatchError, match="adapter mismatch"):
             ns.resume_run(
@@ -311,3 +312,41 @@ def test_resume_run_rejects_adapter_mismatch(tmp_path: Path) -> None:
                 checkpoint_id=checkpoint_id,
                 using="graph.beta",
             )
+        events_after = read_events(run_dir)
+        before_resume_count = sum(
+            1 for event in events_before if event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+        )
+        after_resume_count = sum(
+            1 for event in events_after if event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+        )
+        assert after_resume_count == before_resume_count
+
+
+def test_resume_run_non_minimal_preserves_adapter_label(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_non_minimal"
+
+    class GraphAlpha:
+        def invoke(self, payload):
+            return payload
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir), planner_mode="minimal", governance_mode="off")
+        run_dir = _prepare_resumable_run(
+            runs_dir=runs_dir,
+            episode_id=episode_id,
+            adapter_label="GraphAlpha",
+        )
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        resumed_episode_id = ns.resume_run(
+            episode_id,
+            checkpoint_id=checkpoint_id,
+            using=GraphAlpha(),
+        )
+        assert resumed_episode_id == episode_id
+        events = read_events(run_dir)
+        act_event = next(event for event in events if event.get("phase") == "act")
+        assert (act_event.get("payload") or {}).get("tool") == "GraphAlpha"
+        assert (act_event.get("payload") or {}).get("tool") != "core.minimal"

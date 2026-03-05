@@ -3,6 +3,7 @@ name: PR Contracts
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,14 +18,20 @@ jobs:
     name: Detect relevant file changes
     runs-on: ubuntu-latest
     outputs:
-      contracts: ${{ steps.filter.outputs.contracts }}
+      contracts: ${{ steps.filter.outputs.contracts || steps.force-contracts.outputs.contracts }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Force contracts checks for manual runs
+        id: force-contracts
+        if: github.event_name != 'pull_request'
+        run: echo "contracts=true" >> "$GITHUB_OUTPUT"
+
       - name: Filter changed paths
+        if: github.event_name == 'pull_request'
         id: filter
         uses: dorny/paths-filter@v3
         with:

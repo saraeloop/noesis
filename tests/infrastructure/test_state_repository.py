@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from noesis.domain.faculties.intuition import IntuitionMode
@@ -69,3 +70,50 @@ def test_state_repository_loads_existing_state_without_resetting_actions(tmp_pat
         result_status="ok",
     )
     assert next_action.id == "act-2"
+
+
+def test_state_repository_does_not_persist_empty_adapter_label(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run-empty-adapter"
+    run_dir.mkdir()
+    context = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="ep-empty-adapter",
+        seed=0,
+        task="task",
+        tags={},
+        adapter_label="",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    repo = RuntimeStateRepository(context=context)
+    _ = repo.init(context)
+
+    payload = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+    episode = payload.get("episode", {})
+    assert "using" not in episode
+
+
+def test_state_repository_empty_context_adapter_does_not_override_persisted_using(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run-adapter-rehydrate"
+    run_dir.mkdir()
+    context_initial = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="ep-adapter-rehydrate",
+        seed=0,
+        task="task",
+        tags={},
+        adapter_label="GraphAlpha",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    RuntimeStateRepository(context=context_initial).init(context_initial)
+
+    context_rehydrate = EpisodeContext(
+        run_dir=run_dir,
+        episode_id="ep-adapter-rehydrate",
+        seed=0,
+        task="task",
+        tags={},
+        adapter_label="",
+        started_at="2025-01-01T00:00:00Z",
+    )
+    loaded = RuntimeStateRepository(context=context_rehydrate).init(context_rehydrate)
+    assert loaded.adapter_label == "GraphAlpha"
