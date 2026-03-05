@@ -31,35 +31,41 @@ jobs:
     name: Detect relevant file changes
     runs-on: ubuntu-latest
     outputs:
-      contracts: ${{ steps.filter.outputs.contracts || steps.force-contracts.outputs.contracts }}
+      contracts: ${{ steps.filter.outputs.contracts }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Force contracts checks for manual runs
-        id: force-contracts
-        if: github.event_name != 'pull_request'
-        run: echo "contracts=true" >> "$GITHUB_OUTPUT"
-
       - name: Filter changed paths
-        if: github.event_name == 'pull_request'
         id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          base: ${{ github.event.pull_request.base.sha }}
-          filters: |
-            contracts:
-              - "noesis/**"
-              - "docs/**"
-              - "scripts/**"
-              - "tests/**"
-              - "pyproject.toml"
-              - "uv.lock"
-              - "RELEASE.md"
-              - "ROADMAP.md"
-              - ".github/workflows/**"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "contracts=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+          fi
+
+          if [[ -z "${base_sha}" || "${base_sha}" == "0000000000000000000000000000000000000000" ]]; then
+            echo "contracts=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "${base_sha}" "${{ github.sha }}" || true)"
+          if echo "${changed_files}" | grep -Eq '^(noesis/|docs/|scripts/|tests/|pyproject\.toml$|uv\.lock$|RELEASE\.md$|ROADMAP\.md$|\.github/workflows/)'; then
+            echo "contracts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "contracts=false" >> "$GITHUB_OUTPUT"
+          fi
 
   dry-run-contracts:
     runs-on: ubuntu-latest
@@ -79,7 +85,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v1
+        run: python -m pip install --upgrade pip uv
 
       - name: Sync Python dependencies
         run: uv sync --dev
@@ -102,48 +108,6 @@ jobs:
             .noesis-ci/prerelease
           if-no-files-found: ignore
 
-  post-summary-comment:
-    name: Post Noēsis pre-release summary
-    needs: [determine-changes, dry-run-contracts]
-    if: needs.determine-changes.outputs.contracts == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download prerelease summaries
-        uses: actions/download-artifact@v4
-        with:
-          pattern: prerelease-summary-*
-          path: summaries
-          merge-multiple: true
-
-      - name: Build combined summary
-        id: build
-        run: |
-          if ls summaries/*/summary.txt >/dev/null 2>&1; then
-            cat summaries/*/summary.txt > combined.txt
-          elif ls summaries/summary.txt >/dev/null 2>&1; then
-            cp summaries/summary.txt combined.txt
-          else
-            echo "No summary artifacts found" > combined.txt
-          fi
-          {
-            echo "body<<EOF"
-            echo "### 🧪 Noēsis pre-release (dry-run)"
-            echo
-            sed -e 's/^/    /' combined.txt
-            echo
-            echo "_(bot: updates on new commits)_"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create or update PR comment
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: ${{ steps.build.outputs.body }}
-          comment-id: noesis-prerelease-summary-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-          edit-mode: replace
-          reactions: '+1'
-
   unit-tests:
     name: unit-tests (pytest)
     needs: determine-changes
@@ -161,7 +125,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: needs.determine-changes.outputs.contracts == 'true'
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@v1
+      - run: python -m pip install --upgrade pip uv
         if: needs.determine-changes.outputs.contracts == 'true'
       - run: uv sync --all-extras
         if: needs.determine-changes.outputs.contracts == 'true'
@@ -185,7 +149,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: needs.determine-changes.outputs.contracts == 'true'
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@v1
+      - run: python -m pip install --upgrade pip uv
         if: needs.determine-changes.outputs.contracts == 'true'
       - run: uv sync --dev
         if: needs.determine-changes.outputs.contracts == 'true'
@@ -241,7 +205,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: needs.determine-changes.outputs.contracts == 'true'
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@v1
+      - run: python -m pip install --upgrade pip uv
         if: needs.determine-changes.outputs.contracts == 'true'
       - run: uv sync --all-extras
         if: needs.determine-changes.outputs.contracts == 'true'
