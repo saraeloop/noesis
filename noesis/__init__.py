@@ -214,6 +214,41 @@ def resume(
     )
 
 
+def resume_run(
+    episode_id: str,
+    *,
+    checkpoint_id: str,
+    using: GraphSource | None = None,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifyInput = None,
+) -> str:
+    """Resume a run from checkpoint and continue execution on the same run ID."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    verify_spec = normalize_verify(verify)
+    if context is not None:
+        from .core import resume_run as core_resume_run
+
+        return core_resume_run(
+            episode_id,
+            checkpoint_id=checkpoint_id,
+            using=using,
+            caused_by=caused_by,
+            context=context,
+            workspace=workspace_path,
+            verify=verify_spec,
+        )
+    return _current_session().resume_run(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+        using=using,
+        caused_by=caused_by,
+        workspace=workspace_path,
+        verify=verify_spec,
+    )
+
+
 async def solve_async(
     task: str,
     *,
@@ -287,6 +322,7 @@ __all__ = (
     "interrupt",
     "checkpoint",
     "resume",
+    "resume_run",
     "set",
     "get",
     "governed_act",

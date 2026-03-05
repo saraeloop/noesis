@@ -7,7 +7,13 @@ import json
 import pytest
 
 import noesis as ns
-from noesis.domain.run_lifecycle import CheckpointConsistencyError, RunSealedError
+from noesis.domain.run_lifecycle import (
+    CheckpointConsistencyError,
+    ResumeAdapterMismatchError,
+    RunSealedError,
+)
+from noesis.domain.state import PlanKind, PlanStep
+from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.runtime.paths import resolve_noesis_paths
 from noesis.runtime.serialization import canonical_dumps
 from noesis.trace.events import read_events, write_event
@@ -36,6 +42,51 @@ def _prepare_unsealed_run(*, runs_dir: Path, episode_id: str) -> Path:
             "agent_id": "system",
             "phase": "start",
             "payload": {"task": "checkpoint smoke"},
+            "evidence_ids": [],
+        },
+    )
+    return run_dir
+
+
+def _prepare_resumable_run(
+    *,
+    runs_dir: Path,
+    episode_id: str,
+    adapter_label: str = "adapter:core.minimal",
+) -> Path:
+    layout = resolve_noesis_paths(workspace=None, runs_dir=runs_dir)
+    run_dir = layout.episodes_dir / episode_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    context = EpisodeContext(
+        run_dir=run_dir,
+        episode_id=episode_id,
+        seed=0,
+        task="resume continuation",
+        tags={"test": "resume_run"},
+        adapter_label=adapter_label,
+        started_at="2026-03-05T00:00:00Z",
+        process_id="proc_test_resume",
+        process_name="resume-test",
+        process_kind="oneshot",
+        process_run_index=1,
+    )
+    state_repo = RuntimeStateRepository(context=context)
+    state = state_repo.init(context)
+    state.set_plan(
+        steps=[PlanStep(id="step-1", kind=PlanKind.ACT, description="Continue execution")],
+        rationale="resume checkpoint",
+        source="planner.resume",
+    )
+    state_repo.persist(state)
+    write_event(
+        run_dir,
+        {
+            "id": "evt-start",
+            "timestamp": "2026-03-05T00:00:00Z",
+            "episode_id": episode_id,
+            "agent_id": "system",
+            "phase": "start",
+            "payload": {"task": "resume continuation"},
             "evidence_ids": [],
         },
     )
@@ -203,3 +254,99 @@ def test_resume_rejects_invalid_explicit_causal_anchor(tmp_path: Path) -> None:
                 checkpoint_id=checkpoint_id,
                 caused_by="evt-not-allowed",
             )
+
+
+def test_resume_run_continues_same_run_and_seals(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_continue"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir), planner_mode="minimal", governance_mode="off")
+        run_dir = _prepare_resumable_run(runs_dir=runs_dir, episode_id=episode_id)
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+        checkpoint_payload = json.loads(
+            (run_dir / "checkpoints" / checkpoint_id / "checkpoint.json").read_text(encoding="utf-8")
+        )
+        assert checkpoint_payload["adapter_label"] == "core.minimal"
+        events_before_resume = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+
+        resumed_episode_id = ns.resume_run(episode_id, checkpoint_id=checkpoint_id)
+        assert resumed_episode_id == episode_id
+
+        events = read_events(run_dir)
+        events_after_resume = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+        assert events_after_resume.startswith(events_before_resume)
+        assert events_after_resume != events_before_resume
+        resume_event = next(
+            event
+            for event in reversed(events)
+            if event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+        )
+        act_event = next(event for event in events if event.get("phase") == "act")
+        assert act_event.get("caused_by") == resume_event["id"]
+        assert (run_dir / "final.json").exists()
+
+        with pytest.raises(RunSealedError):
+            ns.resume_run(episode_id, checkpoint_id=checkpoint_id)
+
+
+def test_resume_run_rejects_adapter_mismatch(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_adapter_mismatch"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir), planner_mode="minimal", governance_mode="off")
+        run_dir = _prepare_resumable_run(
+            runs_dir=runs_dir,
+            episode_id=episode_id,
+            adapter_label="adapter:graph.alpha",
+        )
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+        events_before = read_events(run_dir)
+
+        with pytest.raises(ResumeAdapterMismatchError, match="adapter mismatch"):
+            ns.resume_run(
+                episode_id,
+                checkpoint_id=checkpoint_id,
+                using="graph.beta",
+            )
+        events_after = read_events(run_dir)
+        before_resume_count = sum(
+            1 for event in events_before if event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+        )
+        after_resume_count = sum(
+            1 for event in events_after if event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+        )
+        assert after_resume_count == before_resume_count
+
+
+def test_resume_run_non_minimal_preserves_adapter_label(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_non_minimal"
+
+    class GraphAlpha:
+        def invoke(self, payload):
+            return payload
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir), planner_mode="minimal", governance_mode="off")
+        run_dir = _prepare_resumable_run(
+            runs_dir=runs_dir,
+            episode_id=episode_id,
+            adapter_label="GraphAlpha",
+        )
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        resumed_episode_id = ns.resume_run(
+            episode_id,
+            checkpoint_id=checkpoint_id,
+            using=GraphAlpha(),
+        )
+        assert resumed_episode_id == episode_id
+        events = read_events(run_dir)
+        act_event = next(event for event in events if event.get("phase") == "act")
+        assert (act_event.get("payload") or {}).get("tool") == "GraphAlpha"
+        assert (act_event.get("payload") or {}).get("tool") != "core.minimal"

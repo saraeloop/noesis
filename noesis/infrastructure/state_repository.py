@@ -117,9 +117,12 @@ def _write_state(path: Path, state: NoesisState) -> None:
     payload = state.to_dict()
     episode = payload.get("episode")
     if isinstance(episode, dict):
-        normalized = normalize_using(episode.get("using"))
+        raw_using = episode.get("using")
+        normalized = normalize_using(raw_using if isinstance(raw_using, str) else None)
         if normalized:
             episode["using"] = normalized.display
+        elif isinstance(raw_using, str) and not raw_using.strip():
+            episode.pop("using", None)
     atomic_write_json(path, payload)
 
 
@@ -146,7 +149,10 @@ def _rehydrate_state(*, payload: dict[str, object], context: EpisodeContext) -> 
     started_at = str(episode.get("started_at") or context.started_at)
     tags = episode.get("tags")
     state_tags = dict(tags) if isinstance(tags, dict) else dict(context.tags)
-    adapter_label = context.adapter_label or str(episode.get("using") or context.adapter_label)
+    context_adapter = context.adapter_label.strip() if isinstance(context.adapter_label, str) else ""
+    persisted_using = episode.get("using")
+    persisted_adapter = persisted_using.strip() if isinstance(persisted_using, str) else ""
+    adapter_label = context_adapter or persisted_adapter
     intuition_mode = _parse_intuition_mode(episode.get("intuition_mode"), fallback=context.intuition_mode)
 
     process_id = str(process.get("id")) if isinstance(process.get("id"), str) else context.process_id

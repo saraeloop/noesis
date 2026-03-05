@@ -95,6 +95,7 @@ class RunLifecycleService:
             last_event_id=last_event_id,
             state_hash=self._required_state_hash(run_dir),
             artifact_manifest_hash=self._artifact_digest(run_dir),
+            adapter_label=self._state_adapter_label(run_dir),
         )
 
         relative = Path(CHECKPOINTS_DIR) / checkpoint_id / CHECKPOINT_FILE
@@ -115,6 +116,19 @@ class RunLifecycleService:
             now_fn=self.now_fn,
             id_factory=self.id_factory,
         )
+        return checkpoint
+
+    def load_checkpoint_for_resume(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+    ) -> RunCheckpoint:
+        """Load and validate a checkpoint for continuation orchestration."""
+        run_dir = self._resolve_run_dir(run_id)
+        self._ensure_unsealed(run_dir=run_dir, run_id=run_id)
+        checkpoint = self._load_checkpoint(run_dir=run_dir, checkpoint_id=checkpoint_id)
+        self._assert_checkpoint_consistency(run_dir=run_dir, checkpoint=checkpoint)
         return checkpoint
 
     def resume(
@@ -162,6 +176,10 @@ class RunLifecycleService:
             raise FileNotFoundError(f"run '{run_id}' was not found")
         return candidate
 
+    def resolve_run_dir(self, run_id: str) -> Path:
+        """Resolve run directory for callers that orchestrate continuation flows."""
+        return self._resolve_run_dir(run_id)
+
     def _ensure_unsealed(self, *, run_dir: Path, run_id: str) -> None:
         if FinalizationSealStatus().is_sealed(run_dir):
             raise RunSealedError(f"run '{run_id}' is sealed and cannot accept lifecycle mutations")
@@ -171,6 +189,24 @@ class RunLifecycleService:
         if not state_path.exists():
             raise CheckpointConsistencyError("checkpoint requires state.json to exist")
         return compute_sha256(state_path)
+
+    def _state_adapter_label(self, run_dir: Path) -> str | None:
+        state_path = run_dir / "state.json"
+        if not state_path.exists():
+            return None
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        episode = payload.get("episode")
+        if not isinstance(episode, dict):
+            return None
+        using = episode.get("using")
+        if isinstance(using, str) and using.strip():
+            return using
+        return None
 
     def _artifact_digest(self, run_dir: Path) -> str:
         manifest_path = run_dir / "manifest.json"

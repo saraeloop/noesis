@@ -32,6 +32,8 @@ def normalize_using(value: str | None) -> UsingNormalization | None:
     if value is None:
         return None
     raw = str(value)
+    if not raw.strip():
+        return None
     if raw.startswith("adapter:"):
         display = raw.split("adapter:", 1)[1]
         return UsingNormalization(display=display, using_kind="adapter", using_id=raw)
