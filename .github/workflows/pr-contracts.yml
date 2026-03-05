@@ -3,6 +3,19 @@ name: PR Contracts
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - "**"
+    paths:
+      - "noesis/**"
+      - "docs/**"
+      - "scripts/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "RELEASE.md"
+      - "ROADMAP.md"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 concurrency:
