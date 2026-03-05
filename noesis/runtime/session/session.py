@@ -131,6 +131,67 @@ class NoesisSession:
                 process_name=process,
             )
 
+    def interrupt(
+        self,
+        run_id: str,
+        *,
+        reason: str | None = None,
+        caused_by: str | None = None,
+        workspace: str | Path | None = None,
+    ) -> str:
+        """Emit a run interruption lifecycle event for an unsealed run."""
+        from noesis.core import interrupt as core_interrupt
+
+        workspace_path = Path(workspace) if workspace is not None else None
+        with self._lock.scoped():
+            return core_interrupt(
+                run_id,
+                reason=reason,
+                caused_by=caused_by,
+                context=self._context,
+                workspace=workspace_path,
+            )
+
+    def checkpoint(
+        self,
+        run_id: str,
+        *,
+        caused_by: str | None = None,
+        workspace: str | Path | None = None,
+    ) -> dict[str, object]:
+        """Persist a checkpoint pointer for an unsealed run."""
+        from noesis.core import checkpoint as core_checkpoint
+
+        workspace_path = Path(workspace) if workspace is not None else None
+        with self._lock.scoped():
+            return core_checkpoint(
+                run_id,
+                caused_by=caused_by,
+                context=self._context,
+                workspace=workspace_path,
+            )
+
+    def resume(
+        self,
+        run_id: str,
+        *,
+        checkpoint_id: str,
+        caused_by: str | None = None,
+        workspace: str | Path | None = None,
+    ) -> str:
+        """Emit a run resume lifecycle event for an unsealed checkpoint."""
+        from noesis.core import resume as core_resume
+
+        workspace_path = Path(workspace) if workspace is not None else None
+        with self._lock.scoped():
+            return core_resume(
+                run_id,
+                checkpoint_id=checkpoint_id,
+                caused_by=caused_by,
+                context=self._context,
+                workspace=workspace_path,
+            )
+
     async def solve_async(
         self,
         *,

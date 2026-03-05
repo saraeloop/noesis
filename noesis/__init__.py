@@ -133,6 +133,87 @@ def solve(
     )
 
 
+def interrupt(
+    episode_id: str,
+    *,
+    reason: str | None = None,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+) -> str:
+    """Emit a run interruption lifecycle event for an unsealed run."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    if context is not None:
+        from .core import interrupt as core_interrupt
+
+        return core_interrupt(
+            episode_id,
+            reason=reason,
+            caused_by=caused_by,
+            context=context,
+            workspace=workspace_path,
+        )
+    return _current_session().interrupt(
+        episode_id,
+        reason=reason,
+        caused_by=caused_by,
+        workspace=workspace_path,
+    )
+
+
+def checkpoint(
+    episode_id: str,
+    *,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+) -> dict[str, object]:
+    """Create a deterministic checkpoint pointer for an unsealed run."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    if context is not None:
+        from .core import checkpoint as core_checkpoint
+
+        return core_checkpoint(
+            episode_id,
+            caused_by=caused_by,
+            context=context,
+            workspace=workspace_path,
+        )
+    return _current_session().checkpoint(
+        episode_id,
+        caused_by=caused_by,
+        workspace=workspace_path,
+    )
+
+
+def resume(
+    episode_id: str,
+    *,
+    checkpoint_id: str,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+) -> str:
+    """Emit a run resume lifecycle event for an unsealed checkpoint."""
+    workspace_path = Path(workspace) if workspace is not None else None
+    if context is not None:
+        from .core import resume as core_resume
+
+        return core_resume(
+            episode_id,
+            checkpoint_id=checkpoint_id,
+            caused_by=caused_by,
+            context=context,
+            workspace=workspace_path,
+        )
+    return _current_session().resume(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+        caused_by=caused_by,
+        workspace=workspace_path,
+    )
+
+
 async def solve_async(
     task: str,
     *,
@@ -203,6 +284,9 @@ __all__ = (
     "run",
     "solve",
     "solve_async",
+    "interrupt",
+    "checkpoint",
+    "resume",
     "set",
     "get",
     "governed_act",
