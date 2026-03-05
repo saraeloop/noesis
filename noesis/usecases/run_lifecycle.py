@@ -31,6 +31,14 @@ from noesis.trace.events import read_events
 
 CHECKPOINTS_DIR = "checkpoints"
 CHECKPOINT_FILE = "checkpoint.json"
+TERMINATE_STATUS_TO_STATE: dict[str, RunLifecycleState] = {
+    "ok": "success",
+    "success": "success",
+    "failed": "failed",
+    "vetoed": "vetoed",
+    "cancelled": "cancelled",
+    "error": "error",
+}
 
 __all__ = [
     "RunLifecycleService",
@@ -293,16 +301,25 @@ class RunLifecycleService:
     def _current_lifecycle_state(self, *, run_dir: Path) -> RunLifecycleState:
         state: RunLifecycleState = "running"
         for event in read_events(run_dir):
-            if event.get("phase") != "runtime":
-                continue
+            phase = event.get("phase")
             payload = event.get("payload")
             if not isinstance(payload, dict):
                 continue
+
             status = payload.get("status")
-            if isinstance(status, str):
-                normalized = status.strip().lower()
+            if not isinstance(status, str):
+                continue
+
+            normalized = status.strip().lower()
+            if phase == "runtime":
                 if normalized in {"running", "interrupted", "paused", "resuming", "success", "failed", "vetoed", "cancelled", "error"}:
                     state = cast(RunLifecycleState, normalized)
+                continue
+
+            if phase == "terminate":
+                mapped = TERMINATE_STATUS_TO_STATE.get(normalized)
+                if mapped is not None:
+                    state = mapped
         return state
 
     def _last_event_id(self, *, run_dir: Path) -> str:
