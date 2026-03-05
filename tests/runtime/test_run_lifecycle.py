@@ -68,6 +68,7 @@ def test_checkpoint_and_resume_emit_causal_runtime_events(tmp_path: Path) -> Non
         assert checkpoint_payload["artifact_manifest_hash"].startswith("sha256:")
 
         events_before_resume = read_events(run_dir)
+        events_payload_before = (run_dir / "events.jsonl").read_text(encoding="utf-8")
         checkpoint_events = [
             event
             for event in events_before_resume
@@ -81,7 +82,10 @@ def test_checkpoint_and_resume_emit_causal_runtime_events(tmp_path: Path) -> Non
         ns.resume(episode_id, checkpoint_id=checkpoint_id)
 
         events_after_resume = read_events(run_dir)
+        events_payload_after = (run_dir / "events.jsonl").read_text(encoding="utf-8")
         assert events_after_resume[: len(events_before_resume)] == events_before_resume
+        assert events_payload_after.startswith(events_payload_before)
+        assert events_payload_after != events_payload_before
         resume_event = events_after_resume[-1]
         assert resume_event["phase"] == "runtime"
         assert resume_event["event_type"] == "run.resume"
@@ -165,3 +169,37 @@ def test_resume_rejects_history_mismatch_against_checkpoint_anchor(tmp_path: Pat
 
         with pytest.raises(CheckpointConsistencyError):
             ns.resume(episode_id, checkpoint_id=checkpoint_id)
+
+
+def test_resume_rejects_state_hash_mismatch_against_checkpoint(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_state_mismatch"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir))
+        run_dir = _prepare_unsealed_run(runs_dir=runs_dir, episode_id=episode_id)
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        (run_dir / "state.json").write_text('{"episode":{"id":"ep_tampered"}}\n', encoding="utf-8")
+
+        with pytest.raises(CheckpointConsistencyError, match="state hash"):
+            ns.resume(episode_id, checkpoint_id=checkpoint_id)
+
+
+def test_resume_rejects_invalid_explicit_causal_anchor(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_bad_anchor"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir))
+        _ = _prepare_unsealed_run(runs_dir=runs_dir, episode_id=episode_id)
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        with pytest.raises(CheckpointConsistencyError, match="resume caused_by"):
+            ns.resume(
+                episode_id,
+                checkpoint_id=checkpoint_id,
+                caused_by="evt-not-allowed",
+            )

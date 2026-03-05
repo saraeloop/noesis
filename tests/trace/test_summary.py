@@ -51,6 +51,29 @@ def test_metrics_keys_dedup(tmp_path: Path):
     )
 
 
+def test_phase_ms_top_level_matches_insight_metrics(tmp_path: Path):
+    runs_dir = tmp_path / "runs-phase-ms"
+    learn_dir = tmp_path / "learn-phase-ms"
+    original = ns.get()
+    ns.set(runs_dir=str(runs_dir), learn_home=str(learn_dir), planner_mode="minimal", governance_mode="off")
+
+    try:
+        episode_id = ns.run(task="Phase timing canonicalization", intuition=False)
+        summary = ns.summary.read(episode_id)
+        metrics = summary["metrics"]
+        insight_metrics = summary["insight"]["metrics"]
+
+        insight_phase_ms = insight_metrics.get("phase_ms")
+        if insight_phase_ms:
+            assert isinstance(metrics.get("phase_ms"), dict)
+            assert metrics["phase_ms"] == insight_phase_ms
+            assert metrics["phase_ms"] != {}
+        else:
+            assert metrics.get("phase_ms") is None
+    finally:
+        ns.set(**original)
+
+
 def test_duration_and_mode_flags(tmp_path: Path):
     runs_dir = tmp_path / "runs-duration"
     learn_dir = tmp_path / "learn-duration"
