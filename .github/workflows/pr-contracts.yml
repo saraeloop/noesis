@@ -181,9 +181,15 @@ jobs:
 
       - name: Check docs (Mintlify broken links)
         if: needs.determine-changes.outputs.contracts == 'true'
-        continue-on-error: true
         working-directory: docs
-        run: mintlify broken-links
+        run: |
+          set +e
+          mintlify broken-links
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::Mintlify broken-links failed (non-blocking in PR Contracts). Exit code: $status"
+            exit 0
+          fi
 
   build-wheel:
     name: build-wheel (packaging)
