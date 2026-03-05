@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noesis.dev/schema/run_lifecycle/1.0.0.json",
+  "title": "Noesis Run Lifecycle State Machine",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "initial_state",
+    "terminal_states",
+    "transitions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "run_lifecycle_state_machine/1.0.0"
+    },
+    "initial_state": {
+      "$ref": "#/$defs/state"
+    },
+    "terminal_states": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/state"
+      },
+      "uniqueItems": true
+    },
+    "transitions": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/state"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/state"
+        },
+        "uniqueItems": true
+      }
+    }
+  },
+  "$defs": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "running",
+        "interrupted",
+        "paused",
+        "resuming",
+        "success",
+        "failed",
+        "vetoed",
+        "cancelled",
+        "error"
+      ]
+    }
+  }
+}

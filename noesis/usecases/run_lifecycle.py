@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from uuid import UUID, uuid4
 import json
 
@@ -16,7 +16,9 @@ from noesis.domain.run_lifecycle import (
     CheckpointNotFoundError,
     MissingCausalParentError,
     RunCheckpoint,
+    RunLifecycleState,
     RunSealedError,
+    assert_valid_transition,
 )
 from noesis.infrastructure.immutability import FinalizationSealStatus
 from noesis.runtime.artifacts.immutability import default_artifact_guard
@@ -53,6 +55,7 @@ class RunLifecycleService:
     ) -> str:
         run_dir = self._resolve_run_dir(run_id)
         self._ensure_unsealed(run_dir=run_dir, run_id=run_id)
+        self._assert_transition(run_dir=run_dir, to_state="interrupted")
         parent_id = caused_by or self._last_event_id(run_dir=run_dir)
         payload: dict[str, Any] = {
             "kind": "run.interrupt",
@@ -79,6 +82,7 @@ class RunLifecycleService:
     ) -> RunCheckpoint:
         run_dir = self._resolve_run_dir(run_id)
         self._ensure_unsealed(run_dir=run_dir, run_id=run_id)
+        self._assert_transition(run_dir=run_dir, to_state="paused")
 
         events = read_events(run_dir)
         last_event_id = caused_by or self._extract_event_id(events[-1] if events else None)
@@ -140,6 +144,7 @@ class RunLifecycleService:
     ) -> str:
         run_dir = self._resolve_run_dir(run_id)
         self._ensure_unsealed(run_dir=run_dir, run_id=run_id)
+        self._assert_transition(run_dir=run_dir, to_state="resuming")
 
         checkpoint = self._load_checkpoint(run_dir=run_dir, checkpoint_id=checkpoint_id)
         self._assert_checkpoint_consistency(run_dir=run_dir, checkpoint=checkpoint)
@@ -280,6 +285,25 @@ class RunLifecycleService:
             raise CheckpointConsistencyError(
                 "checkpoint state hash does not match current state.json"
             )
+
+    def _assert_transition(self, *, run_dir: Path, to_state: RunLifecycleState) -> None:
+        from_state = self._current_lifecycle_state(run_dir=run_dir)
+        assert_valid_transition(from_state, to_state)
+
+    def _current_lifecycle_state(self, *, run_dir: Path) -> RunLifecycleState:
+        state: RunLifecycleState = "running"
+        for event in read_events(run_dir):
+            if event.get("phase") != "runtime":
+                continue
+            payload = event.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            status = payload.get("status")
+            if isinstance(status, str):
+                normalized = status.strip().lower()
+                if normalized in {"running", "interrupted", "paused", "resuming", "success", "failed", "vetoed", "cancelled", "error"}:
+                    state = cast(RunLifecycleState, normalized)
+        return state
 
     def _last_event_id(self, *, run_dir: Path) -> str:
         events = read_events(run_dir)
