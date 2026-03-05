@@ -120,6 +120,61 @@ episode_id = ns.solve("process this", using=to_upper)
 episode_id = ns.solve("process this", using="my.module:adapter_fn")
 ```
 
+### Run lifecycle APIs
+
+Use these APIs for approvals-gated interruption and same-run continuation.
+
+```python
+event_id = ns.interrupt(
+    episode_id: str,
+    *,
+    reason: str | None = None,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+) -> str
+
+checkpoint = ns.checkpoint(
+    episode_id: str,
+    *,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+) -> dict[str, object]
+
+resume_event_id = ns.resume(
+    episode_id: str,
+    *,
+    checkpoint_id: str,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+) -> str
+
+episode_id = ns.resume_run(
+    episode_id: str,
+    *,
+    checkpoint_id: str,
+    using: GraphSource | None = None,
+    caused_by: str | None = None,
+    context: Any | None = None,
+    workspace: str | Path | None = None,
+    verify: VerifySpec | Sequence[VerifySpec] | None = None,
+) -> str
+```
+
+Failure semantics:
+
+- `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
+- `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
+- `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
+- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
+- `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
+- `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
+
+All errors above are defined in `noesis.domain.run_lifecycle`.
+
 ### Verification helpers
 
 Use these helpers to build verification specs for `verify=...`.

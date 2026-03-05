@@ -6,6 +6,7 @@ from typing import Final, Literal
 
 RUN_LIFECYCLE_SCHEMA_VERSION: Final[str] = "run_lifecycle/1.0.0"
 CHECKPOINT_SCHEMA_VERSION: Final[str] = "checkpoint/1.0.0"
+RUN_LIFECYCLE_STATE_MACHINE_SCHEMA_VERSION: Final[str] = "run_lifecycle_state_machine/1.0.0"
 
 RunLifecycleState = Literal[
     "running",
@@ -19,13 +20,106 @@ RunLifecycleState = Literal[
     "error",
 ]
 
+RUN_LIFECYCLE_STATES: tuple[RunLifecycleState, ...] = (
+    "running",
+    "interrupted",
+    "paused",
+    "resuming",
+    "success",
+    "failed",
+    "vetoed",
+    "cancelled",
+    "error",
+)
+
 TERMINAL_RUN_STATES: frozenset[RunLifecycleState] = frozenset(
     {"success", "failed", "vetoed", "cancelled", "error"}
 )
 
+RUN_LIFECYCLE_TRANSITIONS: dict[RunLifecycleState, frozenset[RunLifecycleState]] = {
+    "running": frozenset(
+        {
+            "running",
+            "interrupted",
+            "paused",
+            "resuming",
+            "success",
+            "failed",
+            "vetoed",
+            "cancelled",
+            "error",
+        }
+    ),
+    "interrupted": frozenset(
+        {
+            "interrupted",
+            "paused",
+            "resuming",
+            "cancelled",
+            "error",
+            "vetoed",
+        }
+    ),
+    "paused": frozenset(
+        {
+            "paused",
+            "interrupted",
+            "resuming",
+            "cancelled",
+            "error",
+            "vetoed",
+        }
+    ),
+    "resuming": frozenset(
+        {
+            "running",
+            "interrupted",
+            "paused",
+            "resuming",
+            "success",
+            "failed",
+            "vetoed",
+            "cancelled",
+            "error",
+        }
+    ),
+    "success": frozenset(),
+    "failed": frozenset(),
+    "vetoed": frozenset(),
+    "cancelled": frozenset(),
+    "error": frozenset(),
+}
+
+
+def is_valid_transition(from_state: RunLifecycleState, to_state: RunLifecycleState) -> bool:
+    """Return whether the lifecycle transition is allowed by the contract."""
+    allowed = RUN_LIFECYCLE_TRANSITIONS.get(from_state, frozenset())
+    return to_state in allowed
+
+
+def assert_valid_transition(from_state: RunLifecycleState, to_state: RunLifecycleState) -> None:
+    """Raise when lifecycle transition is not allowed by the contract."""
+    if is_valid_transition(from_state, to_state):
+        return
+    raise RunLifecycleTransitionError(f"invalid run lifecycle transition: {from_state} -> {to_state}")
+
+
+def lifecycle_state_machine_snapshot() -> dict[str, object]:
+    """Return a schema-governed snapshot of the lifecycle state machine."""
+    return {
+        "schema_version": RUN_LIFECYCLE_STATE_MACHINE_SCHEMA_VERSION,
+        "initial_state": "running",
+        "terminal_states": sorted(TERMINAL_RUN_STATES),
+        "transitions": {state: sorted(targets) for state, targets in RUN_LIFECYCLE_TRANSITIONS.items()},
+    }
+
 
 class RunLifecycleError(RuntimeError):
     """Base error for run lifecycle contract violations."""
+
+
+class RunLifecycleTransitionError(RunLifecycleError):
+    """Raised when a run lifecycle transition violates the state-machine contract."""
 
 
 class RunSealedError(RunLifecycleError):
@@ -133,9 +227,13 @@ class RunCheckpoint:
 __all__ = [
     "RUN_LIFECYCLE_SCHEMA_VERSION",
     "CHECKPOINT_SCHEMA_VERSION",
+    "RUN_LIFECYCLE_STATE_MACHINE_SCHEMA_VERSION",
     "RunLifecycleState",
+    "RUN_LIFECYCLE_STATES",
     "TERMINAL_RUN_STATES",
+    "RUN_LIFECYCLE_TRANSITIONS",
     "RunLifecycleError",
+    "RunLifecycleTransitionError",
     "RunSealedError",
     "CheckpointNotFoundError",
     "MissingCausalParentError",
@@ -143,5 +241,8 @@ __all__ = [
     "ResumeAdapterError",
     "ResumeAdapterRequiredError",
     "ResumeAdapterMismatchError",
+    "is_valid_transition",
+    "assert_valid_transition",
+    "lifecycle_state_machine_snapshot",
     "RunCheckpoint",
 ]

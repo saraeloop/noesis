@@ -11,6 +11,7 @@ from noesis.domain.run_lifecycle import (
     CheckpointConsistencyError,
     ResumeAdapterMismatchError,
     RunSealedError,
+    RunLifecycleTransitionError,
 )
 from noesis.domain.state import PlanKind, PlanStep
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
@@ -254,6 +255,31 @@ def test_resume_rejects_invalid_explicit_causal_anchor(tmp_path: Path) -> None:
                 checkpoint_id=checkpoint_id,
                 caused_by="evt-not-allowed",
             )
+
+
+def test_checkpoint_rejects_transition_from_terminal_runtime_state(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_terminal_transition"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir))
+        run_dir = _prepare_unsealed_run(runs_dir=runs_dir, episode_id=episode_id)
+        write_event(
+            run_dir,
+            {
+                "id": "evt-vetoed",
+                "timestamp": "2026-03-05T00:00:01Z",
+                "episode_id": episode_id,
+                "agent_id": "system",
+                "phase": "runtime",
+                "event_type": "run.interrupt",
+                "payload": {"kind": "run.interrupt", "status": "vetoed"},
+                "evidence_ids": [],
+                "caused_by": "evt-start",
+            },
+        )
+        with pytest.raises(RunLifecycleTransitionError, match="invalid run lifecycle transition"):
+            ns.checkpoint(episode_id)
 
 
 def test_resume_run_continues_same_run_and_seals(tmp_path: Path) -> None:
