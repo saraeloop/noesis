@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import inspect
+from hashlib import sha256
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -209,6 +210,17 @@ class EpisodeResult:
     verification: dict[str, object | None]
 
 
+@dataclass(frozen=True, slots=True)
+class ResumeAnchor:
+    """Deterministic resume anchor bound to a checkpoint boundary."""
+
+    checkpoint_id: str
+    state_hash: str
+    last_event_id: str
+    resume_event_id: str | None = None
+    event_offset: int | None = None
+
+
 @dataclass(slots=True)
 class EpisodeDependencies:
     planner: Planner
@@ -313,16 +325,16 @@ class EpisodeRunner:
             file_reader=file_reader,
         )
 
-    def run(self, request: EpisodeRequest) -> EpisodeResult:
+    def _execute_from_plan(
+        self,
+        *,
+        request: EpisodeRequest,
+        state: NoesisState,
+        plan: Sequence[PlanStep],
+        plan_anchor: UUID | None,
+        direction_event_id: Optional[UUID],
+    ) -> EpisodeResult:
         context = request.context
-        self._seed_lineage(context)
-        state = self._deps.state_repository.init(request.context)
-
-        observe_event = self._run_observe(request, state)
-        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
-        signals = tuple(request.beliefs) + tuple(intuition_signals)
-        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
-        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
         workspace = request.context.workspace
         verify = request.context.verify
         verification_requested = bool(verify)
@@ -348,7 +360,13 @@ class EpisodeRunner:
                     run_dir=context.run_dir,
                 )
             try:
-                actuation, act_event = self._run_act(plan, plan_event, direction_event_id, request, state)
+                actuation, act_event = self._run_act(
+                    plan,
+                    plan_anchor,
+                    direction_event_id,
+                    request,
+                    state,
+                )
                 adapter_result = "success"
             except Exception as exc:  # noqa: BLE001
                 adapter_result = "error"
@@ -370,7 +388,6 @@ class EpisodeRunner:
             if adapter_result == "success" and act_event is None:
                 adapter_result = "skipped"
         if act_event is None:
-            state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
             self._deps.state_repository.persist(state)
             self._maybe_emit_terminate(
@@ -405,10 +422,9 @@ class EpisodeRunner:
                 verification=verification.to_dict(),
             )
 
-        reflect_event = self._run_reflect(actuation, plan_event.event_id)
+        reflect_event = self._run_reflect(actuation, plan_anchor)
         self._run_learn(actuation, reflect_event.event_id)
 
-        state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
         state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
         self._deps.state_repository.persist(state)
         self._maybe_emit_terminate(
@@ -444,16 +460,16 @@ class EpisodeRunner:
             verification=verification.to_dict(),
         )
 
-    async def run_async(self, request: EpisodeRequest) -> EpisodeResult:
+    async def _execute_from_plan_async(
+        self,
+        *,
+        request: EpisodeRequest,
+        state: NoesisState,
+        plan: Sequence[PlanStep],
+        plan_anchor: UUID | None,
+        direction_event_id: Optional[UUID],
+    ) -> EpisodeResult:
         context = request.context
-        self._seed_lineage(context)
-        state = self._deps.state_repository.init(request.context)
-
-        observe_event = self._run_observe(request, state)
-        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
-        signals = tuple(request.beliefs) + tuple(intuition_signals)
-        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
-        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
         workspace = request.context.workspace
         verify = request.context.verify
         verification_requested = bool(verify)
@@ -481,7 +497,7 @@ class EpisodeRunner:
             try:
                 actuation, act_event = await self._run_act_async(
                     plan,
-                    plan_event,
+                    plan_anchor,
                     direction_event_id,
                     request,
                     state,
@@ -507,7 +523,6 @@ class EpisodeRunner:
             if adapter_result == "success" and act_event is None:
                 adapter_result = "skipped"
         if act_event is None:
-            state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
             state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
             self._deps.state_repository.persist(state)
             self._maybe_emit_terminate(
@@ -542,10 +557,9 @@ class EpisodeRunner:
                 verification=verification.to_dict(),
             )
 
-        reflect_event = self._run_reflect(actuation, plan_event.event_id)
+        reflect_event = self._run_reflect(actuation, plan_anchor)
         self._run_learn(actuation, reflect_event.event_id)
 
-        state.set_plan(steps=plan, rationale="minimal planner", source="planner.minimal")
         state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
         self._deps.state_repository.persist(state)
         self._maybe_emit_terminate(
@@ -580,6 +594,139 @@ class EpisodeRunner:
             verification_outcome=verification_outcome,
             verification=verification.to_dict(),
         )
+
+    def run(self, request: EpisodeRequest) -> EpisodeResult:
+        context = request.context
+        self._seed_lineage(context)
+        state = self._deps.state_repository.init(request.context)
+
+        observe_event = self._run_observe(request, state)
+        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
+        signals = tuple(request.beliefs) + tuple(intuition_signals)
+        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
+        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
+        return self._execute_from_plan(
+            request=request,
+            state=state,
+            plan=plan,
+            plan_anchor=plan_event.event_id,
+            direction_event_id=direction_event_id,
+        )
+
+    async def run_async(self, request: EpisodeRequest) -> EpisodeResult:
+        context = request.context
+        self._seed_lineage(context)
+        state = self._deps.state_repository.init(request.context)
+
+        observe_event = self._run_observe(request, state)
+        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
+        signals = tuple(request.beliefs) + tuple(intuition_signals)
+        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
+        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
+        return await self._execute_from_plan_async(
+            request=request,
+            state=state,
+            plan=plan,
+            plan_anchor=plan_event.event_id,
+            direction_event_id=direction_event_id,
+        )
+
+    def resume(
+        self,
+        request: EpisodeRequest,
+        *,
+        plan: Sequence[PlanStep] | None = None,
+        anchor: ResumeAnchor | None = None,
+    ) -> EpisodeResult:
+        """Continue execution from a checkpoint boundary on the same run."""
+        context = request.context
+        if anchor is None:
+            raise ValueError("resume requires anchor metadata from checkpoint/resume lifecycle evidence")
+        self._seed_lineage(context)
+        plan_anchor = self._validate_resume_anchor(context=context, anchor=anchor)
+        state = self._deps.state_repository.init(request.context)
+
+        plan_steps = list(plan) if plan is not None else list(state.plan.steps)
+        if not plan_steps:
+            raise ValueError("resume requires a non-empty plan")
+        state.set_plan(
+            steps=plan_steps,
+            rationale=state.plan_rationale or "resumed from checkpoint",
+            source="planner.resume",
+        )
+        return self._execute_from_plan(
+            request=request,
+            state=state,
+            plan=plan_steps,
+            plan_anchor=plan_anchor,
+            direction_event_id=None,
+        )
+
+    def _validate_resume_anchor(self, *, context: EpisodeContextPort, anchor: ResumeAnchor) -> UUID:
+        if not anchor.checkpoint_id:
+            raise ValueError("resume anchor requires checkpoint_id")
+        if not anchor.state_hash:
+            raise ValueError("resume anchor requires state_hash")
+        if not anchor.last_event_id:
+            raise ValueError("resume anchor requires last_event_id")
+
+        state_path = context.run_dir / "state.json"
+        if not state_path.exists():
+            raise ValueError("resume anchor validation requires state.json to exist")
+        current_state_hash = self._compute_sha256(state_path)
+        if current_state_hash != anchor.state_hash:
+            raise ValueError(
+                "resume anchor state hash mismatch: "
+                f"expected {anchor.state_hash}, got {current_state_hash}"
+            )
+
+        events = list(self._event_history.read(context.run_dir))
+        if not events:
+            raise ValueError("resume anchor validation requires existing event history")
+
+        if anchor.event_offset is not None:
+            if anchor.event_offset < 1:
+                raise ValueError("resume anchor event_offset must be >= 1 when provided")
+            if len(events) < anchor.event_offset:
+                raise ValueError(
+                    "resume anchor event_offset exceeds current event history "
+                    f"(offset={anchor.event_offset}, events={len(events)})"
+                )
+            checkpoint_parent = events[anchor.event_offset - 1].get("id")
+            if checkpoint_parent != anchor.last_event_id:
+                raise ValueError(
+                    "resume anchor checkpoint parent mismatch: "
+                    f"expected {anchor.last_event_id}, got {checkpoint_parent}"
+                )
+
+        anchor_event_id = anchor.resume_event_id or anchor.last_event_id
+        terminal_event = events[-1]
+        terminal_event_id = terminal_event.get("id")
+        if terminal_event_id != anchor_event_id:
+            raise ValueError(
+                "resume anchor terminal event mismatch: "
+                f"expected {anchor_event_id}, got {terminal_event_id}"
+            )
+
+        if anchor.resume_event_id:
+            if terminal_event.get("event_type") != "run.resume":
+                raise ValueError("resume anchor resume_event_id must point to a run.resume event")
+            payload = terminal_event.get("payload")
+            if not isinstance(payload, Mapping) or payload.get("checkpoint_id") != anchor.checkpoint_id:
+                raise ValueError(
+                    "resume anchor checkpoint_id mismatch for run.resume event: "
+                    f"expected {anchor.checkpoint_id}"
+                )
+
+        try:
+            return UUID(anchor_event_id)
+        except ValueError as err:
+            raise ValueError(f"resume anchor event id is not a valid UUID: {anchor_event_id}") from err
+
+    @staticmethod
+    def _compute_sha256(path: Path) -> str:
+        digest = sha256(path.read_bytes()).hexdigest()
+        return f"sha256:{digest}"
 
     def _run_observe(self, request: EpisodeRequest, state: NoesisState) -> CognitiveEvent:
         verb = CognitiveVerb.OBSERVE
@@ -787,7 +934,7 @@ class EpisodeRunner:
     def _run_act(
         self,
         plan: Sequence[PlanStep],
-        plan_event: CognitiveEvent,
+        plan_anchor: UUID | None,
         direction_event_id: Optional[UUID],
         request: EpisodeRequest,
         state: NoesisState,
@@ -796,7 +943,6 @@ class EpisodeRunner:
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
-        plan_anchor = plan_event.event_id
         latest_direction_id: Optional[UUID] = direction_event_id
         governance_result: GovernanceResult | None = None
         governance_event_id: Optional[UUID] = None
@@ -937,7 +1083,7 @@ class EpisodeRunner:
     async def _run_act_async(
         self,
         plan: Sequence[PlanStep],
-        plan_event: CognitiveEvent,
+        plan_anchor: UUID | None,
         direction_event_id: Optional[UUID],
         request: EpisodeRequest,
         state: NoesisState,
@@ -946,7 +1092,6 @@ class EpisodeRunner:
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
-        plan_anchor = plan_event.event_id
         latest_direction_id: Optional[UUID] = direction_event_id
         governance_result: GovernanceResult | None = None
         governance_event_id: Optional[UUID] = None

@@ -45,6 +45,13 @@ def compute_summary_metrics_from_events(
     event_list = list(events)
     summary_metrics = compute_metrics({}, event_list)
     insight_metrics = build_insight_metrics(event_list, summary_metrics)
+    insight_payload = insight_metrics.to_mapping()
+    insight_phase_ms = insight_payload.get("phase_ms")
+    # Canonical phase timing lives at summary.metrics.phase_ms.
+    if isinstance(insight_phase_ms, dict) and insight_phase_ms:
+        summary_metrics["phase_ms"] = dict(insight_phase_ms)
+    else:
+        summary_metrics["phase_ms"] = None
     summary_metrics["plan_adherence"] = insight_metrics.plan_adherence
     summary_metrics["tool_coverage"] = insight_metrics.tool_coverage
     summary_metrics["veto_count"] = insight_metrics.veto_count

@@ -130,7 +130,12 @@ class RunLifecycleService:
         checkpoint = self._load_checkpoint(run_dir=run_dir, checkpoint_id=checkpoint_id)
         self._assert_checkpoint_consistency(run_dir=run_dir, checkpoint=checkpoint)
 
-        parent_id = caused_by or self._last_event_id(run_dir=run_dir)
+        latest_event_id = self._last_event_id(run_dir=run_dir)
+        if caused_by is not None and caused_by not in {checkpoint.last_event_id, latest_event_id}:
+            raise CheckpointConsistencyError(
+                "resume caused_by must match checkpoint last_event_id or the latest run event id"
+            )
+        parent_id = caused_by or latest_event_id
         event_id = runtime_lifecycle_event(
             run_dir,
             run_id,
@@ -233,6 +238,11 @@ class RunLifecycleService:
         if event_id != checkpoint.last_event_id:
             raise CheckpointConsistencyError(
                 "checkpoint causal anchor does not match current event history"
+            )
+        current_state_hash = self._required_state_hash(run_dir)
+        if current_state_hash != checkpoint.state_hash:
+            raise CheckpointConsistencyError(
+                "checkpoint state hash does not match current state.json"
             )
 
     def _last_event_id(self, *, run_dir: Path) -> str:
