@@ -49,8 +49,11 @@ from .ports import (
     EventIdFactoryPort,
     EventSinkPort,
     PromptRecorderPort,
+    RunLifecyclePort,
     StateRepositoryPort,
 )
+
+_NONTERMINAL_ACTUATION_STATUSES: frozenset[str] = frozenset({"interrupted", "paused"})
 
 
 class _EventHistoryAdapter:
@@ -234,6 +237,8 @@ class EpisodeDependencies:
     governance_mode: GovernanceMode = GovernanceMode.OFF
     governance_failure_policy: GovernanceFailurePolicy | None = None
     governance_timeout_ms: int | None = None
+    governance_pause_on_veto: bool = False
+    run_lifecycle: RunLifecyclePort | None = None
     intuition_policy: Intuition | None = None
     intuition_enabled: bool = False
     action_candidate_builder: ActionCandidateBuilder | None = None
@@ -388,12 +393,17 @@ class EpisodeRunner:
             if adapter_result == "success" and act_event is None:
                 adapter_result = "skipped"
         if act_event is None:
-            state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
-            self._deps.state_repository.persist(state)
-            self._maybe_emit_terminate(
-                context,
-                {"status": actuation.status, "message": actuation.summary},
+            state.set_outcome(
+                status=self._state_outcome_status(actuation.status),
+                summary=actuation.summary,
+                metrics=actuation.metrics,
             )
+            self._deps.state_repository.persist(state)
+            if not self._is_nonterminal_status(actuation.status):
+                self._maybe_emit_terminate(
+                    context,
+                    {"status": actuation.status, "message": actuation.summary},
+                )
             verification = self._build_verification_summary(
                 request=request,
                 verify=verify,
@@ -523,12 +533,17 @@ class EpisodeRunner:
             if adapter_result == "success" and act_event is None:
                 adapter_result = "skipped"
         if act_event is None:
-            state.set_outcome(status=actuation.status, summary=actuation.summary, metrics=actuation.metrics)
-            self._deps.state_repository.persist(state)
-            self._maybe_emit_terminate(
-                context,
-                {"status": actuation.status, "message": actuation.summary},
+            state.set_outcome(
+                status=self._state_outcome_status(actuation.status),
+                summary=actuation.summary,
+                metrics=actuation.metrics,
             )
+            self._deps.state_repository.persist(state)
+            if not self._is_nonterminal_status(actuation.status):
+                self._maybe_emit_terminate(
+                    context,
+                    {"status": actuation.status, "message": actuation.summary},
+                )
             verification = self._build_verification_summary(
                 request=request,
                 verify=verify,
@@ -1029,6 +1044,14 @@ class EpisodeRunner:
                     None,
                 )
             if governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.ENFORCE:
+                if self._deps.governance_pause_on_veto and self._deps.run_lifecycle is not None:
+                    _ = self._clock.stop(token)
+                    paused = self._pause_on_governance_veto(
+                        context=context,
+                        governance_result=governance_result,
+                        caused_by=governance_event_id or blocked_direction_id or latest_direction_id or plan_anchor,
+                    )
+                    return paused, None
                 _ = self._clock.stop(token)
                 return (
                     ActuationResult(
@@ -1178,6 +1201,14 @@ class EpisodeRunner:
                     None,
                 )
             if governance_result.decision is GovernanceDecision.VETO and mode is GovernanceMode.ENFORCE:
+                if self._deps.governance_pause_on_veto and self._deps.run_lifecycle is not None:
+                    _ = self._clock.stop(token)
+                    paused = self._pause_on_governance_veto(
+                        context=context,
+                        governance_result=governance_result,
+                        caused_by=governance_event_id or blocked_direction_id or latest_direction_id or plan_anchor,
+                    )
+                    return paused, None
                 _ = self._clock.stop(token)
                 return (
                     ActuationResult(
@@ -1283,6 +1314,53 @@ class EpisodeRunner:
             metrics=metrics,
             cause=caused_by,
         )
+
+    def _pause_on_governance_veto(
+        self,
+        *,
+        context: EpisodeContextPort,
+        governance_result: GovernanceResult,
+        caused_by: UUID | None,
+    ) -> ActuationResult:
+        service = self._deps.run_lifecycle
+        if service is None:  # pragma: no cover - defensive guard
+            return ActuationResult(
+                status=OUTCOME_STATUS_VETOED,
+                summary=governance_result.message or "Episode vetoed by governance",
+                metrics={},
+                reasons=[governance_result.rule_id],
+                success=False,
+            )
+        interrupt_parent = str(caused_by) if caused_by is not None else None
+        interrupt_id = service.interrupt(
+            context.episode_id,
+            reason=governance_result.message or "Governance veto; awaiting approval",
+            caused_by=interrupt_parent,
+        )
+        checkpoint = service.checkpoint(
+            context.episode_id,
+            caused_by=interrupt_id,
+        )
+        checkpoint_id = checkpoint.checkpoint_id
+        base_message = governance_result.message or "Governance veto; awaiting approval"
+        summary = f"{base_message} (paused at checkpoint {checkpoint_id})"
+        return ActuationResult(
+            status="interrupted",
+            summary=summary,
+            metrics={},
+            reasons=[governance_result.rule_id, f"checkpoint:{checkpoint_id}"],
+            success=False,
+        )
+
+    @staticmethod
+    def _is_nonterminal_status(status: str) -> bool:
+        return status in _NONTERMINAL_ACTUATION_STATUSES
+
+    @staticmethod
+    def _state_outcome_status(status: str) -> str:
+        if status in _NONTERMINAL_ACTUATION_STATUSES:
+            return "partial"
+        return status
 
     def _record_plan_prompt(self, request: EpisodeRequest, plan: Sequence[PlanStep]) -> None:
         """

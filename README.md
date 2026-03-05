@@ -155,6 +155,35 @@ config = ns.get()
 print(config["runs_dir"], config["planner_mode"])
 ```
 
+Pause, checkpoint, and continue (same run):
+
+```python
+import noesis as ns
+
+ns.set(governance_mode="enforce", governance_pause_on_veto=True)
+
+episode_id = ns.solve("Danger operation: delete production database", using=my_graph)
+
+# Optional manual gate
+interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
+checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+
+# Evidence only (does not continue execution)
+ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
+
+# Continue execution from checkpoint on the same run ID
+episode_id = ns.resume_run(
+    episode_id,
+    checkpoint_id=checkpoint["checkpoint_id"],
+    using=my_graph,  # required for non-minimal runs
+)
+```
+
+Rule of thumb:
+- `resume()` emits lifecycle evidence only.
+- `resume_run()` emits `run.resume` and continues execution.
+- `runs_dir` points to the episodes root directory.
+
 Governed side effects (pre-act gating):
 
 ns.governed_act(...) is the “operating-system boundary” for side effects. It emits:

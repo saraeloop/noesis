@@ -40,6 +40,7 @@ class ConfigSnapshot:
     governance_mode: GovernanceMode
     governance_failure_policy: GovernanceFailurePolicy
     governance_timeout_ms: int | None
+    governance_pause_on_veto: bool
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "ConfigSnapshot":
@@ -156,6 +157,10 @@ class ConfigSnapshot:
                 governance_mode_value,
             ),
             governance_timeout_ms=_timeout(data.get("governance_timeout_ms")),
+            governance_pause_on_veto=_bool_value(
+                data.get("governance_pause_on_veto", False),
+                "governance_pause_on_veto",
+            ),
         )
 
     def to_mapping(self) -> Dict[str, object]:
@@ -182,6 +187,7 @@ class ConfigSnapshot:
             "governance_mode": self.governance_mode.value,
             "governance_failure_policy": self.governance_failure_policy.value,
             "governance_timeout_ms": self.governance_timeout_ms,
+            "governance_pause_on_veto": self.governance_pause_on_veto,
         }
 
 

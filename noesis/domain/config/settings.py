@@ -29,6 +29,7 @@ ALLOWED_CONFIG_KEYS: frozenset[str] = frozenset(
         "governance_mode",
         "governance_failure_policy",
         "governance_timeout_ms",
+        "governance_pause_on_veto",
     }
 )
 
@@ -54,6 +55,7 @@ class RuntimeConfig:
     governance_mode: str
     governance_failure_policy: Optional[str]
     governance_timeout_ms: Optional[int]
+    governance_pause_on_veto: bool
 
 
 def default_runtime_config() -> RuntimeConfig:
@@ -76,6 +78,7 @@ def default_runtime_config() -> RuntimeConfig:
         governance_mode="off",
         governance_failure_policy=None,
         governance_timeout_ms=None,
+        governance_pause_on_veto=False,
     )
 
 
@@ -152,6 +155,8 @@ def apply_runtime_overrides(
             )
         elif key == "governance_timeout_ms":
             updated = replace(updated, governance_timeout_ms=_parse_timeout_ms(value))
+        elif key == "governance_pause_on_veto":
+            updated = replace(updated, governance_pause_on_veto=_parse_bool(value, "governance_pause_on_veto"))
     return updated
 
 

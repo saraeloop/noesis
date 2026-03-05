@@ -50,6 +50,7 @@ def _build_snapshot(runs_dir: Path, intuition_mode: IntuitionMode) -> ConfigSnap
         governance_mode=GovernanceMode.OFF,
         governance_failure_policy=GovernanceFailurePolicy.FAIL_OPEN,
         governance_timeout_ms=None,
+        governance_pause_on_veto=False,
     )
 
 
