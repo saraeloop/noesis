@@ -31,5 +31,6 @@ mintlify broken-links
 - The site configuration lives in `docs/docs.json`.
 - Content is MDX under `docs/`.
 - Schema JSONs are generated under `docs/schema/` from `internal_docs/schema/*.yaml` via `python scripts/gen_schema.py`.
+- Internal contributor runbooks live under `docs/internal/` (for example, `docs/internal/tool-contract-subprocess-adapter.md`).
 
 For CLI help: `mintlify --help` or see the [Mintlify docs](https://mintlify.com/docs).
