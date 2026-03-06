@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import noesis as ns
+import noesis.core as core
 from noesis.runtime.paths import resolve_noesis_paths
 from noesis.trace.events import read_events
 
@@ -153,3 +154,30 @@ def test_governed_act_veto_pause_matches_canonical_pause_contract(tmp_path: Path
         assert not canonical_side_effect.exists()
         _assert_pause_contract(governed_run_dir)
         _assert_pause_contract(canonical_run_dir)
+
+
+def test_governed_act_uses_canonical_core_sealing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runs_dir = tmp_path / "runs"
+
+    def run_shell(*, command: str):
+        return {"ok": True, "command": command}
+
+    def fail_seal(**kwargs):
+        raise RuntimeError("seal-path-failure")
+
+    with _preserve_config():
+        ns.set(
+            runs_dir=str(runs_dir),
+            planner_mode="minimal",
+            governance_mode="enforce",
+            governance_pause_on_veto=False,
+            shell_executor=run_shell,
+        )
+        monkeypatch.setattr(core, "_seal_episode", fail_seal)
+
+        with pytest.raises(RuntimeError, match="seal-path-failure"):
+            ns.governed_act(
+                goal="safe operation: list repository files",
+                kind="shell",
+                payload={"command": "ls -a"},
+            )
