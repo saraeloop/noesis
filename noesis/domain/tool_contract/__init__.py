@@ -17,6 +17,7 @@ from .errors import (
     ToolAuthenticationError,
     ToolAuthorizationError,
     ToolContractError,
+    UnsupportedToolProtocolError,
 )
 from .event_names import ALL_EVENT_NAMES
 from .fingerprints import canonical_json, fingerprint_payload, fingerprint_prepared_invocation
@@ -67,6 +68,7 @@ __all__ = [
     "ToolExecutionResult",
     "ToolIdentity",
     "ToolProtocol",
+    "UnsupportedToolProtocolError",
     "apply_redaction",
     "build_payload_evidence",
     "canonical_json",

@@ -23,6 +23,7 @@ from noesis.domain.tool_contract import (
     ToolApprovalDecision,
     ToolIdentity,
     ToolProtocol,
+    UnsupportedToolProtocolError,
 )
 from noesis.infrastructure.tool_invocation.adapters import SubprocessToolInvocationAdapter
 from noesis.infrastructure.tool_invocation.repositories import (
@@ -229,6 +230,33 @@ def test_resume_run_rejects_ambiguous_pending_drafts_for_run(tmp_path: Path) -> 
             ns.resume_run(episode_id, checkpoint_id=checkpoint_id)
 
 
+def test_resume_run_rejects_unsupported_pending_protocol_before_resume_event(tmp_path: Path) -> None:
+    target = tmp_path / "apply.out"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(tmp_path / "runs"), planner_mode="minimal", governance_mode="off")
+        episode_id, checkpoint_id, _draft_id, run_dir = _create_paused_run(target=target)
+        repository = FilePreparedInvocationRepository(run_dir=run_dir)
+        prepared = repository.load_pending_for_run(run_id=episode_id)
+        assert prepared is not None
+        repository.save(replace(prepared, protocol=ToolProtocol.HTTP))
+        before = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+        before_events = read_events(run_dir)
+
+        with pytest.raises(UnsupportedToolProtocolError):
+            ns.resume_run(episode_id, checkpoint_id=checkpoint_id)
+
+        after = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+        assert after == before
+        after_events = read_events(run_dir)
+        assert len(after_events) == len(before_events)
+        assert not [
+            event
+            for event in after_events
+            if event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+        ]
+
+
 def test_resume_run_rejects_approval_impact_hash_mismatch_without_dispatch(tmp_path: Path) -> None:
     target = tmp_path / "apply.out"
 
@@ -272,6 +300,65 @@ def test_resume_run_rejects_approval_fingerprint_mismatch_without_dispatch(tmp_p
         after = (run_dir / "events.jsonl").read_text(encoding="utf-8")
         assert after.startswith(before)
         assert FilePreparedInvocationRepository(run_dir=run_dir).load_pending_for_run(run_id=episode_id) is not None
+
+
+def test_prepare_bridge_rejects_non_subprocess_protocol_without_persisting_draft(tmp_path: Path) -> None:
+    target = tmp_path / "apply.out"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(tmp_path / "runs"), planner_mode="minimal", governance_mode="off")
+        setup = core._bootstrap_episode(
+            task="apply canary rollout",
+            seed=0,
+            tags=None,
+            raw_using_label="core.minimal",
+            adapter_label="adapter:core.minimal",
+            context=core.get_context(),
+            workspace=None,
+            verify=(),
+            intuition=False,
+            determinism=None,
+        )
+        run_dir = setup.ctx.run_dir
+        ports = ToolRuntimeBridgePorts(
+            prepared_repository=FilePreparedInvocationRepository(run_dir=run_dir),
+            approval_repository=FileApprovalDecisionRepository(run_dir=run_dir),
+            idempotency_store=FileIdempotencyStore(run_dir=run_dir),
+            dispatch=SubprocessToolInvocationAdapter(),
+            normalizer=_IdentityNormalizer(),
+            authenticator=PassthroughAuthenticator(),
+            authorizer=AllowAllAuthorizer(),
+        )
+        lifecycle = create_run_lifecycle_service(context=core.get_context(), workspace=None)
+        bindings = build_tool_invocation_actuation_bindings(
+            request_factory=lambda run_id: _tool_request(
+                run_id=run_id,
+                target=target,
+                draft_id=f"draft:{run_id}:req-http",
+                protocol=ToolProtocol.HTTP,
+            ),
+            run_dir=run_dir,
+            ports=ports,
+            run_lifecycle=lifecycle,
+            now_fn=setup.now_fn,
+            id_factory=setup.event_id_factory or core.uuid4,
+        )
+
+        episode_id = core._run_episode(
+            setup=setup,
+            task="apply canary rollout",
+            seed=0,
+            tags=None,
+            using=None,
+            actuation_bindings=bindings,
+        )
+
+        assert episode_id == setup.ctx.episode_id
+        assert not target.exists()
+        prepared_root = run_dir / "tool_invocations" / "prepared"
+        assert not prepared_root.exists() or list(prepared_root.glob("*.json")) == []
+        checkpoints_root = run_dir / "checkpoints"
+        assert not checkpoints_root.exists() or list(checkpoints_root.glob("*/checkpoint.json")) == []
 
 
 def _create_paused_run(
@@ -328,11 +415,17 @@ def _create_paused_run(
     return episode_id, checkpoint_id, draft_id, run_dir
 
 
-def _tool_request(*, run_id: str, target: Path, draft_id: str) -> ToolInvocationInput:
+def _tool_request(
+    *,
+    run_id: str,
+    target: Path,
+    draft_id: str,
+    protocol: ToolProtocol = ToolProtocol.SUBPROCESS,
+) -> ToolInvocationInput:
     return ToolInvocationInput(
         run_id=run_id,
         request_id="req-canary",
-        protocol=ToolProtocol.SUBPROCESS,
+        protocol=protocol,
         tool=ToolIdentity(namespace="deploy", name="apply_config", version="1"),
         raw_payload={
             "argv": [
