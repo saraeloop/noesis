@@ -41,6 +41,7 @@ from .infrastructure.state_repository import EpisodeContext, RuntimeStateReposit
 from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
 from .infrastructure.verification import FileSystemFileReader
+from .infrastructure.actuation.dispatcher import resolve_executor
 from .interfaces.observability import RuntimeEventBus
 from .interfaces.config import PlannerMode
 from .trace.events import read_events, is_terminate_event
@@ -203,21 +204,6 @@ def _governed_state_hash(run_dir: Path) -> str:
     if state_path.exists():
         return compute_sha256(state_path)
     return f"sha256:{'0' * 64}"
-
-
-def _resolve_governed_executor(kind: str) -> Callable[..., Any]:
-    from .runtime.actuation_registry import get_actuation_registry
-
-    registry = get_actuation_registry()
-    if kind == "shell":
-        if registry.shell_executor is None:
-            raise ValueError("shell executor is not configured; call ns.set(shell_executor=...)")
-        return registry.shell_executor
-    if kind == "adapter":
-        if registry.adapter_executor is None:
-            raise ValueError("adapter executor is not configured; call ns.set(adapter_executor=...)")
-        return registry.adapter_executor
-    raise ValueError(f"unsupported action kind: {kind!r}")
 
 
 def _read_state_outcome(run_dir: Path) -> tuple[str, str]:
@@ -429,7 +415,7 @@ def governed_act(
         intuition=False,
         determinism=determinism,
     )
-    executor = _resolve_governed_executor(kind)
+    executor = resolve_executor(kind)
     actuation_bindings = build_governed_actuation_bindings(
         kind=kind,
         payload=payload_dict,
