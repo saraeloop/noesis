@@ -20,7 +20,6 @@ from noesis.exceptions import NoesisVeto
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.interfaces.actuation import ActuationPort, GovernedActRequest
 from noesis.domain.artifacts.finalization import FinalizationRecord
-from noesis.runtime.actuation_registry import get_actuation_registry
 from noesis.runtime.artifacts.ids import EpisodeIds, reset_ulid_state
 from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.runtime.artifacts.manifest import compute_sha256
@@ -245,25 +244,6 @@ def _resolve_policy(mode: GovernanceMode, override: PreActGovernor | None) -> Pr
     if mode is GovernanceMode.OFF:
         return None
     return override or PreActGovernor()
-
-
-def _resolve_executor(kind: str, registry: Any) -> Callable[..., Any]:
-    if kind == "shell":
-        if registry.shell_executor is None:
-            raise ValueError("shell executor is not configured; call ns.set(shell_executor=...)")
-        return registry.shell_executor
-    if kind == "adapter":
-        if registry.adapter_executor is None:
-            raise ValueError("adapter executor is not configured; call ns.set(adapter_executor=...)")
-        return registry.adapter_executor
-    raise ValueError(f"unsupported action kind: {kind!r}")
-
-
-def _invoke_executor(executor: Callable[..., Any], payload: Mapping[str, Any]) -> Any:
-    try:
-        return executor(**dict(payload))
-    except TypeError:
-        return executor(payload)
 
 
 def _governance_message(gate: Any) -> str:

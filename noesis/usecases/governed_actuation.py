@@ -26,7 +26,7 @@ class GovernedActionActuator:
     kind: str
     payload: Mapping[str, Any]
     tool_label: str
-    executor: Callable[..., Any]
+    executor: Callable[[Mapping[str, Any]], Any]
     result: Any | None = None
     error: Exception | None = None
     invoked: bool = False
@@ -45,7 +45,7 @@ class GovernedActionActuator:
         success = True
         reasons: list[str] = []
         try:
-            self.result = _invoke_executor(self.executor, self.payload)
+            self.result = self.executor(self.payload)
             summary = str(self.result)[:400]
             reasons.append("executor_ok")
         except Exception as exc:  # noqa: BLE001
@@ -117,7 +117,7 @@ def build_governed_actuation_bindings(
     kind: str,
     payload: Mapping[str, Any],
     tool_label: str,
-    executor: Callable[..., Any],
+    executor: Callable[[Mapping[str, Any]], Any],
     state_hash_resolver: Callable[[], str],
     provenance: Mapping[str, Any] | None,
     risk_tags: Sequence[str] | None,
@@ -169,10 +169,3 @@ def governed_input_excerpt(*, goal: str, payload: Mapping[str, Any]) -> str:
         if key in payload:
             return str(payload.get(key, ""))[:120]
     return str(goal)[:120]
-
-
-def _invoke_executor(executor: Callable[..., Any], payload: Mapping[str, Any]) -> Any:
-    try:
-        return executor(**dict(payload))
-    except TypeError:
-        return executor(payload)
