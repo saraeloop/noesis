@@ -73,90 +73,25 @@ class DefaultActuationPort(ActuationPort):
 
 def governed_act_impl(*, request: GovernedActRequest, context: RuntimeContext) -> Any:
     """
-    Execute a governed action with a deterministic action-candidate boundary.
+    Legacy compatibility wrapper.
+
+    Runtime truth now lives in `noesis.core.governed_act`, which uses the
+    canonical episode orchestration/finalization path.
     """
-    registry = get_actuation_registry()
-    cfg = _config_snapshot(context)
-    determinism = getattr(request, "determinism", None)
-    runtime = _bootstrap_runtime(
-        request=request,
-        context=context,
-        determinism=determinism,
-        cfg=cfg,
-    )
-    candidate = _build_candidate(
-        kind=request.kind,
-        payload=request.payload,
-        provenance=request.provenance,
-        risk_tags=request.risk_tags,
-        redaction=request.redaction,
-        state_hash=_state_hash(runtime.run_dir),
-    )
+    from noesis.core import governed_act as core_governed_act
 
-    gate = govern_pre_act_action(
+    return core_governed_act(
         goal=request.goal,
-        plan=(),
-        candidate=candidate,
-        event_bus=_event_bus(runtime),
-        episode_id=runtime.episode_id,
-        governance_policy=_resolve_policy(cfg.governance_mode, registry.governance_policy),
-        governance_mode=cfg.governance_mode,
-        failure_policy=cfg.governance_failure_policy,
-        timeout_ms=cfg.governance_timeout_ms,
-        caused_by=None,
-    )
-
-    if gate.terminal_outcome == "vetoed":
-        _finalize_terminal(
-            runtime=runtime,
-            context=context,
-            status="vetoed",
-            message=_governance_message(gate),
-        )
-        raise _veto_exception(gate, request.kind)
-
-    if gate.terminal_outcome == "error":
-        _finalize_terminal(
-            runtime=runtime,
-            context=context,
-            status="error",
-            message=_governance_message(gate),
-        )
-        raise RuntimeError("governance_failure")
-
-    executor = _resolve_executor(request.kind, registry)
-    result: Any | None = None
-    outcome = "ok"
-    error: Exception | None = None
-    try:
-        result = _invoke_executor(executor, request.payload)
-    except Exception as exc:  # noqa: BLE001
-        outcome = "error"
-        error = exc
-
-    action = runtime.state.record_action(
         kind=request.kind,
-        tool=_resolve_tool_label(request.kind, request.payload, runtime.adapter_label),
-        input_excerpt=_input_excerpt(request.goal, request.payload),
-        result_status=outcome,
-        step_id=None,
-        extensions={"x-action_candidate_id": gate.candidate.id},
-    )
-    bus = _event_bus(runtime)
-    caused_by = gate.governance_event_id or gate.candidate_event_id
-    bus.emit_action(action, caused_by=caused_by)
-
-    status = "ok" if outcome == "ok" else "error"
-    _finalize_terminal(
-        runtime=runtime,
+        payload=dict(request.payload),
+        seed=request.seed,
+        tags=dict(request.tags) if request.tags else None,
         context=context,
-        status=status,
-        message=_message_for_status(request.goal, outcome, error),
+        provenance=dict(request.provenance) if request.provenance else None,
+        risk_tags=tuple(request.risk_tags) if request.risk_tags else None,
+        redaction=dict(request.redaction) if request.redaction else None,
+        determinism=request.determinism,
     )
-
-    if error is not None:
-        raise error
-    return result
 
 
 def _config_snapshot(context: RuntimeContext) -> Any:
