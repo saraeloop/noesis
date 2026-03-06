@@ -19,8 +19,10 @@ from noesis.domain.state import LineageTracker, NoesisState
 from noesis.exceptions import NoesisVeto
 from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from noesis.interfaces.actuation import ActuationPort, GovernedActRequest
+from noesis.domain.artifacts.finalization import FinalizationRecord
 from noesis.runtime.actuation_registry import get_actuation_registry
 from noesis.runtime.artifacts.ids import EpisodeIds, reset_ulid_state
+from noesis.runtime.artifacts.immutability import default_artifact_guard
 from noesis.runtime.artifacts.manifest import compute_sha256
 from noesis.runtime.artifacts.writer import ManifestWriter
 from noesis.runtime.clock import RuntimeClock
@@ -32,6 +34,7 @@ from noesis.domain.snapshot import DEFAULT_IGNORE, SnapshotPolicy
 from noesis.domain.verification import VerificationSummary
 from noesis.trace.schema import SUMMARY_SCHEMA_VERSION
 from noesis.usecases.action_gating import govern_pre_act_action
+from noesis.usecases.finalization import FinalizationWriter, map_outcome_to_final_contract
 from noesis.usecases.memory_sync import persist_episode_memory
 
 if True:  # typing-only imports without runtime overhead
@@ -395,6 +398,7 @@ def _finalize_terminal(
 ) -> None:
     runtime.state.set_outcome(status=status, summary=message, metrics={"success": 1.0 if status == "ok" else 0.0})
     runtime.state_repo.persist(runtime.state)
+    outcome = _outcome_for_status(status)
     _terminate_event(
         runtime.run_dir,
         runtime.episode_id,
@@ -421,12 +425,30 @@ def _finalize_terminal(
         config=_config_snapshot(context),
         ports=context.list_ports(),
         adapter_result=_adapter_result(status),
-        outcome=_outcome_for_status(status),
+        outcome=outcome,
         verification=_default_verification(),
     )
     ensure_learn_file(runtime.run_dir)
     persist_episode_memory(run_dir=runtime.run_dir, context=context)
-    _finalize_manifest(runtime.run_dir, runtime.episode_id)
+    final_outcome, verification_status = map_outcome_to_final_contract(
+        outcome=outcome,
+        terminal_status=status,
+    )
+    final_record = FinalizationRecord(
+        episode_id=runtime.episode_id,
+        process_id=runtime.state.process_id or "process:governed_act",
+        run_index=runtime.state.process_run_index or 1,
+        finalized_at=runtime.now_fn(),
+        outcome=final_outcome,
+        verification_status=verification_status,
+    )
+    final_writer = FinalizationWriter(immutability_guard=default_artifact_guard())
+    final_path = final_writer.write(episode_dir=runtime.run_dir, record=final_record)
+    try:
+        _finalize_manifest(runtime.run_dir, runtime.episode_id)
+    except Exception:
+        final_path.unlink(missing_ok=True)
+        raise
 
 
 def _finalize_manifest(run_dir: Path, episode_id: str) -> None:

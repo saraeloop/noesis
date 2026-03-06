@@ -21,6 +21,7 @@ from noesis.domain.faculties.governance import (
     PreActGovernor,
     with_governance_context,
 )
+from noesis.domain.faculties.direction import PlannerDirective, DirectiveStatus
 from noesis.domain.planner.interfaces import EventBus
 from noesis.domain.state import PlanStep
 from noesis.diagnostics.validators import is_valid_sha256_state_hash
@@ -61,10 +62,10 @@ def govern_pre_act_action(
     _validate_state_ref(candidate.state_ref)
     _validate_state_hash(candidate.state_hash)
     candidate = _ensure_candidate_id(candidate, episode_id=episode_id)
-    candidate_event_id = event_bus.emit_action_candidate(candidate=candidate, caused_by=caused_by)
 
     mode = governance_mode or GovernanceMode.OFF
     if governance_policy is None or mode is GovernanceMode.OFF:
+        candidate_event_id = event_bus.emit_action_candidate(candidate=candidate, caused_by=caused_by)
         return ActionGateResult(
             candidate=candidate,
             candidate_event_id=candidate_event_id,
@@ -107,9 +108,28 @@ def govern_pre_act_action(
         ),
         error=governance_error,
     )
+    candidate_cause = caused_by
+    governance_cause: UUID | None = None
+    if (
+        governance_result.decision is GovernanceDecision.VETO
+        and mode is GovernanceMode.ENFORCE
+        and governance_error is None
+    ):
+        blocked_direction_id = _emit_governance_blocked_direction(
+            event_bus=event_bus,
+            plan=plan,
+            governance_result=governance_result,
+            caused_by=caused_by,
+        )
+        candidate_cause = blocked_direction_id
+        governance_cause = blocked_direction_id
+    candidate_event_id = event_bus.emit_action_candidate(
+        candidate=candidate,
+        caused_by=candidate_cause,
+    )
     governance_event_id = event_bus.emit_governance(
         result=governance_result,
-        caused_by=candidate_event_id,
+        caused_by=governance_cause or candidate_event_id,
     )
 
     if governance_error and mode is GovernanceMode.ENFORCE and failure_policy is GovernanceFailurePolicy.FAIL_CLOSED:
@@ -212,3 +232,34 @@ def _governance_error_payload(exc: Exception) -> Dict[str, object]:
     if isinstance(exc, TimeoutError):
         payload["timeout"] = True
     return payload
+
+
+def _emit_governance_blocked_direction(
+    *,
+    event_bus: EventBus,
+    plan: Sequence[PlanStep],
+    governance_result: GovernanceResult,
+    caused_by: UUID | None,
+) -> UUID:
+    directive = PlannerDirective(
+        steps=[step.id for step in plan],
+        status=DirectiveStatus.BLOCKED,
+        reason="governance_veto",
+        applied=False,
+        policy_id=governance_result.policy_id,
+        policy_version=governance_result.policy_version,
+        policy_kind=governance_result.policy_kind,
+    )
+    payload = directive.to_mapping()
+    payload.update(
+        {
+            "rule_id": governance_result.rule_id,
+            "score": governance_result.score,
+            "policy": governance_result.policy_id,
+        }
+    )
+    return event_bus.emit_direction_payload(
+        payload=payload,
+        agent_id=governance_result.policy_id,
+        caused_by=caused_by,
+    )

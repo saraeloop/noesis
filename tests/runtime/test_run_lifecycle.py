@@ -438,3 +438,39 @@ def test_governance_pause_mode_emits_interrupt_checkpoint_and_halts_side_effects
         assert outcomes.get("status") == "partial"
         assert "paused at checkpoint" in str(outcomes.get("summary", ""))
         assert outcomes.get("actions") == []
+
+
+def test_enforce_non_veto_emits_single_governance_and_seals(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+
+    class NoopGraph:
+        def invoke(self, payload):
+            return payload
+
+    with _preserve_config():
+        ns.set(
+            runs_dir=str(runs_dir),
+            planner_mode="minimal",
+            governance_mode="enforce",
+            governance_pause_on_veto=False,
+        )
+        episode_id = ns.solve(
+            task="safe operation: list repository files",
+            using=NoopGraph(),
+            intuition=False,
+        )
+
+        run_dir = resolve_noesis_paths(workspace=None, runs_dir=runs_dir).episodes_dir / episode_id
+        events = read_events(run_dir)
+        governance_indices = [idx for idx, event in enumerate(events) if event.get("phase") == "governance"]
+        candidate_indices = [idx for idx, event in enumerate(events) if event.get("phase") == "action_candidate"]
+
+        assert len(governance_indices) == 1
+        assert len(candidate_indices) == 1
+        assert candidate_indices[0] < governance_indices[0]
+
+        final_path = run_dir / "final.json"
+        manifest_path = run_dir / "manifest.json"
+        assert final_path.exists()
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert any(item.get("name") == "final.json" for item in manifest.get("files", []))
