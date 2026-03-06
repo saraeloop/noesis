@@ -26,8 +26,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Final, TYPE_CHECKING, Callable
+from typing import Any, Dict, Optional, Final, TYPE_CHECKING, Callable, Mapping, Sequence
 import threading
+import json
 from uuid import uuid4
 from .domain.state import LineageTracker
 from .state.episode import begin_episode
@@ -36,6 +37,7 @@ from .episode import EpisodeIndex
 from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
 from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
+from .domain.action_candidates import ActionCandidate, RedactionSpec
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
@@ -75,6 +77,7 @@ from .usecases.run_lifecycle import create_run_lifecycle_service
 from .domain.artifacts.finalization import FinalizationRecord, FINAL_FILE_NAME
 from .domain.run_lifecycle import ResumeAdapterMismatchError, ResumeAdapterRequiredError
 from .context import RuntimeContext, get_context
+from .exceptions import NoesisVeto
 
 SCHEMA_VERSION: Final[str] = SUMMARY_SCHEMA_VERSION
 EPISODE_STORE_TTL_DAYS: Final[int] = 30
@@ -176,6 +179,208 @@ def _workspace_identity(workspace: Path | str | None) -> str:
     if workspace is None:
         return str(Path.cwd().resolve())
     return str(Path(workspace).expanduser().resolve())
+
+
+@dataclass(slots=True)
+class _GovernedActionActuator:
+    kind: str
+    payload: Mapping[str, Any]
+    tool_label: str
+    executor: Callable[..., Any]
+    result: Any | None = None
+    error: Exception | None = None
+    invoked: bool = False
+
+    def execute(
+        self,
+        *,
+        plan: Sequence[Any],
+        request: Any,
+        state: Any,
+        event_bus: Any,
+    ) -> Any:
+        self.invoked = True
+        summary: str | None = None
+        status = "ok"
+        success = True
+        reasons: list[str] = []
+        try:
+            self.result = _invoke_governed_executor(self.executor, self.payload)
+            summary = str(self.result)[:400]
+            reasons.append("executor_ok")
+        except Exception as exc:  # noqa: BLE001
+            self.error = exc
+            status = "error"
+            success = False
+            summary = str(exc)
+            reasons.append("executor_error")
+
+        step_id = plan[-1].id if plan else None
+        action = state.record_action(
+            kind=self.kind,
+            tool=self.tool_label,
+            input_excerpt=_governed_input_excerpt(goal=request.goal, payload=self.payload),
+            result_status="ok" if success else "error",
+            step_id=step_id,
+        )
+        event_bus.emit_action(action)
+
+        from .domain.planner.interfaces import ActuationResult
+
+        return ActuationResult(
+            status=status,
+            summary=summary,
+            metrics={"success": 1.0 if success else 0.0},
+            reasons=reasons,
+            success=success,
+        )
+
+
+@dataclass(slots=True)
+class _GovernedActionCandidateBuilder:
+    kind: str
+    payload: Mapping[str, Any]
+    provenance: Mapping[str, Any] | None
+    risk_tags: tuple[str, ...] | None
+    redaction: Mapping[str, Any] | None
+
+    def build(
+        self,
+        *,
+        plan: Sequence[Any],
+        request: Any,
+        state: Any,
+    ) -> ActionCandidate:
+        redaction_spec = _parse_governed_redaction(self.redaction)
+        step = plan[-1] if plan else None
+        step_provenance: dict[str, Any] = {}
+        if step is not None:
+            step_provenance["plan_step_id"] = step.id
+            step_provenance["plan_step_kind"] = getattr(step.kind, "value", str(step.kind))
+        merged_provenance = dict(self.provenance or {})
+        merged_provenance.update(step_provenance)
+        return ActionCandidate(
+            id=None,
+            kind=self.kind,
+            payload=dict(self.payload),
+            state_ref="state.json",
+            state_hash=_governed_state_hash(request.context.run_dir),
+            redaction=redaction_spec,
+            provenance=merged_provenance or None,
+            risk_tags=tuple(self.risk_tags or ()),
+        )
+
+
+def _parse_governed_redaction(redaction: Mapping[str, Any] | None) -> RedactionSpec:
+    if redaction is None:
+        return RedactionSpec(
+            mode="hash_only",
+            policy_id="redact.default",
+            policy_version="1.0.0",
+            field_rules={},
+        )
+    return RedactionSpec(
+        mode=str(redaction.get("mode", "hash_only")),
+        policy_id=str(redaction.get("policy_id", "redact.default")),
+        policy_version=str(redaction.get("policy_version", "1.0.0")),
+        field_rules=dict(redaction.get("field_rules") or {}),
+    )
+
+
+def _governed_state_hash(run_dir: Path) -> str:
+    state_path = run_dir / "state.json"
+    if state_path.exists():
+        return compute_sha256(state_path)
+    return f"sha256:{'0' * 64}"
+
+
+def _resolve_governed_adapter_label(kind: str, payload: Mapping[str, Any]) -> str:
+    adapter_label = payload.get("adapter_label")
+    if isinstance(adapter_label, str) and adapter_label.strip():
+        return adapter_label.strip()
+    return f"adapter:{kind}"
+
+
+def _resolve_governed_tool_label(kind: str, payload: Mapping[str, Any], adapter_label: str) -> str:
+    tool = payload.get("tool")
+    if isinstance(tool, str) and tool.strip():
+        return tool.strip()
+    return adapter_label or kind
+
+
+def _resolve_governed_executor(kind: str) -> Callable[..., Any]:
+    from .runtime.actuation_registry import get_actuation_registry
+
+    registry = get_actuation_registry()
+    if kind == "shell":
+        if registry.shell_executor is None:
+            raise ValueError("shell executor is not configured; call ns.set(shell_executor=...)")
+        return registry.shell_executor
+    if kind == "adapter":
+        if registry.adapter_executor is None:
+            raise ValueError("adapter executor is not configured; call ns.set(adapter_executor=...)")
+        return registry.adapter_executor
+    raise ValueError(f"unsupported action kind: {kind!r}")
+
+
+def _invoke_governed_executor(executor: Callable[..., Any], payload: Mapping[str, Any]) -> Any:
+    try:
+        return executor(**dict(payload))
+    except TypeError:
+        return executor(payload)
+
+
+def _governed_input_excerpt(*, goal: str, payload: Mapping[str, Any]) -> str:
+    for key in ("command", "cmd", "input_excerpt"):
+        if key in payload:
+            return str(payload.get(key, ""))[:120]
+    return str(goal)[:120]
+
+
+def _read_state_outcome(run_dir: Path) -> tuple[str, str]:
+    path = run_dir / "state.json"
+    if not path.exists():
+        return "error", "state.json missing after governed execution"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "error", "state.json unreadable after governed execution"
+    outcomes = payload.get("outcomes")
+    if not isinstance(outcomes, dict):
+        return "error", "missing outcome state"
+    status = outcomes.get("status")
+    summary = outcomes.get("summary")
+    return str(status or "error"), str(summary or "")
+
+
+def _build_veto_exception(*, run_dir: Path, kind: str, fallback_summary: str) -> NoesisVeto:
+    events = read_events(run_dir)
+    governance_event = next((event for event in reversed(events) if event.get("phase") == "governance"), None)
+    candidate_event = next((event for event in reversed(events) if event.get("phase") == "action_candidate"), None)
+    payload = governance_event.get("payload") if isinstance(governance_event, dict) else {}
+    payload = payload if isinstance(payload, dict) else {}
+    candidate_payload = candidate_event.get("payload") if isinstance(candidate_event, dict) else {}
+    candidate_payload = candidate_payload if isinstance(candidate_payload, dict) else {}
+    advice = str(payload.get("message") or fallback_summary or "Action blocked by governance")
+    return NoesisVeto(
+        advice=advice,
+        target=kind,
+        scope="governance.pre_act",
+        decision=str(payload.get("decision") or "veto"),
+        rule_id=str(payload.get("rule_id")) if payload.get("rule_id") else None,
+        policy_id=str(payload.get("policy_id")) if payload.get("policy_id") else None,
+        policy_version=str(payload.get("policy_version")) if payload.get("policy_version") else None,
+        policy_kind=str(payload.get("policy_kind")) if payload.get("policy_kind") else None,
+        enforced=bool(payload.get("enforced")) if "enforced" in payload else None,
+        details=payload.get("details") if isinstance(payload.get("details"), dict) else None,
+        error=payload.get("error") if isinstance(payload.get("error"), dict) else None,
+        governance_id=str(governance_event.get("id")) if isinstance(governance_event, dict) else None,
+        action_candidate_id=(
+            str(candidate_payload.get("action_candidate_id"))
+            if candidate_payload.get("action_candidate_id")
+            else None
+        ),
+    )
 
 
 # Public API
@@ -301,6 +506,81 @@ def resume_run(
         using=using,
         resume_anchor=anchor,
     )
+
+
+def governed_act(
+    *,
+    goal: str,
+    kind: str,
+    payload: Mapping[str, Any],
+    seed: int = 0,
+    tags: Optional[Dict[str, Any]] = None,
+    context: RuntimeContext | None = None,
+    workspace: str | Path | None = None,
+    provenance: Mapping[str, Any] | None = None,
+    risk_tags: Sequence[str] | None = None,
+    redaction: Mapping[str, Any] | None = None,
+    determinism: "_DeterminismConfig | None" = None,
+) -> Any:
+    """
+    Execute one governed side effect through the canonical episode runtime seam.
+
+    This keeps governed_act as a public API while delegating orchestration,
+    governance, finalization, and sealing to the same runtime path used by run/solve.
+    """
+    app = context or get_context()
+    workspace_path = Path(workspace).expanduser().resolve() if workspace is not None else None
+    tags_dict = dict(tags or {})
+    payload_dict = dict(payload)
+    adapter_label = _resolve_governed_adapter_label(kind, payload_dict)
+    raw_using_label = adapter_label
+    setup = _bootstrap_episode(
+        task=goal,
+        seed=seed,
+        tags=tags_dict,
+        raw_using_label=raw_using_label,
+        adapter_label=adapter_label,
+        context=app,
+        workspace=workspace_path,
+        verify=(),
+        intuition=False,
+        determinism=determinism,
+    )
+    executor = _resolve_governed_executor(kind)
+    actuator = _GovernedActionActuator(
+        kind=kind,
+        payload=payload_dict,
+        tool_label=_resolve_governed_tool_label(kind, payload_dict, adapter_label),
+        executor=executor,
+    )
+    candidate_builder = _GovernedActionCandidateBuilder(
+        kind=kind,
+        payload=payload_dict,
+        provenance=dict(provenance) if provenance else None,
+        risk_tags=tuple(risk_tags) if risk_tags else None,
+        redaction=dict(redaction) if redaction else None,
+    )
+    _ = _run_episode(
+        setup=setup,
+        task=goal,
+        seed=seed,
+        tags=tags_dict,
+        using=None,
+        actuator_override=actuator,
+        action_candidate_builder_override=candidate_builder,
+    )
+    status, summary = _read_state_outcome(setup.ctx.run_dir)
+    if status == "ok":
+        return actuator.result
+    if status in {"vetoed", "partial", "paused", "interrupted"}:
+        raise _build_veto_exception(
+            run_dir=setup.ctx.run_dir,
+            kind=kind,
+            fallback_summary=summary,
+        )
+    if actuator.error is not None:
+        raise actuator.error
+    raise RuntimeError(summary or "governed action failed")
 
 
 def solve(
@@ -798,6 +1078,8 @@ def _run_episode(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
     resume_anchor: ResumeAnchor | None = None,
+    actuator_override: Any | None = None,
+    action_candidate_builder_override: Any | None = None,
 ) -> str:
     stop_event, thread = _start_process_heartbeat(setup)
     try:
@@ -817,7 +1099,9 @@ def _run_episode(
         )
         governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
 
-        if using is None:
+        if actuator_override is not None:
+            actuator = actuator_override
+        elif using is None:
             actuator = MinimalActuator(tool_label=setup.adapter_label)
         else:
             from noesis.infrastructure.episode.adapter_actuator import AdapterActuator
@@ -850,6 +1134,7 @@ def _run_episode(
             run_lifecycle=lifecycle_service,
             intuition_policy=setup.intuition_impl,
             intuition_enabled=setup.intuition_enabled,
+            action_candidate_builder=action_candidate_builder_override,
         )
         runner = EpisodeRunner(deps, instrumentation=instrumentation)
         using_norm = normalize_using(setup.raw_using_label)
