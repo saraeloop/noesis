@@ -6,7 +6,7 @@ slug: governed-side-effects
 
 This tutorial demonstrates the OS-boundary contract of `ns.governed_act(...)`:
 
-`action_candidate → governance → act` (or `terminate` on veto).
+`action_candidate → governance → act` (or veto handling: `terminate` by default, or `run.interrupt → run.checkpoint` when pause-on-veto is enabled).
 
 **Why this matters:** you get a hard safety gate with a verifiable audit trail.
 
@@ -28,7 +28,7 @@ uv run python -m tutorials.governed_side_effects
 
 ## Notes
 
-`ns.governed_act(...)` creates its own episode bundle. The tutorial locates the episode id by diffing `runs_dir` before and after each call.
+`ns.governed_act(...)` creates its own episode bundle through the same canonical runtime boundary as `ns.solve(...)`. The tutorial locates the episode id by diffing `runs_dir` before and after each call.
 
 ## Source
 

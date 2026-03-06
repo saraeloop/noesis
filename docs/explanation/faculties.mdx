@@ -30,7 +30,9 @@ Hook ordering is enforced by `validate_hook_sequence()`. Any violation raises an
 
 A **veto** is a fail-closed stop before action execution:
 
-- Governance emits the veto decision event; the runtime emits a single `terminate` event with `status="vetoed"`.
+- Governance emits the veto decision event; runtime outcome depends on configuration:
+- default (`governance_pause_on_veto=false`): a `terminate` event with `status="vetoed"` is emitted.
+- pause mode (`governance_pause_on_veto=true`): `run.interrupt` and `run.checkpoint` are emitted instead of terminate/finalization.
 - No `act` events are emitted on veto paths.
 - Failure policy decides how governance exceptions resolve (e.g., enforce-veto).
 - `veto_count` is computed from governance decisions where `decision="veto"` (not from terminate status) to avoid double-counting.
@@ -184,8 +186,9 @@ Directive IDs are computed from content for reproducible lineage.
 
 `ns.governed_act(...)` is the operating-system boundary for side effects. It emits:
 
-- `action_candidate → governance → act`
-- or, on enforced veto: `action_candidate → governance → terminate` (no `act`)
+- allow/audit path: `action_candidate → governance → act → terminate`
+- enforced veto (default): `action_candidate → governance → terminate` (no `act`)
+- enforced veto with `governance_pause_on_veto=True`: `action_candidate → governance → run.interrupt → run.checkpoint` (no `act`)
 
 ```python
 import noesis as ns
@@ -258,15 +261,22 @@ Event stream convention: governance events keep `phase="governance"`; sub-hooks 
 | `audit` | Action proceeds, flagged for review |
 | `veto` | Action blocked entirely |
 
-### Terminate on veto
+### Veto runtime outcomes
 
-When a veto is issued, the runtime emits a terminate event:
+When a veto is issued, the default runtime emits a terminate event:
 
 ```json
 {"phase":"runtime","payload":{"kind":"terminate","status":"vetoed","message":"Blocked by governance"}}
 ```
 
-_See `events.v1` for the canonical terminate payload._
+With `governance_pause_on_veto=true`, runtime emits interrupt/checkpoint events instead:
+
+```json
+{"phase":"runtime","event_type":"run.interrupt"}
+{"phase":"runtime","event_type":"run.checkpoint"}
+```
+
+_See `events.v1` for canonical payload shapes._
 
 ### Built-in rules
 
