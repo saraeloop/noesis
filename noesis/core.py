@@ -395,6 +395,7 @@ def resume_run(
         resume_event_id=resume_event_id,
         event_offset=checkpoint.event_offset,
     )
+    actuation_bindings = _resume_tool_invocation_bindings(setup)
     return _run_episode(
         setup=setup,
         task=setup.episode_ctx.task,
