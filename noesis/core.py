@@ -395,6 +395,7 @@ def resume_run(
         resume_event_id=resume_event_id,
         event_offset=checkpoint.event_offset,
     )
+    actuation_bindings = _resume_tool_invocation_bindings(setup)
     return _run_episode(
         setup=setup,
         task=setup.episode_ctx.task,
@@ -432,6 +433,12 @@ def _dispatch_for_prepared_invocation(invocation: PreparedToolInvocation) -> Any
         "tool runtime bridge only supports subprocess during ADR-016 PR-4; "
         f"cannot resume protocol={invocation.protocol.value!r}"
     )
+
+
+def _dispatch_for_prepared_invocation(invocation: PreparedToolInvocation) -> Any:
+    if invocation.protocol is ToolProtocol.SUBPROCESS:
+        return SubprocessToolInvocationAdapter()
+    raise ValueError(f"unsupported prepared tool protocol for resume: {invocation.protocol.value}")
 
 
 def governed_act(
