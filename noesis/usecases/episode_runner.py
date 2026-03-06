@@ -961,12 +961,17 @@ class EpisodeRunner:
         latest_direction_id: Optional[UUID] = direction_event_id
         governance_result: GovernanceResult | None = None
         governance_event_id: Optional[UUID] = None
+        governance_wrapped_actuator = isinstance(self._deps.actuator, GovernedActuator)
         mode = _parse_governance_mode(getattr(self._deps, "governance_mode", GovernanceMode.OFF))
         failure_policy = _parse_failure_policy(
             getattr(self._deps, "governance_failure_policy", None),
             mode,
         )
-        if self._deps.governance_policy is not None and mode is not GovernanceMode.OFF:
+        if (
+            not governance_wrapped_actuator
+            and self._deps.governance_policy is not None
+            and mode is not GovernanceMode.OFF
+        ):
             governance_error: Dict[str, object] | None = None
             try:
                 raw_result = _evaluate_governance(
@@ -1063,15 +1068,34 @@ class EpisodeRunner:
                     ),
                     None,
                 )
-        actuation = self._deps.actuator.execute(
+        actuator = self._deps.actuator
+        if governance_wrapped_actuator and isinstance(actuator, GovernedActuator):
+            actuator = replace(
+                actuator,
+                caused_by_resolver=lambda _plan, _request, _state: latest_direction_id or plan_anchor,
+            )
+        actuation = actuator.execute(
             plan=plan,
             request=request,
             state=state,
             event_bus=self._deps.event_bus,
         )
-        if actuation.status == "vetoed" or (
-            actuation.status == "error" and "governance_failure" in actuation.reasons
-        ):
+        if actuation.status == "vetoed":
+            if governance_wrapped_actuator and self._deps.governance_pause_on_veto and self._deps.run_lifecycle is not None:
+                _ = self._clock.stop(token)
+                paused = self._pause_on_governance_veto(
+                    context=context,
+                    governance_result=self._governance_result_from_veto_actuation(
+                        actuation=actuation,
+                        mode=mode,
+                        failure_policy=failure_policy,
+                    ),
+                    caused_by=self._latest_event_uuid(context.run_dir) or latest_direction_id or plan_anchor,
+                )
+                return paused, None
+            _ = self._clock.stop(token)
+            return actuation, None
+        if actuation.status == "error" and "governance_failure" in actuation.reasons:
             _ = self._clock.stop(token)
             return actuation, None
         if governance_result and (
@@ -1118,12 +1142,17 @@ class EpisodeRunner:
         latest_direction_id: Optional[UUID] = direction_event_id
         governance_result: GovernanceResult | None = None
         governance_event_id: Optional[UUID] = None
+        governance_wrapped_actuator = isinstance(self._deps.actuator, GovernedActuator)
         mode = _parse_governance_mode(getattr(self._deps, "governance_mode", GovernanceMode.OFF))
         failure_policy = _parse_failure_policy(
             getattr(self._deps, "governance_failure_policy", None),
             mode,
         )
-        if self._deps.governance_policy is not None and mode is not GovernanceMode.OFF:
+        if (
+            not governance_wrapped_actuator
+            and self._deps.governance_policy is not None
+            and mode is not GovernanceMode.OFF
+        ):
             governance_error: Dict[str, object] | None = None
             try:
                 raw_result = _evaluate_governance(
@@ -1220,16 +1249,35 @@ class EpisodeRunner:
                     ),
                     None,
                 )
-        actuation_value = self._deps.actuator.execute(
+        actuator = self._deps.actuator
+        if governance_wrapped_actuator and isinstance(actuator, GovernedActuator):
+            actuator = replace(
+                actuator,
+                caused_by_resolver=lambda _plan, _request, _state: latest_direction_id or plan_anchor,
+            )
+        actuation_value = actuator.execute(
             plan=plan,
             request=request,
             state=state,
             event_bus=self._deps.event_bus,
         )
         actuation = await self._await_actuation(actuation_value)
-        if actuation.status == "vetoed" or (
-            actuation.status == "error" and "governance_failure" in actuation.reasons
-        ):
+        if actuation.status == "vetoed":
+            if governance_wrapped_actuator and self._deps.governance_pause_on_veto and self._deps.run_lifecycle is not None:
+                _ = self._clock.stop(token)
+                paused = self._pause_on_governance_veto(
+                    context=context,
+                    governance_result=self._governance_result_from_veto_actuation(
+                        actuation=actuation,
+                        mode=mode,
+                        failure_policy=failure_policy,
+                    ),
+                    caused_by=self._latest_event_uuid(context.run_dir) or latest_direction_id or plan_anchor,
+                )
+                return paused, None
+            _ = self._clock.stop(token)
+            return actuation, None
+        if actuation.status == "error" and "governance_failure" in actuation.reasons:
             _ = self._clock.stop(token)
             return actuation, None
         if governance_result and (
@@ -1351,6 +1399,47 @@ class EpisodeRunner:
             reasons=[governance_result.rule_id, f"checkpoint:{checkpoint_id}"],
             success=False,
         )
+
+    def _governance_result_from_veto_actuation(
+        self,
+        *,
+        actuation: ActuationResult,
+        mode: GovernanceMode,
+        failure_policy: GovernanceFailurePolicy,
+    ) -> GovernanceResult:
+        rule_id = next(
+            (reason for reason in actuation.reasons if isinstance(reason, str) and reason.strip()),
+            "rule:governance.veto",
+        )
+        message = actuation.summary or "Episode vetoed by governance"
+        result = GovernanceResult(
+            decision=GovernanceDecision.VETO,
+            rule_id=rule_id,
+            score=1.0,
+            message=message,
+            policy_id="policy:runtime.governance",
+            policy_version="1.0.0",
+            policy_kind="rules",
+        )
+        return with_governance_context(
+            result,
+            mode=mode,
+            failure_policy=failure_policy,
+            enforced=mode is GovernanceMode.ENFORCE,
+            error=None,
+        )
+
+    def _latest_event_uuid(self, run_dir: Path) -> UUID | None:
+        events = self._event_history.read(run_dir)
+        if not events:
+            return None
+        event_id = events[-1].get("id")
+        if not isinstance(event_id, str):
+            return None
+        try:
+            return UUID(event_id)
+        except ValueError:
+            return None
 
     @staticmethod
     def _is_nonterminal_status(status: str) -> bool:

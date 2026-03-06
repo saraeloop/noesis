@@ -68,7 +68,7 @@ def _find_episode_dir(root: Path) -> Path:
     return candidates[0]
 
 
-def test_governed_act_finalize_no_attribute_error(tmp_path: Path) -> None:
+def test_governed_act_terminal_runs_seal_per_adr014(tmp_path: Path) -> None:
     intuition_mode = IntuitionMode.INTERVENTIVE
     snapshot = _build_snapshot(tmp_path, intuition_mode)
     context = create_runtime_context(config_port=_StaticConfig(snapshot))
@@ -100,3 +100,21 @@ def test_governed_act_finalize_no_attribute_error(tmp_path: Path) -> None:
     state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
     episode = state.get("episode", {})
     assert episode.get("intuition_mode") == intuition_mode.value
+    assert (run_dir / "final.json").exists()
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert any(entry.get("name") == "final.json" for entry in manifest.get("files", []))
+
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary.get("outcome") == "success_unverified"
+
+    terminate_events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    terminate_payload = next(
+        (event.get("payload") for event in terminate_events if event.get("phase") == "terminate"),
+        None,
+    )
+    assert isinstance(terminate_payload, dict)
+    assert terminate_payload.get("status") == "ok"
