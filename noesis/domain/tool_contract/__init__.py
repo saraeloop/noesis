@@ -9,6 +9,14 @@ from .enums import (
     RiskTier,
     ToolProtocol,
 )
+from .errors import (
+    ApprovalDecisionBindingError,
+    ApprovalDecisionRequiredError,
+    PreparedToolInvocationNotFoundError,
+    ToolAuthenticationError,
+    ToolAuthorizationError,
+    ToolContractError,
+)
 from .event_names import ALL_EVENT_NAMES
 from .fingerprints import canonical_json, fingerprint_payload, fingerprint_prepared_invocation
 from .idempotency import IdempotencyEvaluation, IdempotencyScope, evaluate_idempotency
@@ -30,6 +38,8 @@ from .redaction import PayloadRedactionPolicy, REDACTED_VALUE, apply_redaction, 
 __all__ = [
     "ALL_EVENT_NAMES",
     "ALL_REASON_CODES",
+    "ApprovalDecisionBindingError",
+    "ApprovalDecisionRequiredError",
     "ApprovalDecisionStatus",
     "EffectKind",
     "ExecutionContext",
@@ -41,13 +51,17 @@ __all__ = [
     "PayloadEvidence",
     "PayloadRedactionPolicy",
     "PreflightBinding",
+    "PreparedToolInvocationNotFoundError",
     "PreparedInvocationStatus",
     "PreparedToolInvocation",
     "REDACTED_VALUE",
     "RiskTier",
     "SecurityContext",
     "TOOL_CONTRACT_SCHEMA_VERSION",
+    "ToolAuthenticationError",
     "ToolApprovalDecision",
+    "ToolAuthorizationError",
+    "ToolContractError",
     "ToolExecutionResult",
     "ToolIdentity",
     "ToolProtocol",
