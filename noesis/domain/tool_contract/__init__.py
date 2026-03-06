@@ -10,6 +10,7 @@ from .enums import (
     ToolProtocol,
 )
 from .errors import (
+    AmbiguousPreparedToolInvocationError,
     ApprovalDecisionBindingError,
     ApprovalDecisionRequiredError,
     PreparedToolInvocationNotFoundError,
@@ -38,6 +39,7 @@ from .redaction import PayloadRedactionPolicy, REDACTED_VALUE, apply_redaction, 
 __all__ = [
     "ALL_EVENT_NAMES",
     "ALL_REASON_CODES",
+    "AmbiguousPreparedToolInvocationError",
     "ApprovalDecisionBindingError",
     "ApprovalDecisionRequiredError",
     "ApprovalDecisionStatus",

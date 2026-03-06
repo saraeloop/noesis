@@ -19,6 +19,10 @@ class PreparedToolInvocationNotFoundError(ToolContractError):
     """No prepared invocation exists for the requested run/draft identity."""
 
 
+class AmbiguousPreparedToolInvocationError(ToolContractError):
+    """More than one pending prepared invocation exists for the requested run."""
+
+
 class ApprovalDecisionRequiredError(ToolContractError):
     """Execution requires an approval decision that was not found or approved."""
 
@@ -28,6 +32,7 @@ class ApprovalDecisionBindingError(ToolContractError):
 
 
 __all__ = [
+    "AmbiguousPreparedToolInvocationError",
     "ApprovalDecisionBindingError",
     "ApprovalDecisionRequiredError",
     "PreparedToolInvocationNotFoundError",
