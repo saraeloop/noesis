@@ -455,6 +455,28 @@ except NoesisVeto as veto:
     print(f"Blocked by governance: {veto.advice}")
 ```
 
+### Internal tool invocation use cases (adapter implementers)
+
+Noesis also exposes an internal application contract for protocol adapters:
+
+```python
+from noesis.usecases.tool_invocation import (
+    ToolInvocationInput,
+    prepare_tool_invocation,
+    execute_prepared_tool_invocation,
+)
+```
+
+Use this contract when you need explicit prepare/approve/execute boundaries for side-effecting tools. The canonical identity key is `run_id + draft_id`.
+
+Execution-time failures are surfaced as typed errors from `noesis.domain.tool_contract`:
+
+- `PreparedToolInvocationNotFoundError`
+- `ApprovalDecisionRequiredError`
+- `ApprovalDecisionBindingError`
+
+For full workflow, event ordering, and troubleshooting guidance, see [Integrate adapters](/guides/integrate-adapters).
+
 ## Session management
 
 Use sessions when you need isolated configuration, explicit lifecycle control, or registered ports.
