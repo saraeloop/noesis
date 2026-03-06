@@ -37,22 +37,20 @@ def governed_act(
     else:
         runtime_context = context
 
-    require_actuation_port = import_module("noesis._internal.actuation").require_actuation_port
-    port = require_actuation_port(runtime_context)
-    request_cls = import_module("noesis.interfaces.actuation").GovernedActRequest
-    request = request_cls(
-        goal=goal,
-        kind=kind,
-        payload=dict(payload),
-        seed=seed,
-        tags=dict(merged_tags) if merged_tags else None,
-        provenance=dict(provenance) if provenance else None,
-        risk_tags=tuple(risk_tags) if risk_tags else None,
-        redaction=dict(redaction) if redaction else None,
-        determinism=determinism,
-    )
+    core_governed_act = import_module("noesis.core").governed_act
     try:
-        return port.governed_act(request, context=runtime_context)
+        return core_governed_act(
+            goal=goal,
+            kind=kind,
+            payload=dict(payload),
+            seed=seed,
+            tags=dict(merged_tags) if merged_tags else None,
+            context=runtime_context,
+            provenance=dict(provenance) if provenance else None,
+            risk_tags=tuple(risk_tags) if risk_tags else None,
+            redaction=dict(redaction) if redaction else None,
+            determinism=determinism,
+        )
     except NoesisVeto:
         raise
     except Exception as exc:  # noqa: BLE001

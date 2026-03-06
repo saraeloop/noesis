@@ -5,6 +5,9 @@
 - Use-case ports added (`noesis/usecases/ports.py`) and `EpisodeRunner` refactored to depend on ports; import-linter contracts now enforce `usecases` isolation from adapters/CLI (ADR-006).
 - ADR-008: Action candidates and pre-act gating for governed actuation, with deterministic candidate lineage.
 - ADR-009: Dual sync/async execution model with `solve_async` and async adapter actuation, preserving sync semantics.
+- Runtime (governed boundary): `EpisodeRunner` skips duplicate governance evaluation when the actuator is `GovernedActuator`, preserving a single canonical governance emission path.
+- Runtime (enforce-veto causality): pre-act veto ordering now emits `direction(status=blocked) → action_candidate → governance` before terminalization.
+- Sealing contract: `ns.governed_act` terminal finalization now writes `final.json` before `manifest.json`; if manifest writing fails, `final.json` is rolled back.
 
 ## v1.1.0 – 2025-12-08
 ### Added

@@ -49,6 +49,7 @@ flowchart LR
   - `events.jsonl` – timeline with causal IDs
   - `summary.json` – metrics, outcome, cross-links
   - `state.json` – current plan and episode state
+  - `final.json` – terminal sealing record (present for terminal runs)
   - `manifest.json` – SHA-256 + size ledger for tamper evidence
   - `learn.jsonl` (optional) – learning payloads
 
@@ -92,6 +93,7 @@ Artifacts layout:
       summary.json
       state.json
       events.jsonl
+      final.json      # present for terminal runs
       manifest.json
       learn.jsonl    # optional
       prompts.jsonl  # optional, prompt provenance (opt-in)
@@ -186,9 +188,12 @@ Rule of thumb:
 
 Governed side effects (pre-act gating):
 
-ns.governed_act(...) is the “operating-system boundary” for side effects. It emits:
-	•	action_candidate → governance → act
-	•	or, on enforced veto: action_candidate → governance → terminate (no act)
+`ns.governed_act(...)` is the “operating-system boundary” for side effects.
+
+Canonical event ordering:
+- allow/audit: `action_candidate → governance → act`
+- enforced veto: `direction(status=blocked) → action_candidate → governance → terminate` (no `act`)
+- non-veto governed runs emit exactly one `governance` event per candidate in the canonical runtime path
 
 ```python
 import noesis as ns
@@ -213,6 +218,26 @@ try:
 except NoesisVeto as veto:
     # Raised only when governance is enforcing and the action is vetoed.
     print(f"Blocked by governance: {veto.advice}")
+```
+
+Quick verification checklist for governed terminal runs:
+
+```python
+import json
+from pathlib import Path
+
+run_dir = Path(".noesis/episodes/<episode_id>")
+events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text().splitlines() if line.strip()]
+
+governance = [i for i, e in enumerate(events) if e.get("phase") == "governance"]
+candidates = [i for i, e in enumerate(events) if e.get("phase") == "action_candidate"]
+assert len(governance) == 1
+assert len(candidates) == 1
+assert candidates[0] < governance[0]
+
+manifest = json.loads((run_dir / "manifest.json").read_text())
+assert (run_dir / "final.json").exists()
+assert any(entry.get("name") == "final.json" for entry in manifest.get("files", []))
 ```
 
 ## Docs & links
