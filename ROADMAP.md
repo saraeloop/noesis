@@ -52,13 +52,14 @@ Noēsis is a cognitive framework. To protect its identity and prevent scope drif
 |-----|-------|--------|----------|
 | ADR-014 | Artifact Contract v1.0 and Sealing Semantics | **Accepted (v1.0 contract)** | Runtime gates enforced (sealing, causality, finalization contract) |
 | ADR-015 | Process->Run Interrupt/Checkpoint/Resume Contract | **Accepted (v1 contract)** | Lifecycle state machine + checkpoint/resume contract enforced; ADR-017 owns continuation orchestration |
-| ADR-016 | Protocol-First Tool Contract (subprocess/HTTP/MCP) | **Proposed (Draft)** | After ADR-017 continuation orchestration boundary is fixed |
+| ADR-016 | Protocol-First Tool Contract (subprocess/HTTP/MCP) | **In Progress (PR-1 kernel landed)** | Contract kernel is frozen in `noesis/domain/tool_contract`; runtime wiring follows |
 | ADR-017 | Resume Continuation Orchestration (Checkpoint->Execution Continuation) | **Accepted (v1 continuation orchestration)** | `resume_run` + anchor validation + governance pause mode checkpoint/interrupt evidence |
 
 Sequencing rule:
 
 - ADR-014 is now the accepted artifact/sealing contract baseline.
-- Implement ADR-015 lifecycle contract first, then ADR-017 continuation orchestration, then ADR-016 protocol-first tool contract.
+- ADR-015 and ADR-017 are accepted and form the continuation/lifecycle boundary ADR-016 depends on.
+- ADR-016 is active: PR-1 landed the protocol-agnostic contract kernel; next phases wire prepare/execute use cases and protocol adapters.
 
 ---
 

@@ -424,6 +424,10 @@ Custom governor injection is not part of the v1.0.0 runtime/CLI execution surfac
 
 Allow-path runs are finalized and sealed (`final.json` exists and `manifest.json` includes `final.json`). Pause-path veto runs intentionally do not finalize/seal until resumed.
 
+<Note>
+Advanced integrations can pre-model tool intent with `noesis.domain.tool_contract` (`PreparedToolInvocation`, `ToolApprovalDecision`, `ToolExecutionResult`, fingerprints/redaction/idempotency helpers). In the current codebase, that contract kernel is domain-only scaffolding and is not yet the runtime path used by `ns.governed_act(...)`.
+</Note>
+
 ```python
 import noesis as ns
 from noesis.exceptions import NoesisVeto
