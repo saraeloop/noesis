@@ -69,27 +69,29 @@ uv run python -m tutorials.langgraph_episode
 - Expectation: cognitive phases + artifacts with verification.
 
 ### 3) Governed Side Effects — action candidates + veto
-- Goal: Enforce the OS-boundary contract: `action_candidate → governance → act` (or veto).
+- Goal: Enforce the OS-boundary contract with deterministic event ordering.
 - Run (after the tutorial is populated):
 ```bash
 uv run python -m tutorials.governed_side_effects
 ```
-- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed.
+- Expectation:
+  - allow/audit path: `action_candidate → governance → act`
+  - enforce-veto path: `direction(status=blocked) → action_candidate → governance → terminate` (no `act`)
 
 ### 4) Trace-Based Evals — quality from traces
-- Goal: Score governed actions directly from their artifacts (`events.jsonl` + `summary.json`; `final.json` when present).
+- Goal: Score governed actions directly from artifacts (`events.jsonl`, `summary.json`, `final.json`, `manifest.json`).
 - Run (after the tutorial is populated):
 ```bash
 uv run python -m tutorials.trace_based_evals
 ```
-- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed; scores are derived from `events.jsonl` + `summary.json` (and `final.json` when present).
+- Expectation: unsafe actions are vetoed (no act events) while safe actions succeed; terminal runs include `final.json`, and `manifest.json` must include `final.json`.
 
 ## Senior Engineer Playbook (why Noēsis)
 
 These are the high-signal, practical things you can do **immediately** with the artifacts.
 
 ### 1) Prove behavior with immutable evidence
-- **What:** `events.jsonl`, `summary.json`, `state.json`, `final.json` (optional), `manifest.json`
+- **What:** `events.jsonl`, `summary.json`, `state.json`, `final.json`, `manifest.json`
 - **Why:** You can audit or diff runs and prove what happened.
 - **Do:** `uv run noesis view <episode_id>` then open the files in `.noesis/episodes/<episode_id>/`
 
@@ -104,9 +106,9 @@ These are the high-signal, practical things you can do **immediately** with the 
 - **Do:** Grep for `phase="governance"` and follow `caused_by` backward to plan/intent.
 
 ### 4) Enforce the side-effect boundary
-- **What:** `action_candidate → governance → act` is the contract.
+- **What:** `action_candidate → governance → act` (allow/audit) and `direction(blocked) → action_candidate → governance → terminate` (enforce-veto) are the contracts.
 - **Why:** No side effects should occur without a candidate + governance decision.
-- **Do:** Assert that any `act` event has a preceding `action_candidate` in the same episode.
+- **Do:** Assert that any `act` event has a preceding `action_candidate`, and enforce-veto episodes have no `act` event.
 
 ### 5) Track product metrics, not just logs
 - **What:** `summary.json` and `insight.metrics` expose KPIs.
