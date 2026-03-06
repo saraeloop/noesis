@@ -30,6 +30,12 @@ uv run python -m tutorials.governed_side_effects
 
 `ns.governed_act(...)` creates its own episode bundle. The tutorial locates the episode id by diffing `runs_dir` before and after each call.
 
+## Runtime outcomes and constraints
+
+- Default enforce veto (`governance_pause_on_veto=false`): `action_candidate → governance → terminate` (no `act`), and the run is sealed (`final.json` + `manifest.json`).
+- Pause-on-veto (`governance_pause_on_veto=true`): `action_candidate → governance → run.interrupt → run.checkpoint` (no `act`, no `terminate`), and the run remains unsealed until continuation.
+- Allow/audit paths emit `action_candidate → governance → act` and seal normally.
+
 ## Source
 
 The source file is located at `examples/noesis-quickstart/tutorials/governed_side_effects.py`.

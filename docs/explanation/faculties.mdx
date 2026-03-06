@@ -182,10 +182,16 @@ Directive IDs are computed from content for reproducible lineage.
 
 ### Governed side effects (pre-act gating)
 
-`ns.governed_act(...)` is the operating-system boundary for side effects. It emits:
+`ns.governed_act(...)` is the operating-system boundary for side effects.
+It uses the same canonical episode runtime boundary as `ns.run(...)` / `ns.solve(...)`.
 
-- `action_candidate → governance → act`
-- or, on enforced veto: `action_candidate → governance → terminate` (no `act`)
+- allow/audit: `action_candidate → governance → act`
+- enforce veto (`governance_pause_on_veto=False`): `action_candidate → governance → terminate` (no `act`)
+- enforce veto with pause enabled (`governance_pause_on_veto=True`): `action_candidate → governance → run.interrupt → run.checkpoint` (no `act`, no `terminate`)
+
+<Note>
+Internal runtime seam constraint: graph execution (`using=...`) and explicit actuation bindings are mutually exclusive and fail fast if mixed.
+</Note>
 
 ```python
 import noesis as ns
@@ -258,15 +264,26 @@ Event stream convention: governance events keep `phase="governance"`; sub-hooks 
 | `audit` | Action proceeds, flagged for review |
 | `veto` | Action blocked entirely |
 
-### Terminate on veto
+### Terminate on veto (default)
 
-When a veto is issued, the runtime emits a terminate event:
+When a veto is issued and `governance_pause_on_veto` is disabled, the runtime emits a terminate event:
 
 ```json
-{"phase":"runtime","payload":{"kind":"terminate","status":"vetoed","message":"Blocked by governance"}}
+{"phase":"terminate","payload":{"status":"vetoed","message":"Blocked by governance"}}
 ```
 
 _See `events.v1` for the canonical terminate payload._
+
+### Pause on veto (optional)
+
+When `governance_pause_on_veto=true`, enforce-mode vetoes emit lifecycle events and keep the run unsealed:
+
+```json
+{"phase":"runtime","event_type":"run.interrupt","payload":{"kind":"run.interrupt","status":"interrupted"}}
+{"phase":"runtime","event_type":"run.checkpoint","payload":{"kind":"run.checkpoint","checkpoint_id":"chk_..."}}
+```
+
+On this paused path there is no `act`, no `terminate`, and no `final.json` / `manifest.json` yet.
 
 ### Built-in rules
 
