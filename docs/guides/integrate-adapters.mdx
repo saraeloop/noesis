@@ -29,6 +29,129 @@ execute(*, task, episode_id, run_dir, intuition=None, seed=0, tags=None) -> Any
 
 This protocol is used by some integrations and legacy adapters, but `ns.solve()` does **not** call `execute()` directly.
 
+## Protocol-first tool invocation contract (internal)
+
+Noesis now includes an application-layer contract for side-effect tools in `noesis.usecases.tool_invocation`:
+
+- `prepare_tool_invocation(...)`
+- `execute_prepared_tool_invocation(...)`
+
+This is a builder-facing integration surface for protocol adapters. The public runtime entry points (`ns.run(...)`, `ns.solve(...)`, `ns.governed_act(...)`) remain unchanged.
+
+### Intent
+
+The contract separates reviewable intent from side effects:
+
+- `prepare_tool_invocation(...)` may validate, normalize, authenticate, authorize, emit candidate evidence, compute preflight bindings, and persist a `PreparedToolInvocation`.
+- `prepare_tool_invocation(...)` must not execute tool side effects.
+- `execute_prepared_tool_invocation(...)` loads previously prepared intent by identity and dispatches only after approval/idempotency checks.
+
+### Prepare -> execute workflow
+
+Use this runbook when building a tool protocol adapter:
+
+1. Build `ToolInvocationInput` from inbound protocol data.
+2. Call `prepare_tool_invocation(...)` with your ports and persist the returned draft.
+3. If status is `pending_approval`, collect approval externally and persist `ToolApprovalDecision` using the same `run_id` + `draft_id`.
+4. Call `execute_prepared_tool_invocation(...)` with that `run_id` + `draft_id`.
+5. Return `ToolExecutionResult` to the caller; handle `replayed`/`failed` idempotency outcomes without re-dispatching.
+
+Required ports:
+
+- prepare: `ToolPayloadNormalizerPort`, `ToolAuthenticatorPort`, `ToolAuthorizerPort`, `ToolCandidateEmitterPort`, `ToolEventRecorderPort`, `PreparedInvocationRepositoryPort`, optional `ToolPreflightPort`
+- execute: `PreparedInvocationRepositoryPort`, `ApprovalDecisionRepositoryPort`, `IdempotencyStorePort`, `ToolDispatchPort`, `ToolEventRecorderPort`
+
+Minimal integration shape:
+
+```python
+from noesis.domain.tool_contract import (
+    EffectKind,
+    ExecutionContext,
+    GovernanceContext,
+    PayloadRedactionPolicy,
+    RiskTier,
+    SecurityContext,
+    ToolIdentity,
+    ToolProtocol,
+)
+from noesis.usecases.tool_invocation import (
+    ToolInvocationInput,
+    execute_prepared_tool_invocation,
+    prepare_tool_invocation,
+)
+
+request = ToolInvocationInput(
+    run_id="run-1",
+    request_id="req-1",
+    protocol=ToolProtocol.SUBPROCESS,
+    tool=ToolIdentity(namespace="repo", name="write_file", version="1"),
+    raw_payload={"path": "README.md", "token": "secret"},
+    execution=ExecutionContext(timeout_ms=1000, retry_limit=1, idempotency_key="idem-1"),
+    security=SecurityContext(
+        principal_id="user:123",
+        scopes=("repo:write",),
+        policy_scope="repo/main",
+    ),
+    governance=GovernanceContext(
+        effect_kind=EffectKind.WRITE,
+        risk_tier=RiskTier.HIGH,
+        candidate_id=None,
+        requires_approval=True,
+    ),
+    redaction_policy=PayloadRedactionPolicy(redact_fields=("token",)),
+)
+
+prepared = prepare_tool_invocation(
+    request=request,
+    normalizer=normalizer,
+    authenticator=authenticator,
+    authorizer=authorizer,
+    candidate_emitter=candidate_emitter,
+    event_recorder=event_recorder,
+    prepared_repository=prepared_repository,
+    preflight=preflight,
+)
+
+# Later, after approval is persisted for run_id + draft_id:
+result = execute_prepared_tool_invocation(
+    run_id=prepared.run_id,
+    draft_id=prepared.draft_id or "",
+    prepared_repository=prepared_repository,
+    approval_repository=approval_repository,
+    idempotency_store=idempotency_store,
+    dispatch=dispatch,
+    event_recorder=event_recorder,
+)
+```
+
+### Event and identity invariants
+
+For write + approval-required flows, prepare emits:
+
+`tool.requested -> tool.validated -> tool.authn.passed -> tool.authz.passed -> action.candidate_emitted -> tool.preflight.computed -> tool.draft_created -> tool.approval.pending`
+
+For approved execution, execute emits:
+
+- new execution: `tool.approved -> tool.execution.started -> tool.execution.succeeded` (or `tool.execution.failed`)
+- replay path: `tool.approved -> tool.replayed`
+
+Identity and binding rules:
+
+- execute lookup key is `run_id + draft_id`
+- missing prepared draft raises `PreparedToolInvocationNotFoundError`
+- missing/non-approved decision raises `ApprovalDecisionRequiredError`
+- mismatched `request_id`, reviewed fingerprint, or impact hash raises `ApprovalDecisionBindingError`
+- idempotency `replay` or `conflict` returns without dispatching side effects
+
+### Common pitfalls
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `PreparedToolInvocationNotFoundError` | approval service called execute with wrong `run_id`/`draft_id` | persist and pass durable identity unchanged across systems |
+| `ApprovalDecisionRequiredError` | decision missing or not `approved` | write an approved `ToolApprovalDecision` before execute |
+| `ApprovalDecisionBindingError` | decision is not bound to reviewed prepared intent | store `request_id`, `reviewed_fingerprint`, and `impact_hash` from the prepared artifact and verify before save |
+| `tool.replayed` result with no dispatch | same idempotency key and fingerprint seen previously | treat as successful replay; do not retry with a new side effect |
+
 When you call `ns.solve()` with `using=`, Noēsis:
 
 1. Resolves the target via the graph loader (callable, object, or string source)
