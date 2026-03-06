@@ -186,6 +186,17 @@ Rule of thumb:
 - `resume_run()` emits `run.resume` and continues execution.
 - `runs_dir` points to the episodes root directory.
 
+Prepared tool-draft protocol constraints (ADR-016 PR-4 scope):
+- The runtime bridge supports only `ToolProtocol.SUBPROCESS` for prepared invocation flows.
+- Unsupported prepared protocols fail fast with `UnsupportedToolProtocolError`:
+  - during initial preparation, before any prepared draft is persisted,
+  - during `resume_run()`, before `run.resume` is appended.
+- This prevents invalid non-subprocess prepared drafts from creating checkpoint/resume lifecycle noise.
+
+Practical pitfall:
+- If a run contains a pending prepared draft with `protocol=http` or `protocol=mcp`, `resume_run()` will fail immediately and will not append a new `run.resume` event.
+- Continue the run only with subprocess-based prepared invocations for this ADR-016 phase.
+
 Governed side effects (pre-act gating):
 
 `ns.governed_act(...)` is the “operating-system boundary” for side effects.
