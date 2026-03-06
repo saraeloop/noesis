@@ -73,6 +73,18 @@ from .usecases.governed_actuation import (
     GovernedActionActuator,
     build_governed_actuation_bindings,
 )
+from .usecases.tool_invocation.runtime_bridge import (
+    ToolContractContinuationActuator,
+    ToolRuntimeBridgePorts,
+    build_resumed_tool_invocation_actuation_bindings,
+)
+from .infrastructure.tool_invocation.repositories import (
+    FileApprovalDecisionRepository,
+    FileIdempotencyStore,
+    FilePreparedInvocationRepository,
+)
+from .infrastructure.tool_invocation.adapters import SubprocessToolInvocationAdapter
+from .domain.tool_contract import PreparedToolInvocation, ToolProtocol
 from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
@@ -382,6 +394,7 @@ def resume_run(
         resume_event_id=resume_event_id,
         event_offset=checkpoint.event_offset,
     )
+    actuation_bindings = _resume_tool_invocation_bindings(setup)
     return _run_episode(
         setup=setup,
         task=setup.episode_ctx.task,
@@ -389,7 +402,33 @@ def resume_run(
         tags=dict(setup.episode_ctx.tags),
         using=using,
         resume_anchor=anchor,
+        actuation_bindings=actuation_bindings,
     )
+
+
+def _resume_tool_invocation_bindings(setup: _EpisodeRuntime) -> EpisodeActuationBindings | None:
+    prepared_repository = FilePreparedInvocationRepository(run_dir=setup.ctx.run_dir)
+    pending = prepared_repository.load_pending_for_run(run_id=setup.ctx.episode_id)
+    if pending is None:
+        return None
+    dispatch = _dispatch_for_prepared_invocation(pending)
+    return build_resumed_tool_invocation_actuation_bindings(
+        run_dir=setup.ctx.run_dir,
+        ports=ToolRuntimeBridgePorts(
+            prepared_repository=prepared_repository,
+            approval_repository=FileApprovalDecisionRepository(run_dir=setup.ctx.run_dir),
+            idempotency_store=FileIdempotencyStore(run_dir=setup.ctx.run_dir),
+            dispatch=dispatch,
+        ),
+        now_fn=setup.now_fn,
+        id_factory=setup.event_id_factory or uuid4,
+    )
+
+
+def _dispatch_for_prepared_invocation(invocation: PreparedToolInvocation) -> Any:
+    if invocation.protocol is ToolProtocol.SUBPROCESS:
+        return SubprocessToolInvocationAdapter()
+    raise ValueError(f"unsupported prepared tool protocol for resume: {invocation.protocol.value}")
 
 
 def governed_act(
@@ -1056,6 +1095,19 @@ def _run_episode(
                 learn="learn.jsonl",
             )
             setup.state_repo.persist(state)
+            if actuation_bindings is not None:
+                actuator = actuation_bindings.actuator
+                if isinstance(actuator, ToolContractContinuationActuator) and actuator.pause_required:
+                    lifecycle = create_run_lifecycle_service(
+                        context=setup.runtime_context,
+                        workspace=setup.episode_ctx.workspace,
+                    )
+                    interrupt_id = lifecycle.interrupt(
+                        setup.ctx.episode_id,
+                        reason=result.outcome.summary,
+                        caused_by=actuator.pause_cause_event_id,
+                    )
+                    lifecycle.checkpoint(setup.ctx.episode_id, caused_by=interrupt_id)
             return setup.ctx.episode_id
 
         existing_events = read_events(setup.ctx.run_dir)

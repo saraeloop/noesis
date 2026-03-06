@@ -92,6 +92,9 @@ class PreparedInvocationRepositoryPort(Protocol):
     def load(self, *, run_id: str, draft_id: str) -> PreparedToolInvocation | None:
         ...
 
+    def load_pending_for_run(self, *, run_id: str) -> PreparedToolInvocation | None:
+        ...
+
 
 class ApprovalDecisionRepositoryPort(Protocol):
     """Persist and load approval decisions bound to prepared drafts."""

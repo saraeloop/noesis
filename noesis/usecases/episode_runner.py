@@ -1095,6 +1095,9 @@ class EpisodeRunner:
                 return paused, None
             _ = self._clock.stop(token)
             return actuation, None
+        if self._is_nonterminal_status(actuation.status):
+            _ = self._clock.stop(token)
+            return actuation, None
         if actuation.status == "error" and "governance_failure" in actuation.reasons:
             _ = self._clock.stop(token)
             return actuation, None
@@ -1275,6 +1278,9 @@ class EpisodeRunner:
                     caused_by=self._latest_event_uuid(context.run_dir) or latest_direction_id or plan_anchor,
                 )
                 return paused, None
+            _ = self._clock.stop(token)
+            return actuation, None
+        if self._is_nonterminal_status(actuation.status):
             _ = self._clock.stop(token)
             return actuation, None
         if actuation.status == "error" and "governance_failure" in actuation.reasons:
