@@ -189,10 +189,12 @@ Rule of thumb:
 Governed side effects (pre-act gating):
 
 `ns.governed_act(...)` is the “operating-system boundary” for side effects.
+It runs through the same canonical runtime/finalization path used by `ns.run(...)` and `ns.solve(...)`.
 
 Canonical event ordering:
 - allow/audit: `action_candidate → governance → act`
-- enforced veto: `direction(status=blocked) → action_candidate → governance → terminate` (no `act`)
+- enforced veto (`governance_pause_on_veto=False`): `action_candidate → governance → terminate` (no `act`)
+- enforced veto with pause enabled (`governance_pause_on_veto=True`): `action_candidate → governance → run.interrupt → run.checkpoint` (no `act`, no `terminate`)
 - non-veto governed runs emit exactly one `governance` event per candidate in the canonical runtime path
 
 ```python
@@ -220,7 +222,7 @@ except NoesisVeto as veto:
     print(f"Blocked by governance: {veto.advice}")
 ```
 
-Quick verification checklist for governed terminal runs:
+Quick verification checklist (terminal governed runs):
 
 ```python
 import json
@@ -238,6 +240,23 @@ assert candidates[0] < governance[0]
 manifest = json.loads((run_dir / "manifest.json").read_text())
 assert (run_dir / "final.json").exists()
 assert any(entry.get("name") == "final.json" for entry in manifest.get("files", []))
+```
+
+Quick verification checklist (pause-on-veto governed runs):
+
+```python
+import json
+from pathlib import Path
+
+run_dir = Path(".noesis/episodes/<episode_id>")
+events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text().splitlines() if line.strip()]
+
+assert not any(e.get("phase") == "act" for e in events)
+assert not any(e.get("phase") == "terminate" for e in events)
+assert any(e.get("phase") == "runtime" and e.get("event_type") == "run.interrupt" for e in events)
+assert any(e.get("phase") == "runtime" and e.get("event_type") == "run.checkpoint" for e in events)
+assert not (run_dir / "final.json").exists()
+assert not (run_dir / "manifest.json").exists()
 ```
 
 ## Docs & links
