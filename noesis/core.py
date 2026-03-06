@@ -435,12 +435,6 @@ def _dispatch_for_prepared_invocation(invocation: PreparedToolInvocation) -> Any
     )
 
 
-def _dispatch_for_prepared_invocation(invocation: PreparedToolInvocation) -> Any:
-    if invocation.protocol is ToolProtocol.SUBPROCESS:
-        return SubprocessToolInvocationAdapter()
-    raise ValueError(f"unsupported prepared tool protocol for resume: {invocation.protocol.value}")
-
-
 def governed_act(
     *,
     goal: str,
