@@ -18,6 +18,8 @@ from noesis.domain.tool_contract import (
     PreparedToolInvocation,
     SecurityContext,
     ToolContractError,
+    ToolProtocol,
+    UnsupportedToolProtocolError,
 )
 from noesis.runtime.artifacts.ids import action_candidate_uuid
 from noesis.runtime.artifacts.manifest import compute_sha256
@@ -97,6 +99,7 @@ class ToolContractContinuationActuator(Actuator):
         if self.ports.normalizer is None or self.ports.authenticator is None or self.ports.authorizer is None:
             raise ValueError("tool runtime preparation requires normalizer, authenticator, and authorizer")
         tool_request = self.request_factory(run_id)  # type: ignore[misc]
+        _require_supported_runtime_protocol(tool_request.protocol, operation="prepare")
         recorder = RuntimeToolEventRecorder(
             run_id=run_id,
             run_dir=self.run_dir,
@@ -428,6 +431,15 @@ def _latest_event_uuid(run_dir: Path) -> UUID | None:
         return UUID(event_id)
     except ValueError:
         return None
+
+
+def _require_supported_runtime_protocol(protocol: ToolProtocol, *, operation: str) -> None:
+    if protocol is ToolProtocol.SUBPROCESS:
+        return
+    raise UnsupportedToolProtocolError(
+        f"tool runtime bridge only supports subprocess during ADR-016 PR-4; "
+        f"cannot {operation} protocol={protocol.value!r}"
+    )
 
 
 __all__ = [

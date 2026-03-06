@@ -31,6 +31,10 @@ class ApprovalDecisionBindingError(ToolContractError):
     """Approval decision does not match the reviewed prepared intent."""
 
 
+class UnsupportedToolProtocolError(ToolContractError):
+    """The requested tool protocol is not supported by the current runtime bridge."""
+
+
 __all__ = [
     "AmbiguousPreparedToolInvocationError",
     "ApprovalDecisionBindingError",
@@ -39,4 +43,5 @@ __all__ = [
     "ToolAuthenticationError",
     "ToolAuthorizationError",
     "ToolContractError",
+    "UnsupportedToolProtocolError",
 ]

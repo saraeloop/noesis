@@ -84,7 +84,7 @@ from .infrastructure.tool_invocation.repositories import (
     FilePreparedInvocationRepository,
 )
 from .infrastructure.tool_invocation.adapters import SubprocessToolInvocationAdapter
-from .domain.tool_contract import PreparedToolInvocation, ToolProtocol
+from .domain.tool_contract import PreparedToolInvocation, ToolProtocol, UnsupportedToolProtocolError
 from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
 from .usecases.memory_sync import persist_episode_memory
@@ -382,6 +382,7 @@ def resume_run(
             "resume_run adapter mismatch: "
             f"checkpoint expects {expected_using_label!r}, got {resolved_using_label!r}"
         )
+    actuation_bindings = _resume_tool_invocation_bindings(setup)
     resume_event_id = service.resume(
         episode_id,
         checkpoint_id=checkpoint_id,
@@ -428,7 +429,10 @@ def _resume_tool_invocation_bindings(setup: _EpisodeRuntime) -> EpisodeActuation
 def _dispatch_for_prepared_invocation(invocation: PreparedToolInvocation) -> Any:
     if invocation.protocol is ToolProtocol.SUBPROCESS:
         return SubprocessToolInvocationAdapter()
-    raise ValueError(f"unsupported prepared tool protocol for resume: {invocation.protocol.value}")
+    raise UnsupportedToolProtocolError(
+        "tool runtime bridge only supports subprocess during ADR-016 PR-4; "
+        f"cannot resume protocol={invocation.protocol.value!r}"
+    )
 
 
 def governed_act(
