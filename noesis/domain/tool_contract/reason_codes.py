@@ -1,0 +1,73 @@
+"""Stable reason-code taxonomy for the protocol-first tool contract."""
+
+from __future__ import annotations
+
+TOOL_INVALID_PAYLOAD = "tool.invalid_payload"
+TOOL_UNKNOWN_FIELD = "tool.unknown_field"
+TOOL_UNSUPPORTED_PROTOCOL = "tool.unsupported_protocol"
+TOOL_UNSUPPORTED_TOOL = "tool.unsupported_tool"
+
+AUTHN_FAILED = "authn.failed"
+AUTHZ_DENIED = "authz.denied"
+AUTHZ_MISSING_CONTEXT = "authz.missing_context"
+
+GOVERNANCE_VETOED = "governance.vetoed"
+GOVERNANCE_APPROVAL_REQUIRED = "governance.approval_required"
+
+PREFLIGHT_REQUIRED = "preflight.required"
+PREFLIGHT_MISMATCH = "preflight.mismatch"
+PRECONDITION_FAILED = "precondition.failed"
+
+IDEMPOTENCY_REPLAY = "idempotency.replay"
+IDEMPOTENCY_CONFLICT = "idempotency.conflict"
+RATE_LIMITED = "rate_limited"
+
+TOOL_TIMEOUT = "tool.timeout"
+TOOL_TRANSPORT_ERROR = "tool.transport_error"
+TOOL_EXECUTION_FAILED = "tool.execution_failed"
+TOOL_ADAPTER_ERROR = "tool.adapter_error"
+
+ALL_REASON_CODES = (
+    TOOL_INVALID_PAYLOAD,
+    TOOL_UNKNOWN_FIELD,
+    TOOL_UNSUPPORTED_PROTOCOL,
+    TOOL_UNSUPPORTED_TOOL,
+    AUTHN_FAILED,
+    AUTHZ_DENIED,
+    AUTHZ_MISSING_CONTEXT,
+    GOVERNANCE_VETOED,
+    GOVERNANCE_APPROVAL_REQUIRED,
+    PREFLIGHT_REQUIRED,
+    PREFLIGHT_MISMATCH,
+    PRECONDITION_FAILED,
+    IDEMPOTENCY_REPLAY,
+    IDEMPOTENCY_CONFLICT,
+    RATE_LIMITED,
+    TOOL_TIMEOUT,
+    TOOL_TRANSPORT_ERROR,
+    TOOL_EXECUTION_FAILED,
+    TOOL_ADAPTER_ERROR,
+)
+
+__all__ = [
+    "ALL_REASON_CODES",
+    "AUTHN_FAILED",
+    "AUTHZ_DENIED",
+    "AUTHZ_MISSING_CONTEXT",
+    "GOVERNANCE_APPROVAL_REQUIRED",
+    "GOVERNANCE_VETOED",
+    "IDEMPOTENCY_CONFLICT",
+    "IDEMPOTENCY_REPLAY",
+    "PRECONDITION_FAILED",
+    "PREFLIGHT_MISMATCH",
+    "PREFLIGHT_REQUIRED",
+    "RATE_LIMITED",
+    "TOOL_ADAPTER_ERROR",
+    "TOOL_EXECUTION_FAILED",
+    "TOOL_INVALID_PAYLOAD",
+    "TOOL_TIMEOUT",
+    "TOOL_TRANSPORT_ERROR",
+    "TOOL_UNKNOWN_FIELD",
+    "TOOL_UNSUPPORTED_PROTOCOL",
+    "TOOL_UNSUPPORTED_TOOL",
+]
