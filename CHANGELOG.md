@@ -8,6 +8,7 @@
 - Runtime (governed boundary): `EpisodeRunner` skips duplicate governance evaluation when the actuator is `GovernedActuator`, preserving a single canonical governance emission path.
 - Runtime (enforce-veto causality): pre-act veto ordering now emits `direction(status=blocked) → action_candidate → governance` before terminalization.
 - Sealing contract: `ns.governed_act` terminal finalization now writes `final.json` before `manifest.json`; if manifest writing fails, `final.json` is rolled back.
+- Tool-contract runtime bridge (ADR-016 PR-4 scope): non-subprocess prepared protocols now fail with `UnsupportedToolProtocolError` before draft persistence or lifecycle resume mutation (`run.resume`), preserving subprocess-only continuation semantics.
 
 ## v1.1.0 – 2025-12-08
 ### Added
