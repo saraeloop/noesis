@@ -37,7 +37,6 @@ from .episode import EpisodeIndex
 from .domain.planner.minimal import MinimalActuator, MinimalPlanner
 from .domain.planner.meta import MetaPlanner
 from .domain.faculties.governance import GovernanceFailurePolicy, GovernanceMode, PreActGovernor
-from .domain.action_candidates import ActionCandidate, RedactionSpec
 from .infrastructure.state_repository import EpisodeContext, RuntimeStateRepository
 from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
@@ -67,6 +66,11 @@ from .usecases.episode_runner import (
     EpisodeRequest,
     ResumeAnchor,
     EpisodeRunner,
+)
+from .usecases.governed_actuation import (
+    EpisodeActuationBindings,
+    GovernedActionActuator,
+    build_governed_actuation_bindings,
 )
 from .verification import VerifyInput, normalize_verify
 from .usecases.snapshot_artifacts import SnapshotArtifactWriter
@@ -180,120 +184,6 @@ def _workspace_identity(workspace: Path | str | None) -> str:
         return str(Path.cwd().resolve())
     return str(Path(workspace).expanduser().resolve())
 
-
-@dataclass(slots=True)
-class _GovernedActionActuator:
-    kind: str
-    payload: Mapping[str, Any]
-    tool_label: str
-    executor: Callable[..., Any]
-    result: Any | None = None
-    error: Exception | None = None
-    invoked: bool = False
-
-    def execute(
-        self,
-        *,
-        plan: Sequence[Any],
-        request: Any,
-        state: Any,
-        event_bus: Any,
-    ) -> Any:
-        self.invoked = True
-        summary: str | None = None
-        status = "ok"
-        success = True
-        reasons: list[str] = []
-        try:
-            self.result = _invoke_governed_executor(self.executor, self.payload)
-            summary = str(self.result)[:400]
-            reasons.append("executor_ok")
-        except Exception as exc:  # noqa: BLE001
-            self.error = exc
-            status = "error"
-            success = False
-            summary = str(exc)
-            reasons.append("executor_error")
-
-        step_id = plan[-1].id if plan else None
-        action = state.record_action(
-            kind=self.kind,
-            tool=self.tool_label,
-            input_excerpt=_governed_input_excerpt(goal=request.goal, payload=self.payload),
-            result_status="ok" if success else "error",
-            step_id=step_id,
-        )
-        event_bus.emit_action(action)
-
-        from .domain.planner.interfaces import ActuationResult
-
-        return ActuationResult(
-            status=status,
-            summary=summary,
-            metrics={"success": 1.0 if success else 0.0},
-            reasons=reasons,
-            success=success,
-        )
-
-
-@dataclass(slots=True)
-class _GovernedActionCandidateBuilder:
-    kind: str
-    payload: Mapping[str, Any]
-    provenance: Mapping[str, Any] | None
-    risk_tags: tuple[str, ...] | None
-    redaction: Mapping[str, Any] | None
-
-    def build(
-        self,
-        *,
-        plan: Sequence[Any],
-        request: Any,
-        state: Any,
-    ) -> ActionCandidate:
-        redaction_spec = _parse_governed_redaction(self.redaction)
-        step = plan[-1] if plan else None
-        step_provenance: dict[str, Any] = {}
-        if step is not None:
-            step_provenance["plan_step_id"] = step.id
-            step_provenance["plan_step_kind"] = getattr(step.kind, "value", str(step.kind))
-        merged_provenance = dict(self.provenance or {})
-        merged_provenance.update(step_provenance)
-        return ActionCandidate(
-            id=None,
-            kind=self.kind,
-            payload=dict(self.payload),
-            state_ref="state.json",
-            state_hash=_governed_state_hash(request.context.run_dir),
-            redaction=redaction_spec,
-            provenance=merged_provenance or None,
-            risk_tags=tuple(self.risk_tags or ()),
-        )
-
-
-def _parse_governed_redaction(redaction: Mapping[str, Any] | None) -> RedactionSpec:
-    if redaction is None:
-        return RedactionSpec(
-            mode="hash_only",
-            policy_id="redact.default",
-            policy_version="1.0.0",
-            field_rules={},
-        )
-    return RedactionSpec(
-        mode=str(redaction.get("mode", "hash_only")),
-        policy_id=str(redaction.get("policy_id", "redact.default")),
-        policy_version=str(redaction.get("policy_version", "1.0.0")),
-        field_rules=dict(redaction.get("field_rules") or {}),
-    )
-
-
-def _governed_state_hash(run_dir: Path) -> str:
-    state_path = run_dir / "state.json"
-    if state_path.exists():
-        return compute_sha256(state_path)
-    return f"sha256:{'0' * 64}"
-
-
 def _resolve_governed_adapter_label(kind: str, payload: Mapping[str, Any]) -> str:
     adapter_label = payload.get("adapter_label")
     if isinstance(adapter_label, str) and adapter_label.strip():
@@ -306,6 +196,13 @@ def _resolve_governed_tool_label(kind: str, payload: Mapping[str, Any], adapter_
     if isinstance(tool, str) and tool.strip():
         return tool.strip()
     return adapter_label or kind
+
+
+def _governed_state_hash(run_dir: Path) -> str:
+    state_path = run_dir / "state.json"
+    if state_path.exists():
+        return compute_sha256(state_path)
+    return f"sha256:{'0' * 64}"
 
 
 def _resolve_governed_executor(kind: str) -> Callable[..., Any]:
@@ -321,20 +218,6 @@ def _resolve_governed_executor(kind: str) -> Callable[..., Any]:
             raise ValueError("adapter executor is not configured; call ns.set(adapter_executor=...)")
         return registry.adapter_executor
     raise ValueError(f"unsupported action kind: {kind!r}")
-
-
-def _invoke_governed_executor(executor: Callable[..., Any], payload: Mapping[str, Any]) -> Any:
-    try:
-        return executor(**dict(payload))
-    except TypeError:
-        return executor(payload)
-
-
-def _governed_input_excerpt(*, goal: str, payload: Mapping[str, Any]) -> str:
-    for key in ("command", "cmd", "input_excerpt"):
-        if key in payload:
-            return str(payload.get(key, ""))[:120]
-    return str(goal)[:120]
 
 
 def _read_state_outcome(run_dir: Path) -> tuple[str, str]:
@@ -547,27 +430,27 @@ def governed_act(
         determinism=determinism,
     )
     executor = _resolve_governed_executor(kind)
-    actuator = _GovernedActionActuator(
+    actuation_bindings = build_governed_actuation_bindings(
         kind=kind,
         payload=payload_dict,
         tool_label=_resolve_governed_tool_label(kind, payload_dict, adapter_label),
         executor=executor,
+        state_hash_resolver=lambda: _governed_state_hash(setup.ctx.run_dir),
+        provenance=provenance,
+        risk_tags=risk_tags,
+        redaction=redaction,
     )
-    candidate_builder = _GovernedActionCandidateBuilder(
-        kind=kind,
-        payload=payload_dict,
-        provenance=dict(provenance) if provenance else None,
-        risk_tags=tuple(risk_tags) if risk_tags else None,
-        redaction=dict(redaction) if redaction else None,
-    )
+    actuator = actuation_bindings.actuator
+    if not isinstance(actuator, GovernedActionActuator):
+        raise TypeError("governed_act requires GovernedActionActuator bindings")
+
     _ = _run_episode(
         setup=setup,
         task=goal,
         seed=seed,
         tags=tags_dict,
         using=None,
-        actuator_override=actuator,
-        action_candidate_builder_override=candidate_builder,
+        actuation_bindings=actuation_bindings,
     )
     status, summary = _read_state_outcome(setup.ctx.run_dir)
     if status == "ok":
@@ -1078,8 +961,7 @@ def _run_episode(
     tags: Optional[Dict[str, Any]],
     using: Optional[GraphSource],
     resume_anchor: ResumeAnchor | None = None,
-    actuator_override: Any | None = None,
-    action_candidate_builder_override: Any | None = None,
+    actuation_bindings: EpisodeActuationBindings | None = None,
 ) -> str:
     stop_event, thread = _start_process_heartbeat(setup)
     try:
@@ -1099,8 +981,11 @@ def _run_episode(
         )
         governance_timeout_ms = getattr(setup.cfg, "governance_timeout_ms", None)
 
-        if actuator_override is not None:
-            actuator = actuator_override
+        if actuation_bindings is not None and using is not None:
+            raise ValueError("actuation_bindings cannot be combined with graph-based execution")
+
+        if actuation_bindings is not None:
+            actuator = actuation_bindings.actuator
         elif using is None:
             actuator = MinimalActuator(tool_label=setup.adapter_label)
         else:
@@ -1134,7 +1019,9 @@ def _run_episode(
             run_lifecycle=lifecycle_service,
             intuition_policy=setup.intuition_impl,
             intuition_enabled=setup.intuition_enabled,
-            action_candidate_builder=action_candidate_builder_override,
+            action_candidate_builder=(
+                actuation_bindings.action_candidate_builder if actuation_bindings is not None else None
+            ),
         )
         runner = EpisodeRunner(deps, instrumentation=instrumentation)
         using_norm = normalize_using(setup.raw_using_label)

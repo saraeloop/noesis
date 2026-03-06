@@ -7,6 +7,7 @@ import json
 import pytest
 
 import noesis as ns
+import noesis.core as core
 from noesis.domain.run_lifecycle import (
     CheckpointConsistencyError,
     ResumeAdapterMismatchError,
@@ -18,6 +19,7 @@ from noesis.infrastructure.state_repository import EpisodeContext, RuntimeStateR
 from noesis.runtime.paths import resolve_noesis_paths
 from noesis.runtime.serialization import canonical_dumps
 from noesis.trace.events import read_events, write_event
+from noesis.usecases.governed_actuation import build_governed_actuation_bindings
 
 
 @contextmanager
@@ -202,6 +204,45 @@ def test_resume_rejects_sealed_runs(tmp_path: Path) -> None:
         episode_id = ns.run("sealed run", intuition=False)
         with pytest.raises(RunSealedError):
             ns.resume(episode_id, checkpoint_id="chk_missing")
+
+
+def test_run_episode_rejects_graph_execution_when_actuation_bindings_are_present(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir), planner_mode="minimal", governance_mode="enforce")
+        setup = core._bootstrap_episode(
+            task="safe operation",
+            seed=0,
+            tags=None,
+            raw_using_label="adapter:shell",
+            adapter_label="adapter:shell",
+            context=core.get_context(),
+            workspace=None,
+            verify=(),
+            intuition=False,
+            determinism=None,
+        )
+        bindings = build_governed_actuation_bindings(
+            kind="shell",
+            payload={"command": "echo ok"},
+            tool_label="shell",
+            executor=lambda **_: {"ok": True},
+            state_hash_resolver=lambda: f"sha256:{'0' * 64}",
+            provenance=None,
+            risk_tags=None,
+            redaction=None,
+        )
+
+        with pytest.raises(ValueError, match="actuation_bindings cannot be combined with graph-based execution"):
+            core._run_episode(
+                setup=setup,
+                task="safe operation",
+                seed=0,
+                tags=None,
+                using="adapter:test",
+                actuation_bindings=bindings,
+            )
 
 
 def test_resume_rejects_history_mismatch_against_checkpoint_anchor(tmp_path: Path) -> None:
