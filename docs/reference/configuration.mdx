@@ -170,7 +170,7 @@ Controls pre-act governance behavior.
 | --- | --- |
 | `off` | Governance disabled |
 | `audit` | Record decisions; never blocks execution |
-| `enforce` | Veto terminates the episode before Act |
+| `enforce` | Veto blocks Act; runtime terminates by default or pauses/checkpoints when `governance_pause_on_veto=true` |
 
 ### governance_failure_policy
 

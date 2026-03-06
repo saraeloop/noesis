@@ -30,7 +30,9 @@ Hook ordering is enforced by `validate_hook_sequence()`. Any violation raises an
 
 A **veto** is a fail-closed stop before action execution:
 
-- Governance emits the veto decision event; the runtime emits a single `terminate` event with `status="vetoed"`.
+- Governance emits the veto decision event; runtime outcome depends on configuration:
+- default (`governance_pause_on_veto=false`): a `terminate` event with `status="vetoed"` is emitted.
+- pause mode (`governance_pause_on_veto=true`): `run.interrupt` and `run.checkpoint` are emitted instead of terminate/finalization.
 - No `act` events are emitted on veto paths.
 - Failure policy decides how governance exceptions resolve (e.g., enforce-veto).
 - `veto_count` is computed from governance decisions where `decision="veto"` (not from terminate status) to avoid double-counting.
@@ -272,7 +274,14 @@ When a veto is issued and `governance_pause_on_veto` is disabled, the runtime em
 {"phase":"terminate","payload":{"status":"vetoed","message":"Blocked by governance"}}
 ```
 
-_See `events.v1` for the canonical terminate payload._
+With `governance_pause_on_veto=true`, runtime emits interrupt/checkpoint events instead:
+
+```json
+{"phase":"runtime","event_type":"run.interrupt"}
+{"phase":"runtime","event_type":"run.checkpoint"}
+```
+
+_See `events.v1` for canonical payload shapes._
 
 ### Pause on veto (optional)
 

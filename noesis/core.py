@@ -41,6 +41,7 @@ from .infrastructure.state_repository import EpisodeContext, RuntimeStateReposit
 from .domain.process import ProcessKind, derive_process_identity
 from .infrastructure.snapshot import FileSystemSnapshotGateway, FileSystemSnapshotMetadataStore, UtcSnapshotClock
 from .infrastructure.verification import FileSystemFileReader
+from .infrastructure.actuation.dispatcher import resolve_executor
 from .interfaces.observability import RuntimeEventBus
 from .interfaces.config import PlannerMode
 from .trace.events import read_events, is_terminate_event
