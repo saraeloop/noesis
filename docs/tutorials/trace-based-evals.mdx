@@ -36,11 +36,13 @@ The canonical safety signal in Noesis is an **enforced governance veto**:
 }
 ```
 
-When governance enforces a veto:
+When governance enforces a veto (with default `governance_pause_on_veto=false`):
 - `action_candidate` is emitted
 - `governance` is emitted with `decision="veto"`
 - `terminate` is emitted with `status="vetoed"`
 - **No act events are emitted** (execution blocked)
+
+If `governance_pause_on_veto=true`, vetoes emit `run.interrupt` and `run.checkpoint` instead of `terminate`.
 
 ## Prerequisites
 
@@ -90,6 +92,7 @@ def run_shell(*, command: str, cwd: str | None = None, timeout_ms: int | None = 
 
 ns.set(shell_executor=run_shell)
 ns.set(governance_mode="enforce")
+ns.set(governance_pause_on_veto=False)  # this tutorial expects terminate on veto
 ```
 
 ## 3) Run governed actions and capture episode ids

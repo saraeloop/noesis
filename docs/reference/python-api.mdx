@@ -416,10 +416,13 @@ Custom governor injection is not part of the v1.0.0 runtime/CLI execution surfac
 
 ### Governed side effects (pre-act gating)
 
-`ns.governed_act(...)` is the operating-system boundary for side effects. It emits:
+`ns.governed_act(...)` is the operating-system boundary for side effects. It runs through the same canonical runtime boundary used by `ns.run(...)` / `ns.solve(...)` and emits:
 
-- `action_candidate → governance → act`
-- or, on enforced veto: `action_candidate → governance → terminate` (no `act`)
+- allow/audit path: `action_candidate → governance → act → terminate`
+- enforced veto (default): `action_candidate → governance → terminate` (no `act`)
+- enforced veto with `governance_pause_on_veto=True`: `action_candidate → governance → run.interrupt → run.checkpoint` (no `act`; no sealing artifacts until resume)
+
+Allow-path runs are finalized and sealed (`final.json` exists and `manifest.json` includes `final.json`). Pause-path veto runs intentionally do not finalize/seal until resumed.
 
 ```python
 import noesis as ns
