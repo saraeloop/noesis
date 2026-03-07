@@ -276,6 +276,13 @@ Rule of thumb:
 - `resume()` emits lifecycle evidence only
 - `resume_run()` emits `run.resume` and continues execution
 
+## Troubleshooting and common pitfalls
+
+- **`governed_act` executor not configured**: before `ns.governed_act(..., kind="shell", ...)`, register an executor with `ns.set(shell_executor=...)`. For `kind="adapter"`, register `ns.set(adapter_executor=...)`.
+- **Verification fails immediately**: if you pass `verify=[...]`, also pass `workspace="..."`. Without a workspace, Noesis records verification as unavailable and the run returns an error outcome.
+- **`resume_run` fails for graph-based runs**: for non-minimal runs, `resume_run` requires `using=...` and it must match the adapter captured in the checkpoint.
+- **Cannot mutate sealed runs**: once a run is sealed (`final.json` written), lifecycle mutations (`interrupt`, `checkpoint`, `resume`, `resume_run`) are rejected.
+
 ## Who it's for
 
 ### Builders / platform teams
@@ -296,11 +303,14 @@ Review immutable JSON artifacts showing what happened, what changed, and why sid
 
 ## Docs and links
 
-- Artifacts guide: `docs/artifacts/state.md`
-- Runs cheat sheet: `docs/explanation/artifacts.mdx`
-- Schema index: `docs/app/reference/schema-index.mdx`
-- CLI reference: `docs/app/reference/cli/page.mdx`
-- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
+- Core concepts: `docs/explanation/core-concepts.mdx`
+- Artifact model: `docs/explanation/artifacts.mdx`
+- Quickstart guide: `docs/quickstart.mdx`
+- Python API reference: `docs/reference/python-api.mdx`
+- CLI reference: `docs/reference/cli.mdx`
+- Events reference: `docs/reference/events.mdx`
+- Summary reference: `docs/reference/summary.mdx`
+- State reference: `docs/reference/state.mdx`
 - Examples overview: `examples/README.md`
 
 ## Versioning and stability
