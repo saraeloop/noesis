@@ -211,11 +211,18 @@ uv run python examples/demo.py
 
 ## Docs and links
 
-- Artifacts guide: `docs/artifacts/state.md`
-- Schema index: `docs/app/reference/schema-index.mdx`
-- CLI reference: `docs/app/reference/cli/page.mdx`
-- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
+- Artifacts model: `docs/explanation/artifacts.mdx`
+- Schema references: `docs/reference/events.mdx`, `docs/reference/state.mdx`, `docs/reference/summary.mdx`
+- Python API reference: `docs/reference/python-api.mdx`
+- CLI reference: `docs/reference/cli.mdx`
+- Quickstart guide: `docs/quickstart.mdx`
 - Examples: `examples/README.md`
+
+## Common setup pitfalls
+
+- PyPI install is not live yet; install from source (`uv tool install .` or `pipx install .`).
+- Configure provider credentials before running tutorials or adapters (for example `OPENAI_API_KEY`).
+- If you change `runs_dir`/`NOESIS_RUNS_DIR`, point CLI inspection commands at that same episode root.
 
 ## Status
 

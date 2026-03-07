@@ -14,12 +14,12 @@ Use these scenarios to introduce Noēsis concepts to engineers, operators, and s
 
 ## Memory & insight
 
-- Start from the [`Runtime context & memory`](../README.md#runtime-context--memory) snippet, then register your own SQLite/FAISS provider with `context.create_runtime_context()`.
+- Start from the memory integration guide: [`docs/guides/add-memory-port.mdx`](../docs/guides/add-memory-port.mdx), then register your own provider with `context.create_runtime_context()`.
 - Inspect `state.json["memory"]` and `summary.json["insight"]["metrics"]` in any demo run to see durable recall and KPI rollups.
 
 ## MCP & external tools
 
-- Follow the [MCP & external tooling](../README.md#mcp--external-tooling) section to hook existing Model Context Protocol servers into Noēsis.
+- Follow the adapter integration guide: [`docs/guides/integrate-adapters.mdx`](../docs/guides/integrate-adapters.mdx) to connect external tools and MCP-style boundaries.
 - Adapters report every tool invocation via `events.jsonl`, so you can share the same observability story whether the tool ran locally, remotely, or inside MCP.
 
 ### Suggested flow for new contributors
