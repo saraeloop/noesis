@@ -58,9 +58,28 @@ episode_id = ns.run("Draft a weekly engineering update", intuition=True)
 summary = ns.summary.read(episode_id)
 timeline = list(ns.events.read(episode_id))
 
-print(summary["metrics"]["success"])
-print(timeline[0]["phase"], timeline[0].get("payload"))
-```
+ns.set(
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
+    governance_failure_policy="fail_closed",
+    prompt_provenance_enabled=True,
+    prompt_provenance_mode="full",
+)
+
+# Start the run
+episode_id = ns.solve(
+    task="Apply canary rollout config to production",
+    using=lambda: my_agent(),
+    workspace="./repo",
+    verify=(
+        ns.file_exists("canary-rollout.json"),
+        ns.only_modified(["canary-rollout.json"]),
+    ),
+)
+
+# Governance vetoes the risky write →
+# run automatically emits interrupt + checkpoint
+# UI shows: run is paused, waiting on you
 
 ## How it works
 
@@ -139,14 +158,9 @@ except NoesisVeto as veto:
 
 ## Workspace verification
 
-```python
-import noesis as ns
+## Artifact contract
 
-verify = [
-    ns.file_exists("config.yaml"),
-    ns.file_contains("config.yaml", "enabled: true"),
-    ns.only_modified(["config.yaml"]),
-]
+Every episode writes a sealed artifact pack:
 
 episode_id = ns.solve(
     "Update config",
@@ -161,9 +175,21 @@ episode_id = ns.solve(
 ```python
 import noesis as ns
 
-ns.set(governance_mode="enforce", governance_pause_on_veto=True)
+episode_id = ns.solve(
+    task="Update rollout config",
+    using=lambda: my_agent(),
+    workspace="./repo",
+    verify=(
+        ns.file_exists("canary-rollout.json"),
+        ns.file_contains("canary-rollout.json", "canary: true"),
+        ns.only_modified(["canary-rollout.json"]),
+    ),
+)
+```
 
-episode_id = ns.solve("Danger operation: delete production database", using=my_graph)
+Verification produces `snapshots/pre.json` and `snapshots/post.json` and records verification state in the episode artifacts.
+
+---
 
 interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
 checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
@@ -175,6 +201,9 @@ episode_id = ns.resume_run(
     checkpoint_id=checkpoint["checkpoint_id"],
     using=my_graph,
 )
+
+episode_id = session.solve(task="...", using=lambda: my_agent())
+restore()
 ```
 
 Rule of thumb:
