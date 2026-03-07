@@ -1,137 +1,63 @@
 ---
 title: "CLI reference"
-description: "Complete reference for the Noēsis command-line interface."
+description: "Command reference for the shipped Noēsis CLI entrypoint."
 ---
 
-The Noēsis CLI is installed with the package. Run via `noesis` or `uv run noesis`.
+The `noesis` CLI entrypoint is implemented in `noesis/cli/__main__.py`.
 
 <Note>
-The CLI surface is intentionally small in this release. A more robust CLI is in active development, with better scripting ergonomics, richer subcommands, and stronger JSON-first workflows. When in doubt, treat `noesis <command> --help` as the source of truth.
+If you see docs or examples mentioning `noesis list`, `noesis show`, or `noesis solve`, those refer to an older CLI surface. The current shipped commands are documented on this page.
 </Note>
 
-## Home screen and help
+## Install
 
-Running `noesis` with no arguments shows a curated home screen instead of raw argparse output. It highlights a concise Quick Start, commonly used commands, and a next-step hint. When Rich is available and allowed, the home screen uses a premium, panel-based layout with a clear welcome header (similar to the demo look you shared).
-
-The CLI also ships an explicit `noesis help` command that prints the same grouped help view as `-h/--help` (Run / Inspect / Integrity / Maintenance), and can target a specific subcommand:
-
-```bash
-noesis help
-noesis help view
-```
-
-Home/help output respects `--json`, `--quiet`, `NO_COLOR`, and TTY detection. Use `--force-rich` or `NOESIS_FORCE_RICH=1` to enable Rich output in non-TTY contexts.
-
-**Home screen mockup (ASCII)**
-
-```text
-╭──────────────────────────────────────────────────────────────────────╮
-│  * Welcome to Noēsis                                                  │
-│  Cognitive episodes with observability and governance.                │
-╰──────────────────────────────────────────────────────────────────────╯
-  Quick Start
-    $ noesis run "Summarize this repo"
-    $ noesis solve react "Weekly plan"
-    $ noesis view <episode_id>
-
-  Most Used
-    $ noesis ps
-    $ noesis events <episode_id>
-    $ noesis artifacts verify <episode_id>
-
-  Next
-    → noesis help
-    → noesis <command> -h
-```
-
-## Installation
-
-Install from source while the PyPI release is pending:
+Install from source:
 
 ```bash
 git clone https://github.com/saraeloop/noesis.git
 cd noesis
-uv tool install .
-# or: pipx install .
+pipx install .
+# or: pip install -e .
 ```
 
-When PyPI is live, use `uv add noesis` or `pip install noesis`.
+## Global options
 
-## Commands
+Most commands accept:
 
-Available commands (in `noesis --help` order): `run`, `solve`, `list`, `show`, `events`, `insight`, `version`, `new`, `validate-ports`, `diagnostics`, `migrate`, `view`, `artifacts`, `ps`, `processes`, `help`.
-
-### noesis run
-
-Run a baseline episode (no adapter).
-
-```bash
-noesis run "task description" [options]
-# or read from stdin
-echo "Summarize the README" | noesis run --stdin
-```
-
-**Arguments**:
-
-| Argument | Description |
+| Option | Description |
 | --- | --- |
-| `task` | Task prompt (optional if `--stdin` or `-` is used) |
+| `--quiet`, `-q` | Minimal output |
+| `--json`, `-j` | JSON output (shape depends on command) |
+| `--force-rich` | Force Rich renderer in non-TTY environments |
+| `--port NAME=SPEC` | Register a runtime port for this invocation |
 
-**Options**:
+## Command map
 
-| Option | Description | Default |
-| --- | --- | --- |
-| `-s, --seed INT` | Seed for reproducibility | `0` |
-| `-P, --policy SPEC` | Policy alias or `module:Class` (`on`/`off` accepted) | `on` |
-| `--no-intuition` | Disable intuition entirely | `False` |
-| `--tags JSON` | JSON object of tags to attach | None |
-| `--dir-min FLOAT` | Override `direction_min_confidence` | None |
-| `--stdin` | Read task prompt from STDIN (or pass `-` as task) | `False` |
-| `-y, --yes` | Assume yes for interactive prompts | `False` |
-| `--workspace PATH` | Workspace root for verification snapshots | None |
-| `--verify-file PATH` | JSON file with verification specs | None |
-| `--verify-file-exists PATH` | Require a file to exist (repeatable) | None |
-| `--verify-file-contains PATH` | Require a file to contain text (repeatable; pair with `--text`) | None |
-| `--text TEXT` | Text for `--verify-file-contains` (repeatable; order matters) | None |
-| `--verify-only-modified PATH` | Allow modifications only within the given path (repeatable) | None |
-| `--verify-no-modifications` | Require no workspace modifications | `False` |
-| `-j, --json` | Emit JSON `{episode_id}` | `False` |
-| `-q, --quiet` | Print only the episode id | `False` |
+| Command | Purpose |
+| --- | --- |
+| `noesis run` | Start a baseline episode |
+| `noesis view` | Inspect an episode by ID or path |
+| `noesis ps` | List recent episodes |
+| `noesis processes` | List process registry entries |
+| `noesis runs` | List runs for one process |
+| `noesis events` | Stream or envelope episode events |
+| `noesis insight` | Show insight events |
+| `noesis explain` | Explain governance/veto decisions |
+| `noesis diagnostics` | Run health checks or replay compare |
+| `noesis validate-ports` | Validate active runtime ports |
+| `noesis browse` | Open interactive TUI browser |
+| `noesis migrate-layout` | Migrate legacy on-disk layout |
+| `noesis help` | Show help (or help for one command) |
 
-**Examples**:
+## Core workflows
+
+### Run an episode
 
 ```bash
-# Simple run
 noesis run "Draft release notes"
-
-# Policy alias or module:Class
-noesis run "Check database" --policy mymodule:SafetyPolicy
-
-# JSON tags object
-noesis run "Deploy to staging" --tags '{"env":"staging","team":"platform"}'
-
-# Quiet / JSON forms
-noesis run "Test task" -q
-noesis run "Test task" -j | jq -r '.episode_id'
-
-# Verification with a workspace
-noesis run "Update config" --workspace . --verify-file verify.json
 ```
 
-**Verification inputs**:
-
-Use `--verify-file` for a stable, portable contract. The file is JSON and contains a list of verification specs.
-
-```json
-[
-  {"name": "file_exists", "path": "config.yaml"},
-  {"name": "file_contains", "path": "config.yaml", "text": "enabled: true"},
-  {"name": "only_modified", "paths": ["config.yaml"]},
-  {"name": "no_modifications"}
-]
-```
-
-Shortcut flags compile into the same list of specs:
+Run with verification inputs:
 
 ```bash
 noesis run "Update config" \
@@ -141,753 +67,152 @@ noesis run "Update config" \
   --verify-only-modified config.yaml
 ```
 
-Notes:
-
-- `--verify-no-modifications` is mutually exclusive with `--verify-only-modified`.
-
-### noesis solve
-
-Run an episode through a specific adapter/flow.
+Emit JSON envelope:
 
 ```bash
-noesis solve ADAPTER "task description" [options]
+noesis run "Draft release notes" --json | jq .
 ```
 
-**Arguments**:
+`--json` output includes `episode_id`, `episode_dir`, `artifacts`, `outcome`, `adapter_result`, and verification summary fields.
 
-| Argument | Description |
-| --- | --- |
-| `adapter` | Adapter name or import path (required) |
-| `task` | Task prompt (optional if `--stdin` or `-` is used) |
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `-s, --seed INT` | Seed for reproducibility | `0` |
-| `-P, --policy SPEC` | Policy alias or `module:Class` (`on`/`off` accepted) | `on` |
-| `--no-intuition` | Disable intuition entirely | `False` |
-| `--tags JSON` | JSON object of tags to attach | None |
-| `--dir-min FLOAT` | Override `direction_min_confidence` | None |
-| `--stdin` | Read task prompt from STDIN (or pass `-` as task) | `False` |
-| `--workspace PATH` | Workspace root for verification snapshots | None |
-| `--verify-file PATH` | JSON file with verification specs | None |
-| `--verify-file-exists PATH` | Require a file to exist (repeatable) | None |
-| `--verify-file-contains PATH` | Require a file to contain text (repeatable; pair with `--text`) | None |
-| `--text TEXT` | Text for `--verify-file-contains` (repeatable; order matters) | None |
-| `--verify-only-modified PATH` | Allow modifications only within the given path (repeatable) | None |
-| `--verify-no-modifications` | Require no workspace modifications | `False` |
-| `-j, --json` | Emit JSON `{episode_id}` | `False` |
-| `-q, --quiet` | Print only the episode id | `False` |
-
-**Examples**:
+### Inspect and filter episodes
 
 ```bash
-# With registered adapter
-noesis solve my-adapter "Process data"
+# Recent episodes
+noesis ps --limit 10
 
-# With module path
-noesis solve mymodule:analyzer "Analyze logs"
+# Filter by process id or name
+noesis ps --process alpha
 
-# Policy + tags
-noesis solve deploy-adapter "Deploy" --policy SafetyPolicy --tags '{"env":"prod"}'
+# JSON envelope
+noesis ps --json | jq '.episodes[0]'
 ```
 
-### noesis list
-
-List recent episodes.
+### Inspect one episode
 
 ```bash
-noesis list [options]
-```
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--limit INT` | Maximum episodes to show | 20 |
-| `--strict-manifest` | Re-hash manifests and warn on drift | False |
-| `-j, --json` | Output as JSON | False |
-| `-q, --quiet` | Print episode ids only | False |
-
-**Examples**:
-
-```bash
-# Table output
-noesis list --limit 10
-
-# JSON output for scripting
-noesis list -j | jq '.[0].episode_id'
-```
-
-**Output columns**:
-
-| Column | Description |
-| --- | --- |
-| `STARTED_AT` | Start timestamp (ISO-ish string, truncated) |
-| `EPISODE_ID` | Episode identifier (`ep_<ULID>`) |
-| `TASK` | Truncated task description (may include a manifest drift note) |
-
-When `--strict-manifest` is used and drift is detected, Noēsis appends a suffix like ` [manifest:mismatch]` to the task line.
-
-**Example output**:
-
-```
-STARTED_AT                  EPISODE_ID                     TASK
-2024-12-27T10:15:32  ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C  Draft release notes
-2024-12-27T09:45:11  ep_01JH6Z1S9WZJ2K1ZB2R7C2JX0T  Analyze logs
-```
-
-**Example output**:
-
-```
-Started              ID                      Task
-2024-12-27 10:15:32  ep_2024_abc123_s0       Draft release notes
-2024-12-27 09:45:11  ep_2024_def456_s0       Analyze logs
-```
-
-### noesis ps
-
-List recent episodes (runs/evidence bundles). Episode answers "can I trust this attempt?"
-
-```bash
-noesis ps [options]
-```
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--limit INT` | Maximum episodes to show | 20 |
-| `--process TEXT` | Filter by process id or name | None |
-| `-j, --json` | Output as JSON envelope (`cli/1.1`) | False |
-| `-q, --quiet` | Print episode ids only | False |
-
-**JSON envelope**:
-
-`PsResult` contains `episodes`, each derived from `list_runs()`:
-
-```json
-{
-  "cli": {"schema_version": "cli/1.1", "compat_min": "cli/1.0", "compat_max": "cli/1.x"},
-  "episodes": [
-    {
-      "episode_id": "ep_01...",
-      "task": "Draft release notes",
-      "started_at": "2024-12-27T10:15:32Z",
-      "outcome": "success_unverified",
-      "status": "completed",
-      "process": {"id": "proc_...", "name": "alpha"}
-    }
-  ],
-  "total_count": 1,
-  "limit": 20,
-  "offset": 0
-}
-```
-
-### noesis processes
-
-List processes (identity + liveness). Process answers "what's running?" This is mutable registry state, not immutable evidence.
-
-```bash
-noesis processes [options]
-```
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--limit INT` | Maximum processes to show | 20 |
-| `--process TEXT` | Filter by process id or name | None |
-| `-j, --json` | Output as JSON envelope (`cli/1.1`) | False |
-| `-q, --quiet` | Print process ids only | False |
-
-**Process liveness**:
-
-`status` is one of `running`, `idle`, `stale`, `error`.
-
-**Registry fields**:
-
-Process records include `last_heartbeat_at` (RFC 3339 UTC with `Z`) for staleness checks and `next_run_index` for monotonic run allocation.
-
-**JSON envelope**:
-
-`ProcessesResult` contains `processes`:
-
-```json
-{
-  "cli": {"schema_version": "cli/1.1", "compat_min": "cli/1.0", "compat_max": "cli/1.x"},
-  "processes": [
-    {
-      "process_id": "eebfff3bbbb5",
-      "process_name": "alpha",
-      "kind": "oneshot",
-      "status": "idle",
-      "last_seen_at": "2024-12-27T10:20:05Z",
-      "last_heartbeat_at": "2024-12-27T10:20:05Z",
-      "active_run_id": null,
-      "last_run_outcome": "success_unverified",
-      "next_run_index": 3
-    }
-  ],
-  "total_count": 1,
-  "limit": 20,
-  "offset": 0
-}
-```
-
-### noesis show
-
-Display episode summary.
-
-```bash
-noesis show EPISODE_ID [options]
-```
-
-**Arguments**:
-
-| Argument | Description |
-| --- | --- |
-| `episode_id` | Episode ID to display (required) |
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `-j, --json` | Output raw JSON | False |
-| `-q, --quiet` | Print episode id only | False |
-
-**Examples**:
-
-```bash
-# Friendly output
-noesis show ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
-
-# Raw JSON
-noesis show ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j
-```
-
-**Example output**:
-
-```
-Episode
-  id      : ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
-  task    : Draft release notes
-  started : 2024-12-27T10:15:32Z
-  duration: 1.23s
-```
-
-**Example output**:
-
-```
-Episode: ep_2024_abc123_s0
-Task: Draft release notes
-Status: success
-Started: 2024-12-27T10:15:32Z
-Duration: 1.23s
-```
-
-### noesis view
-
-Inspect an episode timeline, metrics, and governance decisions in one view.
-
-```bash
-noesis view TARGET [options]
-```
-
-**Arguments**:
-
-| Argument | Description |
-| --- | --- |
-| `target` | Episode ID or run directory |
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--pretty` | Render formatted tables | True |
-| `-j, --json` | Emit JSON view | False |
-| `--events` | Stream raw `events.jsonl` | False |
-| `--grep SUBSTR` | Filter timeline rows by substring | None |
-| `--schema VERSION` | Summary schema to validate against | `auto` |
-| `--fail-on-invalid` | Exit 1 if validation errors are detected | False |
-| `--open` | Print artifact paths | False |
-
-**Output highlights**:
-
-- Execution Map row: `observe → act → verify → outcome` with color-coded status.
-- Verification section: adapter result, outcome, pass/fail, workspace diff summary, and first failing assertion.
-
-**Examples**:
-
-```bash
-# Pretty viewer
+# Human-readable dashboard
 noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 
-# JSON
-noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j | jq '.summary.metrics.success'
-
-# Show artifact paths
-noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --open
+# JSON dashboard envelope
+noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --json | jq .
 ```
 
-**Example output** (with `--open`):
+`view` accepts either an episode ID or an episode directory path.
 
-```
-=== artifacts ===
-dir: .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
-summary: .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
-events: .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/events.jsonl
-
-=== timeline ===
-[start] 2024-12-27T10:15:32.000Z
-[observe] input captured
-[plan] 3 steps planned
-[act] executed
-[reflect] success
-```
-
-### noesis events
-
-Print events for an episode.
+### Read events
 
 ```bash
-noesis events EPISODE_ID [options]
-```
-
-**Arguments**:
-
-| Argument | Description |
-| --- | --- |
-| `episode_id` | Episode ID to read (required) |
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--phase PHASE` | Filter by phase | None |
-| `-j, --json` | Emit JSON (one object per event) | False |
-| `-q, --quiet` | Suppress banner | False |
-
-**Examples**:
-
-```bash
-# All events
+# Human-readable events
 noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 
-# Filter by phase
-noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --phase act
+# JSONL mode (one event object per line)
+noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --json
 
-# JSON for piping (Noēsis prints one JSON object per event; use `jq -c` for compact one-line output)
-noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j | jq -c '.phase'
-
-# Latest episode
-noesis events $(noesis list -j | jq -r '.[0].episode_id')
+# Single JSON envelope (ADR-012 style)
+noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --envelope
 ```
 
-`noesis list` returns episodes newest first, so index 0 is the latest run.
-
-**Phase values**:
-
-| Phase | Description |
-| --- | --- |
-| `start` | Episode start |
-| `observe` | Input capture |
-| `interpret` | Signal extraction |
-| `plan` | Action planning |
-| `direction` | Policy directives |
-| `intuition` | Policy intuition |
-| `insight` | Insight metrics |
-| `reason` | Reasoning traces |
-| `act` | Tool execution |
-| `reflect` | Outcome evaluation |
-| `learn` | Learning signals |
-| `terminate` | End state |
-| `error` | Error events |
-
-<Note>
-Governance events may appear in `events.jsonl` (phase `governance`) when governance is enabled, even though `noesis events --help` does not list `governance` in its phase hint.
-</Note>
-
-**Example output**:
-
-```
-Episode: ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
-[2024-12-27T10:15:32.000Z] start
-[2024-12-27T10:15:32.001Z] observe
-[2024-12-27T10:15:32.002Z] plan
-[2024-12-27T10:15:32.003Z] act        status=ok
-[2024-12-27T10:15:32.004Z] reflect    status=success
-[2024-12-27T10:15:32.005Z] terminate  status=success
-```
-
-### noesis insight
-
-Show computed insight events (alias for `events --phase insight`).
+Filter by phase:
 
 ```bash
-noesis insight EPISODE_ID [options]
+noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --phase governance
 ```
 
-**Arguments**:
-
-| Argument | Description |
-| --- | --- |
-| `episode_id` | Episode ID to analyze (required) |
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `-j, --json` | Emit JSON (one object per event) | False |
-| `-q, --quiet` | Suppress banner | False |
-
-**Examples**:
+### Process-oriented inspection
 
 ```bash
-# Get metrics
-noesis insight ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+# Process liveness and metadata
+noesis processes --limit 20
 
-# Parse with jq
-noesis insight ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C -j | jq -c '.payload.success'
+# Runs for a specific process
+noesis runs --process alpha --limit 20
 ```
 
-### noesis artifacts
-
-Verify artifact manifests.
-
-```bash
-noesis artifacts verify TARGET [options]
-```
-
-**Arguments**:
-
-| Argument | Description |
-| --- | --- |
-| `target` | Episode ID, run directory, or manifest path |
-
-**Options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--strict` | Fail when unexpected files are present | False |
-| `--json` | Emit JSON report | False |
-| `-q, --quiet` | Suppress human-readable output | False |
-
-<Note>
-Unlike most commands, `artifacts verify` uses `--json` without a `-j` short form.
-</Note>
-
-**Exit codes**:
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Verified (including warnings) |
-| 2 | Verification error |
-| 3 | Missing manifest/files |
-| 4 | Signature error |
-
-**Example**:
-
-```bash
-noesis artifacts verify ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --strict
-```
-
-**Example output**:
-
-```
-Artifact verification
-manifest : .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
-status   : ok
-files    : 4
-duration : 12.34 ms
-issues   : none
-files detail:
-  - summary.json: ok
-  - events.jsonl: ok
-  - state.json: ok
-  - manifest.json: ok
-```
-
-**Example output**:
-
-```
-=== Artifact verification ===
-manifest : .noesis/episodes/ep_2024_abc123_s0/manifest.json
-status   : ok
-files    : 4
-duration : 12.34 ms
-issues   : none
-files detail:
-  - summary.json: ok
-  - events.jsonl: ok
-  - state.json: ok
-  - manifest.json: ok
-```
-
-### noesis diagnostics
-
-Run stability diagnostics (default) or compare two runs for drift.
+### Diagnostics and integrity
 
 ```bash
 # Default checks
-noesis diagnostics [options]
+noesis diagnostics
 
-# Replay comparison
-noesis diagnostics replay RUN_A RUN_B [options]
-```
-
-**Options (default mode)**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `--checks a,b,c` | Comma-separated subset of checks | all |
-| `--strict` | Exit non-zero on warnings | False |
-| `-j, --json` | Emit JSON payload | False |
-| `-q, --quiet` | Suppress human-readable output | False |
-
-**Available checks**:
-
-| Check name | What it validates |
-| --- | --- |
-| `runs_dir` | Directory exists, is writable, has free space |
-| `learn_home` | Directory exists and is valid |
-| `direction_min_confidence` | Value within [0, 1] |
-| `learn_auto_apply_min_confidence` | Value within [0, 1] |
-| `learn_auto_apply_min_successes` | Value >= 1 |
-| `ports` | Registered ports have valid API version format |
-| `config_snapshot` | Runtime config matches current snapshot |
-| `latest_summary` | Most recent summary schema version is current |
-| `artifact_manifest` | Most recent manifest passes verification |
-
-**Replay mode options**:
-
-| Option | Description | Default |
-| --- | --- | --- |
-| `run_a run_b` | Episode directories to compare (required) | — |
-| `-j, --json` | Emit JSON payload | False |
-| `-q, --quiet` | Suppress human-readable output | False |
-
-**Examples**:
-
-```bash
-# Default diagnostics
+# Strict mode
 noesis diagnostics --strict
 
-# Run specific checks only
-noesis diagnostics --checks runs_dir,ports,artifact_manifest
-
-# Drift compare two runs
+# Replay compare
 noesis diagnostics replay .noesis/episodes/ep_a .noesis/episodes/ep_b
+
+# Runtime ports
+noesis validate-ports
 ```
 
-Replay exits `1` on drift, `0` otherwise. Default mode exits `1` on errors (or warnings when `--strict`).
-
-**Example output** (default mode):
-
-```
-=== Noēsis diagnostics ===
-timestamp             : 1735312532
-version               : v1.0.0
-summary_schema_version: 1.1.0
-state_version         : 1 (schema 1.0)
-selected_checks       : all
-checks:
-  [ok] runs_dir - ./.noesis/episodes
-  [ok] learn_home - ~/.noesis/state
-  [ok] direction_min_confidence - 0.50
-  [ok] learn_auto_apply_min_confidence - 0.75
-  [ok] learn_auto_apply_min_successes - 3
-  [ok] ports - config=config/1.0-rc1
-  [ok] config_snapshot - in sync
-  [ok] latest_summary - .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
-  [ok] artifact_manifest - .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/manifest.json
-overall status        : ok
-```
-
-### noesis version
-
-Show CLI/core version and available adapters.
+### Other utility commands
 
 ```bash
-noesis version [-j]
+# Governance explanation
+noesis explain ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+
+# Interactive terminal UI
+noesis browse
+
+# Migrate old storage layout
+noesis migrate-layout
+
+# Help
+noesis help
+noesis help events
 ```
 
-**Options**:
+## Command constraints
 
-| Option | Description | Default |
-| --- | --- | --- |
-| `-j, --json` | Emit JSON payload | False |
+### Verification flags on `run`
 
-**Example output**:
+The verification parser enforces:
 
-```
-Noesis v1.0.0 (core v1.0.0, adapters: langgraph@on, crewai@missing, assistants@missing)
-```
+- `--verify-no-modifications` cannot be combined with `--verify-only-modified`
+- `--text` requires `--verify-file-contains`
+- each `--verify-file-contains` entry must have a matching `--text`
+- `--verify-file` must point to an existing JSON file containing a list
 
-### noesis validate-ports
+### JSON output shape by command
 
-List registered runtime ports from the active session.
+- `run --json` emits a run-result envelope (`episode_id`, `episode_dir`, `artifacts`, `outcome`, `verification`, `capabilities`)
+- `ps --json` emits `{"episodes":[...], ...}`
+- `processes --json` emits `{"processes":[...], ...}`
+- `events --json` emits JSONL (one event per line)
+- `events --envelope` emits one JSON object containing all selected events
 
-```bash
-noesis validate-ports [-j|-q]
-```
+## Troubleshooting
 
-**Options**:
+### `usage error: each --verify-file-contains must have a matching --text`
 
-| Option | Description | Default |
-| --- | --- | --- |
-| `-j, --json` | Emit JSON payload | False |
-| `-q, --quiet` | Suppress human output | False |
+Cause: mismatch between repeated `--verify-file-contains` and `--text` flags.
 
-### noesis migrate
+Fix: provide both flags in matching order and count.
 
-Codemod deprecated Noēsis shims to the modern API.
+### `usage error: --verify-no-modifications cannot be combined with --verify-only-modified`
 
-```bash
-noesis migrate [paths...] [--dry-run] [-j]
-```
+Cause: mutually exclusive verification constraints.
 
-**Options**:
+Fix: keep only one of the two flags.
 
-| Option | Description | Default |
-| --- | --- | --- |
-| `paths...` | Files or directories (defaults to `.`) | `.` |
-| `--dry-run` | Preview changes without modifying files | False |
-| `-j, --json` | Emit JSON report | False |
+### `episode not found: <id>`
 
-**Exit codes**:
+Cause: the ID is unknown in the configured runs directory.
 
-| Code | Meaning |
-| --- | --- |
-| 0 | No issues |
-| 1 | Errors encountered |
-| 2 | TODOs or skipped items remain |
+Fix:
 
-### noesis new
+- check `NOESIS_RUNS_DIR` / runtime config
+- pass a direct episode directory path to `noesis view`
+- inspect available episodes with `noesis ps`
 
-Experimental scaffolder placeholder.
+### `Textual not available: ...` on `noesis browse`
 
-```bash
-noesis new [flow|policy] NAME [-j|-q]
-```
+Cause: `textual` is not installed in the current environment.
 
-Returns a TODO message today.
+Fix: install UI dependencies, then re-run `noesis browse`.
 
-## Global options
+### `invalid cli version (expected cli/MAJOR.MINOR)` on `run --json`
 
-These options work with all commands:
+Cause: unsupported `--cli-version` value.
 
-| Option | Description |
-| --- | --- |
-| `--compact` | Compact output (summary only) |
-| `--verbose` | Verbose output (detailed reasoning) |
-| `--debug` | Debug mode (implies verbose) |
-| `--port NAME=SPEC` | Register a runtime port (repeatable) |
-| `--home` | Show the Noēsis home screen (even with a subcommand) |
-| `--force-rich` | Force Rich output even when stdout is not a TTY |
-| `--help` | Show help message |
-
-## Environment variables
-
-| Variable | Description |
-| --- | --- |
-| `NOESIS_COMPACT` | Compact output (`true`/`false`, CLI output control) |
-| `NOESIS_VERBOSE` | Verbose output (`true`/`false`, CLI output control) |
-| `NOESIS_DEBUG` | Debug output (`true`/`false`, implies verbose; CLI output control) |
-| `NO_COLOR` | Disable rich formatting when set (standard) |
-| `NOESIS_FORCE_RICH` | Force Rich output in non-TTY contexts |
-| `NOESIS_HOME` | Show the home screen (`true`/`false`) |
-| `NOESIS_RUNS_DIR` | Default runs directory |
-| `NOESIS_PLANNER` | Default planner mode (`meta`/`minimal`) |
-| `NOESIS_DIRECTION_MIN_CONFIDENCE` | Default `direction_min_confidence` |
-| `NOESIS_GOVERNANCE_MODE` | Governance mode (`off`/`audit`/`enforce`) |
-| `NOESIS_GOVERNANCE_FAILURE_POLICY` | Failure policy (`fail_open`/`fail_closed`) |
-| `NOESIS_GOVERNANCE_TIMEOUT_MS` | Governance timeout in milliseconds |
-| `NOESIS_INTUITION_MODE` | Default intuition mode |
-| `NOESIS_TIMEOUT_SEC` | Default timeout |
-| `NOESIS_LEARN_HOME` | Default learn directory |
-| `NOESIS_LEARN_MODE` | Default learn mode |
-| `NOESIS_LEARN_AUTO_APPLY_MIN_SUCCESSES` | Minimum successes before auto-apply |
-| `NOESIS_LEARN_AUTO_APPLY_MIN_CONFIDENCE` | Confidence threshold for auto-apply |
-| `NOESIS_PROMPT_PROVENANCE_ENABLED` | Enable prompt provenance (`true`/`false`) |
-| `NOESIS_PROMPT_PROVENANCE_MODE` | Provenance mode |
-| `NOESIS_AGENTS` | Reserved/unused in v1.0.0 (parsed into config) |
-| `NOESIS_TASKS` | Reserved/unused in v1.0.0 (parsed into config) |
-
-**Example**:
-
-```bash
-# Set planner mode via environment
-NOESIS_PLANNER=minimal noesis run "Quick test"
-
-# Set runs directory
-NOESIS_RUNS_DIR=./my-runs noesis list
-```
-
-## Scripting patterns
-
-### Get latest episode ID
-
-```bash
-LATEST=$(noesis list -j | jq -r '.[0].episode_id')
-noesis show $LATEST
-```
-
-### Check success rate
-
-```bash
-noesis list -j --limit 100 | jq '[.[] | select(.success != null) | .success] | (add / length)'
-```
-
-### Export metrics to CSV
-
-```bash
-noesis list -j | jq -r '.[] | [.episode_id, .success, .started_at] | @csv' > episodes.csv
-```
-
-### Filter by manifest drift
-
-```bash
-noesis list -j --strict-manifest | jq '[.[] | select(.manifest_status != null and .manifest_status != "ok")]'
-```
-
-### Tail direction events
-
-```bash
-noesis events $(noesis list -j | jq -r '.[0].episode_id') --phase direction
-```
-
-### Batch process episodes
-
-```bash
-for ep in $(noesis list -j | jq -r '.[].episode_id'); do
-  echo "Processing $ep"
-  noesis insight $ep > "insights/$ep.json"
-done
-```
-
-## Exit codes
-
-Core CLI exit codes (`noesis/cli/errors.py`):
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Success |
-| 1 | General error (`EXIT_ERROR`) |
-| 2 | Invalid usage / argument errors (`EXIT_USAGE`) |
-| 3 | Episode vetoed by governance (`EXIT_VETO`) |
-
-Some subcommands add their own codes. For example, `noesis artifacts verify` uses dedicated codes for verification results (missing files, signature failures, etc.). Check `noesis <command> --help` if you need exact codes in CI.
-
-## Next steps
-
-<CardGroup cols={2}>
-  <Card title="Python API" icon="code" href="/reference/python-api">
-    Programmatic interface reference.
-  </Card>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Get started with the CLI.
-  </Card>
-</CardGroup>
+Fix: use `cli/1.0` or omit `--cli-version`.
