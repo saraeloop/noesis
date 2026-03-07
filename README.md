@@ -298,7 +298,7 @@ Review immutable JSON artifacts showing what happened, what changed, and why sid
 
 - Core concepts: `docs/explanation/core-concepts.mdx`
 - Artifact model: `docs/explanation/artifacts.mdx`
-- Quickstart guide: `docs/quickstart.mdx`
+- Quickstart + troubleshooting: `docs/quickstart.mdx`
 - Python API reference: `docs/reference/python-api.mdx`
 - CLI reference: `docs/reference/cli.mdx`
 - Events reference: `docs/reference/events.mdx`

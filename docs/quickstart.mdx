@@ -116,6 +116,24 @@ Use `jq` for pretty-printing JSON artifacts: `cat .noesis/episodes/ep_01JH6Z2V9Q
 To change the artifact location, set `NOESIS_RUNS_DIR` or in Python call `ns.set(runs_dir="./my-runs")`.
 </Tip>
 
+## Troubleshooting and common pitfalls
+
+| Symptom | Why it happens | Fix |
+| --- | --- | --- |
+| `ValueError: shell executor is not configured` (or `adapter executor is not configured`) when calling `ns.governed_act(...)` | `ns.governed_act(...)` requires an executor for the requested `kind` | Register an executor before the call: `ns.set(shell_executor=...)` for `kind="shell"` and `ns.set(adapter_executor=...)` for `kind="adapter"` |
+| Run ends with `Verification unavailable: workspace not provided` | Verification snapshots require a workspace root | Pass `workspace="."` in Python, or `--workspace .` in CLI commands when using verification flags/specs |
+| `ResumeAdapterRequiredError` or `ResumeAdapterMismatchError` from `ns.resume_run(...)` | Non-minimal checkpoints persist an adapter contract that continuation must honor | For runs started with `ns.solve(...)`, pass the same `using=` adapter to `resume_run(...)`; omitting `using` is only valid for minimal runs from `ns.run(...)` |
+| `RunSealedError` when calling `interrupt`, `checkpoint`, `resume`, or `resume_run` | The run is already sealed (`final.json` exists) | Start a new run; lifecycle mutation APIs only operate on unsealed runs |
+
+Example setup for governed side effects:
+
+```python
+import noesis as ns
+
+ns.set(shell_executor=my_shell_executor)
+ns.set(adapter_executor=my_adapter_executor)
+```
+
 ## What's next?
 
 <CardGroup cols={2}>
