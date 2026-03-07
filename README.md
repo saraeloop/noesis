@@ -11,6 +11,8 @@ _Understanding, made observable._
 
 Noesis is a cognitive runtime for agent workflows. It turns each run into an auditable episode with append-only artifacts, governed side effects, and resumable execution.
 
+Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`) that can be inspected, audited, and verified.
+
 Bring your own graphs, loops, tools, and prompts. Noesis adds runtime evidence, verification, and governance boundaries without replacing your orchestrator or agent framework.
 
 ## Runtime boundary
@@ -296,14 +298,11 @@ Review immutable JSON artifacts showing what happened, what changed, and why sid
 
 ## Docs and links
 
-- Core concepts: `docs/explanation/core-concepts.mdx`
-- Artifact model: `docs/explanation/artifacts.mdx`
-- Quickstart guide: `docs/quickstart.mdx`
-- Python API reference: `docs/reference/python-api.mdx`
-- CLI reference: `docs/reference/cli.mdx`
-- Events reference: `docs/reference/events.mdx`
-- Summary reference: `docs/reference/summary.mdx`
-- State reference: `docs/reference/state.mdx`
+- Artifacts guide: `docs/artifacts/state.md`
+- Runs cheat sheet: `docs/explanation/artifacts.mdx`
+- Schema index: `docs/app/reference/schema-index.mdx`
+- CLI reference: `docs/app/reference/cli/page.mdx`
+- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
 - Examples overview: `examples/README.md`
 
 ## Versioning and stability
