@@ -29,12 +29,13 @@ noesis run "Summarize the key points of effective documentation"
 You'll see output like:
 
 ```
-Episode started: ep_2024_abc123_s0
-Episode completed: ep_2024_abc123_s0
+Episode: ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
+Task: Summarize the key points of effective documentation
+-> noesis view ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 ```
 
 <Tip>
-The episode ID format is `ep_<timestamp>_<hash>_s<seed>`. The seed ensures reproducibility when you need deterministic runs.
+Episode IDs use the format `ep_<ULID>`.
 </Tip>
 
 ## Step 2: List and find your episode
@@ -42,13 +43,13 @@ The episode ID format is `ep_<timestamp>_<hash>_s<seed>`. The seed ensures repro
 View recent episodes:
 
 ```bash
-noesis list --limit 5
+noesis ps --limit 5
 ```
 
 This displays a table with episode IDs, tasks, status, and timestamps. For machine-readable output:
 
 ```bash
-noesis list -j | jq '.[0]'
+noesis ps -j | jq '.episodes[0]'
 ```
 
 ## Step 3: Explore the artifacts
@@ -56,7 +57,7 @@ noesis list -j | jq '.[0]'
 Navigate to the runs directory to see what was created:
 
 ```bash
-ls .noesis/episodes/ep_2024_abc123_s0/
+ls .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/
 ```
 
 You'll find:
@@ -71,13 +72,13 @@ You'll find:
 ### Reading the summary
 
 ```bash
-cat .noesis/episodes/ep_2024_abc123_s0/summary.json | jq .
+jq . .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json
 ```
 
 ```json
 {
   "schema_version": "1.3.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "task": "Summarize the key points of effective documentation",
   "flags": {
     "intuition": false,
@@ -98,7 +99,7 @@ cat .noesis/episodes/ep_2024_abc123_s0/summary.json | jq .
 ### Reading the event timeline
 
 ```bash
-cat .noesis/episodes/ep_2024_abc123_s0/events.jsonl | jq -s .
+jq -s . .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/events.jsonl
 ```
 
 Each event includes:
@@ -134,7 +135,7 @@ for event in events:
 Get computed metrics for any episode:
 
 ```bash
-noesis insight ep_2024_abc123_s0
+noesis insight ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 ```
 
 Or in Python:

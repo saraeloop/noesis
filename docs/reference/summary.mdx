@@ -361,14 +361,14 @@ print(f"Plan adherence: {insight.get('plan_adherence', 'N/A')}")
 ### CLI
 
 ```bash
-# Human-readable
-noesis show ep_abc123
+# Inspect episode dashboard
+noesis view ep_abc123
 
-# Raw JSON
-noesis show ep_abc123 -j
+# Resolve artifact directory from JSON output
+EP_DIR=$(noesis view ep_abc123 --json | jq -r '.episode_dir')
 
-# Extract specific fields
-noesis show ep_abc123 -j | jq '.metrics.success'
+# Read summary fields directly
+jq '.metrics.success' "$EP_DIR/summary.json"
 ```
 
 ### File access

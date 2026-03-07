@@ -56,17 +56,21 @@ The PyPI release is pending. For now, install from source:
     View your episodes in a table:
 
     ```bash
-    noesis list --limit 5
+    noesis ps --limit 5
     ```
 
-    Add `-j` for JSON output when scripting.
+    Add `-j` for JSON output when scripting:
+
+    ```bash
+    noesis ps -j | jq '.episodes[0]'
+    ```
   </Step>
 
   <Step title="Inspect the results">
-    View the episode summary and insight metrics:
+    View the episode dashboard and insight metrics:
 
     ```bash
-    noesis show "$EP_ID"
+    noesis view "$EP_ID"
     noesis insight "$EP_ID"
     ```
   </Step>
