@@ -300,11 +300,32 @@ ns.set(
 
 ## Docs and links
 
-- Artifacts guide: `docs/artifacts/state.md`
-- Schema index: `docs/app/reference/schema-index.mdx`
-- CLI reference: `docs/app/reference/cli/page.mdx`
-- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
+- Quickstart guide: `docs/quickstart.mdx`
+- Core concepts: `docs/explanation/core-concepts.mdx`
+- Artifacts guide: `docs/explanation/artifacts.mdx`
+- Python API (including lifecycle + failure modes): `docs/reference/python-api.mdx`
+- CLI reference: `docs/reference/cli.mdx`
+- Human approval workflow: `docs/guides/human-in-the-loop.mdx`
+- Adapter integration + pitfalls: `docs/guides/integrate-adapters.mdx`
 - Examples: `examples/README.md`
+
+---
+
+## Troubleshooting quick checks
+
+- Run paused after a governance veto and no `final.json`/`manifest.json`: expected with `governance_pause_on_veto=True`. Create a checkpoint and continue with `resume_run(...)` when approved.
+- `resume(...)` only records lifecycle evidence; it does not continue execution. Use `resume_run(...)` to continue the same run.
+- `resume_run(...)` for `ns.solve(...)` checkpoints requires a matching `using=` adapter. Otherwise Noēsis raises `ResumeAdapterRequiredError` or `ResumeAdapterMismatchError`.
+- Once a run is sealed, lifecycle mutations are rejected with `RunSealedError`.
+
+```python
+checkpoint = ns.checkpoint(episode_id)
+episode_id = ns.resume_run(
+    episode_id,
+    checkpoint_id=checkpoint["checkpoint_id"],
+    using=my_graph,
+)
+```
 
 ---
 
