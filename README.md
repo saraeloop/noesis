@@ -5,21 +5,96 @@
 [![Python](https://img.shields.io/badge/python-3.11+-18181b)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-64748b)](LICENSE)
 
-# Noesīs (νόησις)
+# Noēsis (νόησις)
 
 _Understanding, made observable._
 
-Noesis is a cognitive runtime for agent workflows. It turns each run into an auditable episode with append-only artifacts, governed side effects, and resumable execution.
+Noēsis is a cognitive runtime for agent workflows. It turns each run into an auditable episode with a causal event chain, governed side effects, and resumable execution, with state-hash validation across checkpoint and continuation.
 
 Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`) that can be inspected, audited, and verified.
 
-Bring your own graphs, loops, tools, and prompts. Noesis adds runtime evidence, verification, and governance boundaries without replacing your orchestrator or agent framework.
+Bring your own graphs, loops, tools, and prompts. Noēsis adds runtime evidence, verification, and governance boundaries without replacing your orchestrator or agent framework.
+
+---
+
+## The problem
+
+Agent frameworks can plan, call tools, mutate files, and take action across many steps. But when something goes wrong — or when something should have been stopped before it ran — teams often lack a durable, trustworthy record of what actually happened.
+
+Noēsis provides the missing middle ground: observable execution, governed side effects, and resumable runs without replacing the orchestrator you already have.
+
+---
+
+## What makes Noēsis different
+
+Other tools record what happened. Noēsis adds runtime boundaries around how execution proceeds and makes those boundaries visible in the artifact trail.
+
+| | Noēsis | Logging / tracing | Auth / receipts |
+|---|---|---|---|
+| Causal event chain in durable artifacts | ✓ | — | — |
+| Governance pause with preserved run state | ✓ | — | — |
+| Resume the **same run** after human approval | ✓ | — | — |
+| State-hash validation across checkpoint/resume | ✓ | — | — |
+| Deterministic controls for runtime/testing | ✓ | — | — |
+| Sealed artifact contract per episode | ✓ | partial | — |
+
+The pause is a suspended execution with preserved run state. Approval continues the same run from that point rather than starting over from scratch.
+
+---
+
+## Minimal example — governed execution with pause
+
+```python
+import noesis as ns
+
+def my_agent():
+    # your agent, graph, or workflow here
+    pass
+
+ns.set(
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
+    governance_failure_policy="fail_closed",
+    prompt_provenance_enabled=True,
+    prompt_provenance_mode="full",
+)
+
+# Start the run
+episode_id = ns.solve(
+    task="Apply canary rollout config to production",
+    using=lambda: my_agent(),
+    workspace="./repo",
+    verify=(
+        ns.file_exists("canary-rollout.json"),
+        ns.only_modified(["canary-rollout.json"]),
+    ),
+)
+
+# Governance vetoes the risky write →
+# run automatically emits interrupt + checkpoint
+# UI shows: run is paused, waiting on you
+
+# Human reviews and approves →
+checkpoint = ns.checkpoint(episode_id)
+checkpoint_id = str(checkpoint["checkpoint_id"])
+
+# Same run continues from exact point — not a reset
+episode_id = ns.resume_run(
+    episode_id,
+    checkpoint_id=checkpoint_id,
+    using=lambda: my_agent(),
+)
+
+# Artifacts seal
+```
+
+---
 
 ## Runtime boundary
 
 ```mermaid
 flowchart TD
-    A["Your agent / graph / workflow"] --> B["Noesis runtime"]
+    A["Your agent / graph / workflow"] --> B["Noēsis runtime"]
     B --> C["events.jsonl"]
     B --> D["summary.json"]
     B --> E["state.json"]
@@ -29,94 +104,17 @@ flowchart TD
     B --> I["interrupt / checkpoint / resume"]
 ```
 
-## The problem
+---
 
-Modern agent frameworks can call tools, loop autonomously, update files, send requests, and make decisions across many steps. When something goes wrong, teams often do not have a clean, durable record of what actually happened.
+## Cognitive phases
 
-An agent fails halfway through a task.
-A tool call mutates the wrong file.
-A side effect is vetoed.
-A run succeeds, but nobody can explain why.
+Each run passes through enforced phases. The order cannot be skipped or reordered:
 
-Most teams end up with some combination of:
-
-- framework-specific traces
-- ad hoc logs
-- prompt dumps
-- custom wrappers around side effects
-- manual reconstruction after failures
-
-That creates two bad options:
-
-1. Trust the agent framework's internal state.
-2. Build your own cognition, replay, and governance layer from scratch.
-
-There is rarely a clean way to answer:
-
-- What did the agent observe before it acted?
-- How did the plan change over time?
-- Why was an action allowed, audited, or blocked?
-- What artifacts belong to this run?
-- Can this run be inspected, verified, or continued later?
-
-## What Noesis records
-
-Noesis wraps an agent run and turns it into a structured episode.
-
-For each run, it records explicit cognition phases:
-
-**Observe -> Interpret -> Plan -> Govern -> Act -> Reflect -> Learn**
-
-It then emits immutable artifacts such as:
-
-- `events.jsonl` - timeline of the run with causal IDs
-- `summary.json` - outcome, metrics, and cross-links
-- `state.json` - current plan and episode state
-- `final.json` - terminal sealing record for completed runs
-- `manifest.json` - SHA-256 + size ledger for tamper evidence
-- `learn.jsonl` - optional learning payloads
-- `prompts.jsonl` - optional prompt provenance captured by the runtime when enabled
-
-This gives you:
-
-- **observable cognition** - inspect how the run evolved
-- **durable artifacts** - keep a stable, append-only record of execution
-- **governance boundaries** - review, audit, or veto side effects
-- **verification** - prove which files belong to the episode and whether they changed
-- **framework independence** - layer Noesis over LangGraph, CrewAI, or custom graphs
-
-## Minimal example
-
-```python
-import noesis as ns
-
-episode_id = ns.run("Draft a weekly engineering update", intuition=True)
-
-summary = ns.summary.read(episode_id)
-timeline = list(ns.events.read(episode_id))
-
-print(summary["metrics"]["success"])
-print(timeline[0]["phase"], timeline[0].get("payload"))
+```
+Observe → Interpret → Plan → Govern → Act → Reflect → Learn
 ```
 
-## Artifact layout
-
-By default, Noesis writes artifacts under `.noesis/episodes/`:
-
-```text
-.noesis/
-  episodes/
-    ep_.../
-      events.jsonl
-      summary.json
-      state.json
-      final.json
-      manifest.json
-      learn.jsonl     # optional
-      prompts.jsonl   # optional
-```
-
-Each episode becomes a durable record you can inspect, verify, and use for debugging, evaluation, and audits.
+Each phase emits typed events with `caused_by` linkage, so the artifact trail preserves how the run moved from observation to action and reflection.
 
 ## Flow at a glance
 
@@ -133,43 +131,134 @@ flowchart LR
     M --> O
 ```
 
-## Core concepts
+---
 
-### Episode model
+## Artifact contract
 
-Each run is an episode with a stable ID, structured event timeline, and artifact pack.
+Every episode writes a sealed artifact pack:
 
-### Governance boundary
+```text
+.noesis/
+  episodes/
+    ep_.../
+      events.jsonl      ← append-only causal event chain
+      summary.json      ← outcome, metrics, veto count, top flags
+      state.json        ← current plan and episode state
+      final.json        ← terminal sealing record
+      manifest.json     ← tamper-evident hash ledger
+      learn.jsonl       ← optional learning payloads
+      prompts.jsonl     ← optional prompt provenance
+      snapshots/
+        pre.json        ← workspace snapshot before act
+        post.json       ← workspace snapshot after act
+```
 
-Side effects can flow through a governed boundary so actions are recorded, reviewed, audited, or vetoed before execution.
+**Episode statuses:** `completed` · `completed_with_incidents` · `failed_all_vetoed` · `interrupted` · `needs_review`
 
-### Pause, checkpoint, and continue
+---
 
-Noesis supports interruption, checkpointing, and continuation on the same run.
+## Runtime guarantees
 
-### Verification
+- event history stays append-only across pause and continuation
+- resume validates the checkpoint against persisted run state before continuing
+- governance failures are recorded in the artifact trail instead of being swallowed
 
-Workspace verification uses pre/post snapshots plus explicit assertions such as `file_exists(...)`, `file_contains(...)`, and `only_modified(...)`.
+---
 
-### Framework-agnostic integration
+## Governed side effects
 
-Noesis does not replace your agent framework. It layers runtime evidence, cognition phases, and governance over the workflows you already have.
+```python
+import noesis as ns
+
+def run_shell(*, command: str, cwd: str | None = None, timeout_ms: int | None = None):
+    import subprocess
+    result = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
+    return {"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.returncode}
+
+ns.set(
+    shell_executor=run_shell,
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
+)
+
+try:
+    result = ns.governed_act(
+        goal="Apply deployment config",
+        kind="shell",
+        payload={"command": "kubectl apply -f canary.yaml"},
+        risk_tags=["production", "irreversible"],
+    )
+except ns.NoesisVeto as veto:
+    print(f"Blocked: {veto.advice}")
+    # run is paused, not dead — checkpoint was created
+```
+
+---
+
+## Workspace verification
+
+```python
+import noesis as ns
+
+episode_id = ns.solve(
+    task="Update rollout config",
+    using=lambda: my_agent(),
+    workspace="./repo",
+    verify=(
+        ns.file_exists("canary-rollout.json"),
+        ns.file_contains("canary-rollout.json", "canary: true"),
+        ns.only_modified(["canary-rollout.json"]),
+    ),
+)
+```
+
+Verification produces `snapshots/pre.json` and `snapshots/post.json` and records verification state in the episode artifacts.
+
+---
+
+## Deterministic replay
+
+```python
+from noesis import DeterministicClock, DeterministicRNG, SessionBuilder
+
+clock = DeterministicClock(tick_ms=1.0)
+rng = DeterministicRNG(seed=42)
+restore = rng.patch_os_urandom()  # intercepts os.urandom at OS boundary
+
+session = (
+    SessionBuilder.from_env()
+    .with_determinism(clock=clock, rng=rng)
+    .build()
+)
+
+episode_id = session.solve(task="...", using=lambda: my_agent())
+restore()
+```
+
+`patch_os_urandom()` intercepts entropy at the OS boundary so deterministic runs and replay drift checks can be exercised under a fixed seed.
+
+---
+
+## Shadow governance
+
+```python
+ns.set(governance_mode="audit")  # observe without blocking
+
+episode_id = ns.solve(task="...", using=lambda: my_agent())
+summary = ns.summary.read(episode_id)
+
+print(summary["metrics"]["veto_count"])        # enforced vetoes: 0 (audit mode)
+print(summary["metrics"]["would_veto_count"])  # counterfactual: what would have been blocked
+```
 
 ## Quickstart
 
-Python >= 3.11. Source-first.
+Python >= 3.11.
 
 ```bash
 git clone https://github.com/saraeloop/noesis.git
 cd noesis
 uv tool install .
-# or: pipx install .
-```
-
-Optional for pretty JSON in CLI examples:
-
-```bash
-brew install jq
 ```
 
 Run the demo:
@@ -178,132 +267,46 @@ Run the demo:
 uv run python examples/demo.py
 ```
 
-## Bring your own agent / graph
-
-Noesis is framework-agnostic. Keep your prompts, tools, and orchestration logic:
-
-```python
-from pathlib import Path
-import noesis as ns
-
-episode_id = ns.solve(
-    "Generate release notes from ./CHANGELOG.md",
-    using=lambda: Path("flows/release_notes.py"),
-    intuition=True,
-)
-```
-
-## Governed side effects
-
-Noesis can govern side effects through `ns.governed_act(...)`.
-
-This lets you record and gate operations such as:
-
-- shell execution
-- file mutations
-- other effectful operations routed through your runtime boundary
-
-```python
-import noesis as ns
-from noesis.exceptions import NoesisVeto
-
-
-def run_shell(*, command: str, cwd: str | None = None, timeout_ms: int | None = None):
-    return {"stdout": "ok", "stderr": "", "exit_code": 0, "command": command}
-
-
-ns.set(shell_executor=run_shell)
-
-try:
-    result = ns.governed_act(
-        goal="List repository files",
-        kind="shell",
-        payload={
-            "command": "ls -a",
-            "cwd": ".",
-            "timeout_ms": 2000,
-        },
-    )
-    print(result)
-except NoesisVeto as veto:
-    print(f"Blocked by governance: {veto.advice}")
-```
-
-## Workspace verification
-
-Noesis can verify real filesystem effects with pre/post workspace snapshots:
-
-```python
-import noesis as ns
-
-verify = [
-    ns.file_exists("config.yaml"),
-    ns.file_contains("config.yaml", "enabled: true"),
-    ns.only_modified(["config.yaml"]),
-]
-
-episode_id = ns.solve(
-    "Update config",
-    using="my.module:adapter_fn",
-    workspace=".",
-    verify=verify,
-)
-```
-
-## Pause, checkpoint, and continue
-
-Noesis supports interruption, checkpointing, and continuation on the same run:
-
-```python
-import noesis as ns
-
-ns.set(governance_mode="enforce", governance_pause_on_veto=True)
-
-episode_id = ns.solve("Danger operation: delete production database", using=my_graph)
-
-interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
-checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
-
-ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
-
-episode_id = ns.resume_run(
-    episode_id,
-    checkpoint_id=checkpoint["checkpoint_id"],
-    using=my_graph,
-)
-```
-
-Rule of thumb:
-
-- `resume()` emits lifecycle evidence only
-- `resume_run()` emits `run.resume` and continues execution
+---
 
 ## Who it's for
 
-### Builders / platform teams
+**Builders / platform teams** — wrap LangGraph, CrewAI, or custom graphs with observable cognition and governed execution without rewriting your orchestrator.
 
-Wrap LangGraph, CrewAI, or custom graphs with observable cognition and governed execution without rewriting your orchestrator.
+**Applied researchers** — collect structured traces for benchmarks, ablations, evaluation, and papers. Every run is a structured object, not a log file.
 
-### Applied researchers
+**Ops / compliance / platform governance** — review immutable JSON artifacts showing what happened, what changed, and why side effects were allowed or blocked. The governance layer is auditable, not transparent.
 
-Collect structured traces for benchmarks, ablations, evaluation, and papers.
+**Anyone deploying agents that act on real systems** — file writes, shell execution, API calls, config changes. If an action has real-world impact, it should pass through a governed boundary.
 
-### Product and GTM teams
+---
 
-Point to concrete metrics such as plan adherence, veto count, tool coverage, and run outcomes.
+## Config flags
 
-### Ops / compliance / platform governance
+```python
+ns.set(
+    governance_mode="enforce",          # "off" | "audit" | "enforce"
+    governance_pause_on_veto=True,      # veto → interrupt + checkpoint
+    governance_failure_policy="fail_closed",
+    governance_timeout_ms=5000,
+    prompt_provenance_enabled=True,
+    prompt_provenance_mode="full",      # "full" | "hash_only" | "redacted"
+    direction_min_confidence=0.6,
+    runs_dir=".noesis/episodes",
+)
+```
 
-Review immutable JSON artifacts showing what happened, what changed, and why side effects were allowed or blocked.
+---
 
 ## Docs and links
 
 - Artifacts guide: `docs/artifacts/state.md`
-- Runs cheat sheet: `docs/explanation/artifacts.mdx`
 - Schema index: `docs/app/reference/schema-index.mdx`
 - CLI reference: `docs/app/reference/cli/page.mdx`
 - Quickstart guide: `docs/app/guides/quickstart/page.mdx`
-- Examples overview: `examples/README.md`
+- Examples: `examples/README.md`
+
+---
 
 ## Versioning and stability
 
@@ -312,13 +315,15 @@ Review immutable JSON artifacts showing what happened, what changed, and why sid
 - Python: >= 3.11
 - CI: contracts, schema guard, and release preparation run in GitHub Actions
 
+---
+
 ## Community and support
 
-Issues and discussions live on GitHub. Contributions are welcome. See `CONTRIBUTING.md`.
+Issues and discussions live on GitHub. Contributions welcome. See `CONTRIBUTING.md`.
 
 ## Security
 
-Please report vulnerabilities privately through GitHub Security Advisories. See `SECURITY.md` for the full policy.
+Report vulnerabilities privately through GitHub Security Advisories. See `SECURITY.md`.
 
 ## License
 
