@@ -276,13 +276,6 @@ Rule of thumb:
 - `resume()` emits lifecycle evidence only
 - `resume_run()` emits `run.resume` and continues execution
 
-## Troubleshooting and common pitfalls
-
-- **`governed_act` executor not configured**: before `ns.governed_act(..., kind="shell", ...)`, register an executor with `ns.set(shell_executor=...)`. For `kind="adapter"`, register `ns.set(adapter_executor=...)`.
-- **Verification fails immediately**: if you pass `verify=[...]`, also pass `workspace="..."`. Without a workspace, Noesis records verification as unavailable and the run returns an error outcome.
-- **`resume_run` fails for graph-based runs**: for non-minimal runs, `resume_run` requires `using=...` and it must match the adapter captured in the checkpoint.
-- **Cannot mutate sealed runs**: once a run is sealed (`final.json` written), lifecycle mutations (`interrupt`, `checkpoint`, `resume`, `resume_run`) are rejected.
-
 ## Who it's for
 
 ### Builders / platform teams
