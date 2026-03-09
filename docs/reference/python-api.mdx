@@ -455,6 +455,22 @@ except NoesisVeto as veto:
     print(f"Blocked by governance: {veto.advice}")
 ```
 
+Supported `kind` values:
+
+- `shell`: requires `ns.set(shell_executor=...)`
+- `adapter`: requires `ns.set(adapter_executor=...)`
+
+If the matching executor is not configured, `ns.governed_act(...)` raises `ValueError` before actuation.
+
+#### Troubleshooting `ns.governed_act(...)`
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `ValueError: shell executor is not configured` | called with `kind="shell"` before registering an executor | register one with `ns.set(shell_executor=...)` |
+| `ValueError: adapter executor is not configured` | called with `kind="adapter"` before registering an executor | register one with `ns.set(adapter_executor=...)` |
+| `ValueError: unsupported action kind` | `kind` is not one of `shell` or `adapter` | use a supported kind and route custom logic through your registered executor |
+| run pauses and remains unsealed | enforce-mode veto with `governance_pause_on_veto=True` | resume with `ns.resume_run(...)` after approval, or terminate explicitly |
+
 ### Internal tool invocation use cases (adapter implementers)
 
 Noesis also exposes an internal application contract for protocol adapters:
