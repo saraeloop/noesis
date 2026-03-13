@@ -67,3 +67,27 @@ def test_action_candidate_event_schema() -> None:
         "evidence_ids": [],
     }
     validate(instance=event, schema=schema)
+
+
+def test_act_event_schema_with_rich_action_payload() -> None:
+    schema = _load_events_schema()
+    event = {
+        "id": "evt-4",
+        "timestamp": "2025-01-01T00:00:01+00:00",
+        "episode_id": "ep-4",
+        "phase": "act",
+        "payload": {
+            "action_id": "act-1",
+            "kind": "tool",
+            "tool": "adapter:demo",
+            "input_excerpt": "write file",
+            "outcome": "ok",
+            "result_status": "ok",
+            "step_id": "step-1",
+            "provenance": {"source": "planner", "adapter_id": "adapter:demo"},
+            "result_artifacts": [{"type": "doc", "uri": "artifact://result"}],
+            "x-tool_draft_id": "draft-1",
+        },
+        "evidence_ids": [],
+    }
+    validate(instance=event, schema=schema)

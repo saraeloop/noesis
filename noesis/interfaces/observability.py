@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from uuid import UUID, uuid4
 
 from noesis.domain.planner.interfaces import EventBus
@@ -153,15 +153,9 @@ class RuntimeEventBus(EventBus):
         candidate_id = action.extensions.get("x-action_candidate_id") if action.extensions else None
         if candidate_id and caused_by is None:
             raise ValueError("action_candidate_id requires explicit caused_by for act lineage")
-        payload = {
-            "input_excerpt": action.input_excerpt,
-            "outcome": action.result_status,
-        }
-        if candidate_id:
-            payload["action_candidate_id"] = candidate_id
-        if action.tool:
-            payload["tool"] = action.tool
         metrics = metrics or self._instant_metric(CognitiveVerb.ACT)
+        action.timestamp = metrics.completed_at.isoformat()
+        payload = self._action_payload(action=action, action_candidate_id=candidate_id)
         event = CognitiveEvent(
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.ACT,
@@ -173,6 +167,31 @@ class RuntimeEventBus(EventBus):
             event = event.with_metrics(metrics)
         linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
         self.emitter.emit(linked, agent_id=action.tool or "system")
+
+    @staticmethod
+    def _action_payload(
+        *,
+        action: ActionRecord,
+        action_candidate_id: str | None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "action_id": action.id,
+            "kind": action.kind,
+            "tool": action.tool,
+            "input_excerpt": action.input_excerpt,
+            "outcome": action.result_status,
+            "result_status": action.result_status,
+        }
+        if action_candidate_id:
+            payload["action_candidate_id"] = action_candidate_id
+        if action.step_id:
+            payload["step_id"] = action.step_id
+        if action.provenance:
+            payload["provenance"] = action.provenance.to_dict()
+        if action.result_artifacts:
+            payload["result_artifacts"] = [artifact.to_dict() for artifact in action.result_artifacts]
+        payload.update({key: value for key, value in action.extensions.items() if key.startswith("x-")})
+        return payload
 
     def emit_reflect(
         self,

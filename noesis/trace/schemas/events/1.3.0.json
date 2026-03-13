@@ -128,9 +128,20 @@
             "additionalProperties": true,
             "required": ["input_excerpt", "outcome"],
             "properties": {
+              "action_id": { "type": "string" },
+              "kind": { "type": "string" },
               "input_excerpt": { "type": "string" },
               "outcome": { "type": "string" },
-              "action_candidate_id": { "type": "string" }
+              "result_status": { "type": "string" },
+              "tool": { "type": "string" },
+              "adapter": { "type": "string" },
+              "action_candidate_id": { "type": "string" },
+              "step_id": { "type": "string" },
+              "provenance": { "type": "object" },
+              "result_artifacts": {
+                "type": "array",
+                "items": { "type": "object" }
+              }
             }
           }
         }

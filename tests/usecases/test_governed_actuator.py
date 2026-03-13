@@ -11,7 +11,7 @@ from noesis.domain.faculties.governance import (
 )
 from noesis.domain.planner.interfaces import ActuationResult, Actuator
 from noesis.domain.planner.minimal import MinimalPlanner
-from noesis.domain.state import LineageTracker, NoesisState
+from noesis.domain.state import ActionArtifact, LineageTracker, NoesisState, Provenance
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.interfaces.observability import RuntimeEventBus
 from noesis.runtime.clock import RuntimeClock
@@ -42,6 +42,15 @@ class RecordingActuator(Actuator):
             input_excerpt="demo",
             result_status="ok",
             step_id=plan[-1].id if plan else None,
+            provenance=Provenance(source="unit-test", adapter_id="adapter:tooling"),
+            result_artifacts=[
+                ActionArtifact(
+                    type="doc",
+                    uri="artifact://demo/result",
+                    sha256="sha256:" + "a" * 64,
+                )
+            ],
+            extensions={"x-custom": "demo"},
         )
         event_bus.emit_action(action)
         return ActuationResult(
@@ -177,5 +186,17 @@ def test_governed_actuator_allows_and_emits_act(tmp_path: Path) -> None:
     candidate = next(event for event in events if event.get("phase") == "action_candidate")
     governance = next(event for event in events if event.get("phase") == "governance")
     act = next(event for event in events if event.get("phase") == "act")
+    action_state = state.actions[-1].to_dict()
     assert act["payload"]["action_candidate_id"] == candidate["payload"]["action_candidate_id"]
     assert act.get("caused_by") == governance["id"]
+    assert act["payload"]["action_id"] == action_state["id"]
+    assert act["payload"]["kind"] == action_state["kind"]
+    assert act["payload"]["tool"] == action_state["tool"]
+    assert act["payload"]["input_excerpt"] == action_state["input_excerpt"]
+    assert act["payload"]["result_status"] == action_state["result_status"]
+    assert act["payload"]["step_id"] == action_state["step_id"]
+    assert act["payload"]["provenance"] == action_state["provenance"]
+    assert act["payload"]["result_artifacts"] == action_state["result_artifacts"]
+    assert act["payload"]["x-custom"] == action_state["x-custom"]
+    assert act["payload"]["x-action_candidate_id"] == action_state["x-action_candidate_id"]
+    assert action_state["timestamp"] == act["timestamp"]
