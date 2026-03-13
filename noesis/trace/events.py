@@ -19,6 +19,7 @@ Design
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Callable
 import json
@@ -26,6 +27,7 @@ import json
 from datetime import datetime
 from uuid import uuid4
 
+from noesis.exceptions import NoesisError
 from noesis.domain.state.cognitive import CognitiveEvent
 from noesis.domain.artifacts.immutability import ArtifactWriteMode
 from noesis.runtime.artifacts.immutability import default_artifact_guard
@@ -95,6 +97,32 @@ REQUIRED_EVENT_KEYS: set[str] = {
 }
 RECOMMENDED_EVENT_KEYS: set[str] = {"agent_id"}
 
+
+@dataclass(frozen=True, slots=True)
+class EventLogCorruption:
+    """Typed description of a corrupted `events.jsonl` record."""
+
+    path: Path
+    line_number: int | None
+    reason: str
+    line_excerpt: str | None = None
+
+
+class EventLogIntegrityError(NoesisError):
+    """Raised when the canonical event log cannot be parsed safely."""
+
+    def __init__(self, corruption: EventLogCorruption) -> None:
+        self.corruption = corruption
+        line_label = (
+            f"line {corruption.line_number}"
+            if corruption.line_number is not None
+            else "last event"
+        )
+        message = f"corrupted events.jsonl at {corruption.path} ({line_label}): {corruption.reason}"
+        if corruption.line_excerpt:
+            message = f"{message}; excerpt={corruption.line_excerpt!r}"
+        super().__init__(message)
+
 __all__ = [
     "EVENTS_FILE",
     "PHASES",
@@ -107,6 +135,8 @@ __all__ = [
     "iter_events",
     "read_events",
     "FACULTY_PHASES",
+    "EventLogCorruption",
+    "EventLogIntegrityError",
 ]
 
 
@@ -240,17 +270,16 @@ def iter_events(dir_path: Path) -> Iterator[Dict[str, Any]]:
     p = dir_path / EVENTS_FILE
     if not p.exists():
         return
-    with p.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
+    with p.open("rb") as f:
+        for line_number, raw_line in enumerate(f, start=1):
+            line = _decode_event_text(raw=raw_line, path=p, line_number=line_number).strip()
             if not line:
                 continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                # TODO: surface to logging once logging backend is wired
-                # Skip invalid lines rather than failing entire read
-                continue
+            yield _decode_event_record(
+                raw=line,
+                path=p,
+                line_number=line_number,
+            )
 
 
 def read_events(dir_path: Path) -> List[Dict[str, Any]]:
@@ -262,29 +291,12 @@ def _last_event_timestamp(dir_path: Path) -> str | None:
     path = dir_path / EVENTS_FILE
     if not path.exists():
         return None
-    with path.open("rb") as handle:
-        handle.seek(0, 2)
-        end = handle.tell()
-        if end == 0:
-            return None
-        buffer = bytearray()
-        pos = end - 1
-        while pos >= 0:
-            handle.seek(pos)
-            chunk = handle.read(1)
-            if chunk == b"\n" and buffer:
-                break
-            if chunk != b"\n":
-                buffer.extend(chunk)
-            pos -= 1
-        if not buffer:
-            return None
-        try:
-            payload = json.loads(buffer[::-1].decode("utf-8"))
-        except json.JSONDecodeError:
-            return None
+    last_timestamp: str | None = None
+    for payload in iter_events(dir_path) or ():
         ts = payload.get("timestamp")
-        return ts if isinstance(ts, str) else None
+        if isinstance(ts, str):
+            last_timestamp = ts
+    return last_timestamp
 
 
 def _parse_iso(value: str) -> datetime | None:
@@ -323,6 +335,57 @@ def _normalize_event_timestamp(event: Dict[str, Any], *, last_timestamp: str | N
             event["timestamp"] = last_timestamp
             timestamp = last_timestamp
     return timestamp
+
+
+def _decode_event_record(
+    *,
+    raw: str,
+    path: Path,
+    line_number: int | None,
+) -> Dict[str, Any]:
+    """Decode one event record and fail hard on corruption."""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as err:
+        raise EventLogIntegrityError(
+            EventLogCorruption(
+                path=path,
+                line_number=line_number,
+                reason=f"invalid JSON: {err.msg}",
+                line_excerpt=_line_excerpt(raw),
+            )
+        ) from err
+    if not isinstance(payload, dict):
+        raise EventLogIntegrityError(
+            EventLogCorruption(
+                path=path,
+                line_number=line_number,
+                reason=f"expected JSON object, got {type(payload).__name__}",
+                line_excerpt=_line_excerpt(raw),
+            )
+        )
+    return payload
+
+
+def _decode_event_text(*, raw: bytes, path: Path, line_number: int | None) -> str:
+    """Decode one raw event line as UTF-8."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as err:
+        raise EventLogIntegrityError(
+            EventLogCorruption(
+                path=path,
+                line_number=line_number,
+                reason=f"invalid UTF-8: {err}",
+            )
+        ) from err
+
+
+def _line_excerpt(raw: str, *, limit: int = 160) -> str:
+    """Return a bounded excerpt for corruption diagnostics."""
+    if len(raw) <= limit:
+        return raw
+    return raw[: limit - 3] + "..."
 
 
 def is_terminate_event(event: Dict[str, Any]) -> bool:
