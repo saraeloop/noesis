@@ -152,6 +152,41 @@ Identity and binding rules:
 | `ApprovalDecisionBindingError` | decision is not bound to reviewed prepared intent | store `request_id`, `reviewed_fingerprint`, and `impact_hash` from the prepared artifact and verify before save |
 | `tool.replayed` result with no dispatch | same idempotency key and fingerprint seen previously | treat as successful replay; do not retry with a new side effect |
 
+### Runtime bridge guardrails (current)
+
+The runtime continuation bridge currently enforces the following:
+
+- only `ToolProtocol.SUBPROCESS` is supported for prepare/resume bridging
+- resume lookup expects exactly one pending draft for the run (`load_pending_for_run`)
+- multiple pending drafts for one run raise `AmbiguousPreparedToolInvocationError`
+
+If a non-subprocess draft reaches runtime continuation, Noēsis raises `UnsupportedToolProtocolError`.
+
+### Subprocess payload contract
+
+For `ToolProtocol.SUBPROCESS`, the normalized payload supports only:
+
+- `argv`: required, non-empty `list[str]`
+- `cwd`: optional `str`
+- `env`: optional `dict[str, str]`
+- `timeout_ms`: optional `int > 0` (falls back to execution default when omitted)
+
+Unknown payload keys fail validation before dispatch.
+
+### Operational runbook: inspect and resume pending drafts
+
+Prepared/approval/idempotency records are persisted under the run directory:
+
+- `tool_invocations/prepared/*.json`
+- `tool_invocations/approvals/*.json`
+- `tool_invocations/idempotency/*.json`
+
+Recommended flow:
+
+1. Confirm one pending draft exists in `tool_invocations/prepared/` for the target run.
+2. Persist an approved `ToolApprovalDecision` bound to the same `run_id + draft_id`.
+3. Resume the run (`ns.resume_run(...)`) so continuation can execute the pending draft through the runtime bridge.
+
 When you call `ns.solve()` with `using=`, Noēsis:
 
 1. Resolves the target via the graph loader (callable, object, or string source)
