@@ -367,30 +367,65 @@ from pathlib import Path
 def verify_manifest(episode_dir: Path) -> bool:
     """Verify artifact integrity using manifest."""
     manifest_path = episode_dir / "manifest.json"
-    
-    with open(manifest_path) as f:
+    if not manifest_path.exists():
+        return False
+
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
-    
-    for filename, info in manifest["files"].items():
-        file_path = episode_dir / filename
-        
-        # Check size
-        if file_path.stat().st_size != info["size"]:
+
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        return False
+
+    for info in files:
+        if not isinstance(info, dict):
             return False
-        
-        # Check hash
+        name = info.get("name")
+        expected_size = info.get("size_bytes")
+        expected_sha = info.get("sha256")
+        if not isinstance(name, str) or not isinstance(expected_size, int) or not isinstance(expected_sha, str):
+            return False
+
+        file_path = episode_dir / name
+        if not file_path.exists() or not file_path.is_file():
+            return False
+
+        if file_path.stat().st_size != expected_size:
+            return False
+
         with open(file_path, "rb") as f:
-            actual_hash = hashlib.sha256(f.read()).hexdigest()
-        
-        if actual_hash != info["sha256"]:
+            actual_sha = f"sha256:{hashlib.sha256(f.read()).hexdigest()}"
+
+        if actual_sha != expected_sha:
             return False
-    
+
     return True
 ```
 
 <Tip>
 JSON serialization uses `canonical_dumps()` with sorted keys for byte-identical output, ensuring consistent hashes across runs.
 </Tip>
+
+### Checkpoint-anchored integrity on resume
+
+When you create a checkpoint, Noēsis records `artifact_manifest_hash` in `checkpoint.json`. During `resume`/`resume_run`, Noēsis recomputes the digest for the checkpoint-visible artifact set and requires an exact match.
+
+Current digest rules:
+
+- If `manifest.json` exists, digesting is anchored to `manifest.json`.
+- If `manifest.json` does not exist, digesting is derived from present files in this set: `events.jsonl`, `prompts.jsonl`, `state.json`, `summary.json`, `learn.jsonl`.
+- For `events.jsonl`, digesting is prefix-aware: only bytes up to the checkpoint `event_offset` are included.
+
+Why the `events.jsonl` prefix rule exists:
+
+- Lifecycle appends after checkpoint creation (for example `run.checkpoint` or `run.resume`) should not invalidate a valid checkpoint.
+- Prefix-aware hashing keeps resume validation anchored to what the checkpoint actually saw.
+
+Operational constraints:
+
+- If artifact contents change after checkpoint creation, resume fails with `CheckpointConsistencyError`.
+- If `manifest.json` appears after a pre-manifest checkpoint, resume fails.
+- If `manifest.json` is removed after a manifest-anchored checkpoint, resume fails.
 
 ## learn.jsonl (optional)
 

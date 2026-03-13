@@ -59,6 +59,26 @@ def run_with_approval(task: str, using):
 Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
 </Tip>
 
+## Resume integrity checks (important)
+
+`ns.resume(...)` and `ns.resume_run(...)` validate checkpoint consistency before continuation. A checkpoint is not only an event pointer; it is also an integrity anchor for the checkpoint-visible artifacts.
+
+Resume consistency currently checks:
+
+- checkpoint event anchor (`event_offset` + `last_event_id`)
+- `state.json` hash (`state_hash`)
+- artifact digest (`artifact_manifest_hash`)
+
+In practice, avoid mutating run artifacts between checkpoint and approval/resume unless you plan to create a new checkpoint.
+
+### Troubleshooting resume failures
+
+| Error | Likely cause | Operator action |
+| --- | --- | --- |
+| `CheckpointConsistencyError: checkpoint causal anchor does not match current event history` | The anchored event lineage changed. | Restore the original timeline or create a new checkpoint from current history. |
+| `CheckpointConsistencyError: checkpoint state hash does not match current state.json` | `state.json` changed after checkpoint creation. | Restore the anchored state or issue a new checkpoint. |
+| `CheckpointConsistencyError: checkpoint artifact manifest hash does not match current artifact set` | Artifact set changed, or `manifest.json` was added/removed/changed after checkpoint. | Keep artifacts unchanged until resume, or create a new checkpoint after intentional changes. |
+
 ## Policy-driven approval
 
 Create a policy that flags operations for approval:

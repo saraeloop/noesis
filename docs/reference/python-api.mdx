@@ -206,8 +206,17 @@ Determinism scope:
 Continuation contract:
 
 - Same run ID.
-- Append-only artifacts preserved.
-- Resume continues post-plan by default (no replan) with anchor validation.
+- Checkpoint causal anchor must still match (`event_offset` + `last_event_id`).
+- `state.json` at resume must match checkpoint `state_hash`.
+- Artifact integrity at resume must match checkpoint `artifact_manifest_hash`.
+- Resume continues post-plan by default (no replan).
+
+Checkpoint artifact digest behavior:
+
+- If `manifest.json` exists, digesting is anchored to `manifest.json`.
+- If `manifest.json` does not exist, digesting is derived from `events.jsonl`, `prompts.jsonl`, `state.json`, `summary.json`, and `learn.jsonl` (files that exist are included with SHA-256 + byte size).
+- For `events.jsonl`, checkpoint/restart consistency uses the checkpoint-visible prefix (`event_offset` lines), so later lifecycle appends do not cause false mismatches.
+- If a manifest appears, disappears, or changes after checkpoint creation, `resume`/`resume_run` raise `CheckpointConsistencyError`.
 
 Adapter continuity:
 
@@ -219,12 +228,20 @@ Adapter continuity:
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint evidence no longer matches current run artifacts (`event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`).
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
 
 All errors above are defined in `noesis.domain.run_lifecycle`.
+
+#### Troubleshooting `CheckpointConsistencyError`
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `checkpoint causal anchor does not match current event history` | Event lineage changed at or before the checkpoint anchor. | Do not rewrite anchored events. Create a new checkpoint from current history. |
+| `checkpoint state hash does not match current state.json` | `state.json` changed after checkpoint creation. | Restore the anchored `state.json`, or create a new checkpoint after the state change. |
+| `checkpoint artifact manifest hash does not match current artifact set` | Anchored artifacts changed, or `manifest.json` was added/removed/changed after checkpoint. | Avoid mutating checkpoint-anchored artifacts; if mutation is intentional, issue a new checkpoint and resume from it. |
 
 ### Verification helpers
 
