@@ -280,6 +280,67 @@ def test_resume_rejects_state_hash_mismatch_against_checkpoint(tmp_path: Path) -
             ns.resume(episode_id, checkpoint_id=checkpoint_id)
 
 
+def test_resume_accepts_pre_manifest_checkpoint_when_artifacts_are_unchanged(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_pre_manifest_ok"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir))
+        run_dir = _prepare_unsealed_run(runs_dir=runs_dir, episode_id=episode_id)
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        assert not (run_dir / "manifest.json").exists()
+
+        resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint_id)
+        assert isinstance(resume_event_id, str) and resume_event_id
+
+        events = read_events(run_dir)
+        assert any(
+            event.get("phase") == "runtime" and event.get("event_type") == "run.resume"
+            for event in events
+        )
+
+
+def test_resume_rejects_manifest_hash_mismatch_against_checkpoint(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_manifest_mismatch"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir))
+        run_dir = _prepare_unsealed_run(runs_dir=runs_dir, episode_id=episode_id)
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        (run_dir / "manifest.json").write_text(
+            '{"schema_version":"manifest/1.0","episode_id":"ep_resume_manifest_mismatch","files":[]}\n',
+            encoding="utf-8",
+        )
+
+        with pytest.raises(CheckpointConsistencyError, match="artifact manifest hash"):
+            ns.resume(episode_id, checkpoint_id=checkpoint_id)
+
+
+def test_resume_rejects_missing_manifest_after_checkpoint_manifest_anchor(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    episode_id = "ep_resume_manifest_missing"
+
+    with _preserve_config():
+        ns.set(runs_dir=str(runs_dir))
+        run_dir = _prepare_unsealed_run(runs_dir=runs_dir, episode_id=episode_id)
+        (run_dir / "manifest.json").write_text(
+            '{"schema_version":"manifest/1.0","episode_id":"ep_resume_manifest_missing","files":[]}\n',
+            encoding="utf-8",
+        )
+        checkpoint = ns.checkpoint(episode_id)
+        checkpoint_id = str(checkpoint["checkpoint_id"])
+
+        (run_dir / "manifest.json").unlink()
+
+        with pytest.raises(CheckpointConsistencyError, match="artifact manifest hash"):
+            ns.resume(episode_id, checkpoint_id=checkpoint_id)
+
+
 def test_resume_rejects_invalid_explicit_causal_anchor(tmp_path: Path) -> None:
     runs_dir = tmp_path / "runs"
     episode_id = "ep_resume_bad_anchor"

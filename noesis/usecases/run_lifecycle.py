@@ -106,7 +106,7 @@ class RunLifecycleService:
             event_offset=len(events),
             last_event_id=last_event_id,
             state_hash=self._required_state_hash(run_dir),
-            artifact_manifest_hash=self._artifact_digest(run_dir),
+            artifact_manifest_hash=self._artifact_digest(run_dir, event_offset=len(events)),
             adapter_label=self._state_adapter_label(run_dir),
         )
 
@@ -221,7 +221,7 @@ class RunLifecycleService:
             return using
         return None
 
-    def _artifact_digest(self, run_dir: Path) -> str:
+    def _artifact_digest(self, run_dir: Path, event_offset: int | None = None) -> str:
         manifest_path = run_dir / "manifest.json"
         if manifest_path.exists():
             return compute_sha256(manifest_path)
@@ -238,11 +238,16 @@ class RunLifecycleService:
             path = run_dir / name
             if not path.exists() or not path.is_file():
                 continue
+            if name == "events.jsonl":
+                file_digest, size_bytes = self._events_prefix_artifact(path, event_offset=event_offset)
+            else:
+                file_digest = compute_sha256(path)
+                size_bytes = path.stat().st_size
             files.append(
                 {
                     "name": name,
-                    "sha256": compute_sha256(path),
-                    "size_bytes": path.stat().st_size,
+                    "sha256": file_digest,
+                    "size_bytes": size_bytes,
                 }
             )
         payload = {
@@ -293,6 +298,11 @@ class RunLifecycleService:
             raise CheckpointConsistencyError(
                 "checkpoint state hash does not match current state.json"
             )
+        current_artifact_digest = self._artifact_digest(run_dir, event_offset=checkpoint.event_offset)
+        if current_artifact_digest != checkpoint.artifact_manifest_hash:
+            raise CheckpointConsistencyError(
+                "checkpoint artifact manifest hash does not match current artifact set"
+            )
 
     def _assert_transition(self, *, run_dir: Path, to_state: RunLifecycleState) -> None:
         from_state = self._current_lifecycle_state(run_dir=run_dir)
@@ -337,6 +347,20 @@ class RunLifecycleService:
         if isinstance(event_id, str) and event_id.strip():
             return event_id
         return None
+
+    @staticmethod
+    def _events_prefix_artifact(path: Path, *, event_offset: int | None) -> tuple[str, int]:
+        if event_offset is None:
+            return compute_sha256(path), path.stat().st_size
+        digest = sha256()
+        size_bytes = 0
+        with path.open("rb") as handle:
+            for index, line in enumerate(handle, start=1):
+                if index > event_offset:
+                    break
+                digest.update(line)
+                size_bytes += len(line)
+        return f"sha256:{digest.hexdigest()}", size_bytes
 
 
 def create_run_lifecycle_service(
