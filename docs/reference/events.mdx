@@ -5,6 +5,8 @@ description: "Complete reference for Noēsis event types and their payloads."
 
 Events are stored in `events.jsonl` as newline-delimited JSON. Each event represents a phase transition in the cognitive loop.
 
+Current event schema version: `1.3.0` ([JSON schema](/schema/event/1.3.0.json)).
+
 ## Integrity contract (`events.jsonl`)
 
 `events.jsonl` is the canonical append-only trace for an episode. Noēsis treats corruption as a hard integrity failure.
@@ -327,46 +329,92 @@ Additional governance details.
 
 Logs tool or adapter invocations.
 
+The runtime emits an action projection that is intentionally close to the persisted
+`state.json` action record so action outcomes are reconstructible from
+`events.jsonl`.
+
 ```json
 {
   "phase": "act",
   "payload": {
-    "tool": "changelog_reader",
-    "adapter": "baseline",
+    "action_id": "act-1",
+    "kind": "tool",
+    "tool": "adapter:demo",
     "input_excerpt": "CHANGELOG.md",
-    "outcome": {
-      "entries_found": 15,
-      "status": "success"
+    "outcome": "ok",
+    "result_status": "ok",
+    "step_id": "step-2",
+    "action_candidate_id": "ac_123",
+    "provenance": {
+      "source": "planner",
+      "adapter_id": "adapter:demo"
     },
-    "status": "success",
-    "error": null
+    "result_artifacts": [
+      {
+        "type": "doc",
+        "uri": "artifact://demo/result",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "x-tool_draft_id": "draft-1"
   }
 }
 ```
+
+<ResponseField name="payload.action_id" type="string">
+Action record identifier (for example `act-1`).
+</ResponseField>
+
+<ResponseField name="payload.kind" type="string">
+Action kind (for example `tool`).
+</ResponseField>
 
 <ResponseField name="payload.tool" type="string">
 Tool that was invoked.
 </ResponseField>
 
-<ResponseField name="payload.adapter" type="string">
-Adapter that was invoked.
-</ResponseField>
-
-<ResponseField name="payload.input_excerpt" type="string">
+<ResponseField name="payload.input_excerpt" type="string" required>
 Truncated input for logging.
 </ResponseField>
 
-<ResponseField name="payload.outcome" type="object" required>
-Result of the action.
+<ResponseField name="payload.outcome" type="string" required>
+Compatibility status field for existing consumers.
 </ResponseField>
 
-<ResponseField name="payload.status" type="string" required>
-Action status: `success`, `error`, `timeout`.
+<ResponseField name="payload.result_status" type="string">
+Canonical action status mirrored from state (`ok`, `error`, `vetoed`, etc.).
 </ResponseField>
 
-<ResponseField name="payload.error" type="string">
-Error message if action failed.
+<ResponseField name="payload.action_candidate_id" type="string">
+Candidate identity linked from governance/action-candidate flow (when present).
 </ResponseField>
+
+<ResponseField name="payload.step_id" type="string">
+Plan step ID associated with the action (when available).
+</ResponseField>
+
+<ResponseField name="payload.provenance" type="object">
+Structured provenance (source, evidence IDs, policy/adapter metadata).
+</ResponseField>
+
+<ResponseField name="payload.result_artifacts" type="array">
+Artifacts produced by the action (type/uri/hash plus optional `x-` fields).
+</ResponseField>
+
+<ResponseField name="payload.x-*" type="any">
+Extension keys from the action record. Only `x-` prefixed extension keys are emitted.
+</ResponseField>
+
+<Info>
+`outcome` and `result_status` currently carry the same status value. `outcome`
+is retained for compatibility with older consumers.
+</Info>
+
+<Info>
+For runtime-emitted actions, `state.json` action timestamps are aligned to the
+event completion time before persistence, so
+`state.outcomes.actions[n].timestamp == act_event.timestamp`.
+</Info>
 
 ### reflect
 
