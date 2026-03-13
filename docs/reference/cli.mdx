@@ -145,6 +145,8 @@ noesis diagnostics replay .noesis/episodes/ep_a .noesis/episodes/ep_b
 noesis validate-ports
 ```
 
+Trace integrity is fail-closed. Commands that read `events.jsonl` (for example `noesis events` and `noesis view`) return a non-zero exit code when the event log is corrupted, rather than skipping bad lines.
+
 ### Other utility commands
 
 ```bash
@@ -204,6 +206,16 @@ Fix:
 - check `NOESIS_RUNS_DIR` / runtime config
 - pass a direct episode directory path to `noesis view`
 - inspect available episodes with `noesis ps`
+
+### `error: corrupted events.jsonl at ...`
+
+Cause: the episode trace failed integrity checks (for example malformed JSON, invalid UTF-8, or a truncated record).
+
+Fix:
+
+- inspect `events.jsonl` near the reported line number
+- restore the run artifacts from a known-good copy if available
+- re-run the episode if recovery is not possible
 
 ### `Textual not available: ...` on `noesis browse`
 

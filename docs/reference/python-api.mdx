@@ -271,6 +271,23 @@ events = ns.events.read(
 
 Set `stream=True` to iterate lazily.
 
+Integrity behavior:
+
+- Raises `noesis.trace.events.EventLogIntegrityError` when `events.jsonl` contains invalid UTF-8, malformed JSON, or a non-object record.
+- Uses fail-closed semantics: corrupted lines are not skipped.
+
+```python
+import noesis as ns
+from noesis.trace.events import EventLogIntegrityError
+
+try:
+    for event in ns.events.read("ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C", stream=True):
+        print(event["phase"])
+except EventLogIntegrityError as exc:
+    print(exc.corruption.path, exc.corruption.line_number, exc.corruption.reason)
+    raise
+```
+
 ### noesis.io.list_runs()
 
 List recent episodes (newest first).

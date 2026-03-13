@@ -5,6 +5,20 @@ description: "Complete reference for Noēsis event types and their payloads."
 
 Events are stored in `events.jsonl` as newline-delimited JSON. Each event represents a phase transition in the cognitive loop.
 
+## Integrity contract (`events.jsonl`)
+
+`events.jsonl` is the canonical append-only trace for an episode. Noēsis treats corruption as a hard integrity failure.
+
+- Reads fail closed: malformed records are not skipped.
+- `iter_events()` / `read_events()` raise `EventLogIntegrityError` when a line has invalid UTF-8, invalid JSON, or a non-object JSON value.
+- Appends are guarded: `write_event()` validates the existing log before writing and rejects append attempts if any existing record is corrupt (including corruption in the middle of the file).
+
+Typical deterministic failures:
+
+- A truncated final line.
+- Invalid UTF-8 bytes in any record.
+- A malformed JSON record even when later lines are valid.
+
 ## Event structure
 
 Every event follows this base structure:
@@ -492,8 +506,14 @@ noesis events ep_abc123 -j
 
 ```python
 import noesis as ns
+from noesis.trace.events import EventLogIntegrityError
 
-events = list(ns.events.read("ep_abc123"))
+try:
+    events = list(ns.events.read("ep_abc123"))
+except EventLogIntegrityError as exc:
+    corruption = exc.corruption
+    print(f"Corrupted trace at line {corruption.line_number}: {corruption.reason}")
+    raise
 
 # Filter
 act_events = [e for e in events if e["phase"] == "act"]
@@ -508,6 +528,8 @@ def get_chain(events, event_id):
         current = next((e for e in events if e["id"] == caused_by), None)
     return chain
 ```
+
+If this exception is raised, treat the episode trace as untrusted until the underlying `events.jsonl` is repaired or replaced.
 
 ## Next steps
 
