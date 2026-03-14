@@ -6,8 +6,15 @@ from noesis.domain.faculties import (
     FACULTY_HOOK_ORDER,
     GovernanceResult,
     InsightMetrics,
+    IntuitionAssessment,
     IntuitionEvent,
     PlannerDirective,
+    RiskLevel,
+    SalienceSignal,
+    ScrutinyLevel,
+    StrategyHint,
+    ToolConstraint,
+    derive_intuition_assessment,
     validate_hook_sequence,
     warn_on_incompatibility,
 )
@@ -40,12 +47,25 @@ def test_round_trip_serialization() -> None:
         "applied": False,
         "rationale": None,
         "evidence_ids": [],
+        "risk_level": "moderate",
+        "salience_signals": ["policy_hint"],
+        "strategy_hints": ["verify_first"],
+        "tool_constraints": ["require_double_check"],
+        "scrutiny_level": "elevated",
         "target": "input",
         "scope": "episode",
         "blocking": False,
     }
     intuition_event = IntuitionEvent.from_dict(intuition_payload)
     assert intuition_event.to_dict() == intuition_payload
+    assert derive_intuition_assessment(intuition_event) == IntuitionAssessment(
+        risk_level=RiskLevel.MODERATE,
+        salience_signals=(SalienceSignal.POLICY_HINT,),
+        strategy_hints=(StrategyHint.VERIFY_FIRST,),
+        tool_constraints=(ToolConstraint.REQUIRE_DOUBLE_CHECK,),
+        scrutiny_level=ScrutinyLevel.ELEVATED,
+        evidence_ids=(),
+    )
 
     directive_payload = {
         "schema_version": current_version("direction"),
@@ -57,6 +77,13 @@ def test_round_trip_serialization() -> None:
         "policy_id": "planner",
         "policy_version": "1.2.0",
         "policy_kind": "rules",
+        "intuition_event_id": "evt-intuition",
+        "risk_level": "high",
+        "salience_signals": ["policy_hint"],
+        "strategy_hints": ["verify_first", "retrieve_more"],
+        "tool_constraints": ["read_only"],
+        "scrutiny_level": "strict",
+        "evidence_ids": ["event:intuition:1"],
     }
     directive = PlannerDirective.from_mapping(directive_payload)
     expected = dict(directive_payload)

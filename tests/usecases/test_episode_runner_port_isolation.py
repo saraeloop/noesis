@@ -110,9 +110,10 @@ class _FakeEventBus(EventBus):
         *,
         payload: Mapping[str, object],
         agent_id: str,
+        evidence_ids=None,
         caused_by=None,
     ) -> UUID:
-        _ = payload, agent_id, caused_by
+        _ = payload, agent_id, evidence_ids, caused_by
         return uuid4()
 
     def emit_action_candidate(  # type: ignore[override]

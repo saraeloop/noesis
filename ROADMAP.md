@@ -54,6 +54,7 @@ Noēsis is a cognitive framework. To protect its identity and prevent scope drif
 | ADR-015 | Process->Run Interrupt/Checkpoint/Resume Contract | **Accepted (v1 contract)** | Lifecycle state machine + checkpoint/resume contract enforced; ADR-017 owns continuation orchestration |
 | ADR-016 | Protocol-First Tool Contract (subprocess/HTTP/MCP) | **Proposed (Draft, PR-4 subprocess-only guardrails enforced)** | After ADR-017 continuation orchestration boundary is fixed |
 | ADR-017 | Resume Continuation Orchestration (Checkpoint->Execution Continuation) | **Accepted (v1 continuation orchestration)** | `resume_run` + anchor validation + governance pause mode checkpoint/interrupt evidence |
+| ADR-019 | Intuition as First-Class Steering Contract for Direction | **Proposed** | After current state-authority cleanup; before broader faculty-boundary tightening |
 
 Sequencing rule:
 

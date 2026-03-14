@@ -102,6 +102,7 @@ class RuntimeEventBus(EventBus):
         return self.emit_direction_payload(
             payload=payload,
             agent_id=directive.policy_id,
+            evidence_ids=list(directive.evidence_ids),
             caused_by=caused_by,
         )
 
@@ -110,6 +111,7 @@ class RuntimeEventBus(EventBus):
         *,
         payload: Mapping[str, object],
         agent_id: str,
+        evidence_ids: Sequence[str] | None = None,
         caused_by: UUID | None = None,
     ) -> UUID:
         return _direction_event(
@@ -117,6 +119,7 @@ class RuntimeEventBus(EventBus):
             self.context.episode_id,
             dict(payload),
             agent=agent_id,
+            evidence_ids=list(evidence_ids or ()),
             caused_by=str(caused_by) if caused_by else None,
             now_fn=lambda: self.now().isoformat(),
             id_factory=self.event_id_factory,

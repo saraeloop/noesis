@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "kind": "hint",
   "advice": "Verify input format",
   "confidence": 0.75,
@@ -9,6 +9,11 @@
   "applied": false,
   "rationale": "Input mismatch detected",
   "evidence_ids": ["event:observe:1"],
+  "risk_level": "moderate",
+  "salience_signals": ["policy_hint"],
+  "strategy_hints": ["verify_first"],
+  "tool_constraints": ["require_double_check"],
+  "scrutiny_level": "elevated",
   "target": "input",
   "scope": "episode",
   "blocking": false

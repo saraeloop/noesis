@@ -44,6 +44,7 @@ class DummyEventBus(EventBus):
         *,
         payload: Mapping[str, object],
         agent_id: str,
+        evidence_ids=None,
         caused_by=None,
     ) -> UUID:
         return uuid4()

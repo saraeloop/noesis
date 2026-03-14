@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from noesis.domain.faculties.intuition import (
+    IntuitionAssessment,
+    RiskLevel,
+    ScrutinyLevel,
+    StrategyHint,
+    ToolConstraint,
+)
 from noesis.domain.planner.meta import MetaPlanner
 from noesis.domain.planner.minimal import MinimalPlanner
 from noesis.domain.faculties.direction import DirectiveStatus
@@ -29,3 +36,30 @@ def test_meta_planner_no_beliefs_skips() -> None:
 
     assert directive.status is DirectiveStatus.SKIPPED
     assert directive.applied is False
+
+
+def test_meta_planner_consumes_structured_intuition() -> None:
+    planner = MetaPlanner()
+    base_plan = MinimalPlanner().build_plan(goal="Review incidents", beliefs=())
+    intuition = IntuitionAssessment(
+        risk_level=RiskLevel.HIGH,
+        strategy_hints=(StrategyHint.RETRIEVE_MORE, StrategyHint.VERIFY_FIRST),
+        tool_constraints=(ToolConstraint.READ_ONLY,),
+        scrutiny_level=ScrutinyLevel.STRICT,
+    )
+
+    directive = planner.propose(
+        goal="Review incidents",
+        beliefs=(),
+        base_plan=base_plan,
+        intuition=intuition,
+    )
+
+    assert directive.status is DirectiveStatus.APPLIED
+    diff_keys = {diff.key for diff in directive.diff}
+    assert "plan.steps[0].description" in diff_keys
+    assert "plan.steps[1].description" in diff_keys
+    assert "plan.steps[2].description" in diff_keys
+    assert "intuition:risk-review" in directive.steps
+    assert "intuition:read-only" in directive.steps
+    assert "intuition:strict-scrutiny" in directive.steps

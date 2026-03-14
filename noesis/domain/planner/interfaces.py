@@ -12,6 +12,7 @@ from typing import Mapping, Protocol, Sequence
 from uuid import UUID
 
 from ..action_candidates import ActionCandidate
+from ..faculties.intuition import IntuitionAssessment
 from ..state import ActionRecord, CognitiveEvent, CognitiveMetrics, NoesisState, PlanStep, StepStatus
 from noesis.domain.faculties.direction import PlannerDirective
 from noesis.domain.faculties.governance import GovernanceResult
@@ -31,7 +32,13 @@ class ActuationResult:
 class Planner(Protocol):
     """Generates a sequence of plan steps for a given task."""
 
-    def build_plan(self, *, goal: str, beliefs: Sequence[str]) -> list[PlanStep]:
+    def build_plan(
+        self,
+        *,
+        goal: str,
+        beliefs: Sequence[str],
+        intuition: IntuitionAssessment | None = None,
+    ) -> list[PlanStep]:
         ...
 
 
@@ -81,6 +88,7 @@ class EventBus(Protocol):
         *,
         payload: Mapping[str, object],
         agent_id: str,
+        evidence_ids: Sequence[str] | None = None,
         caused_by: UUID | None = None,
     ) -> UUID:
         ...
