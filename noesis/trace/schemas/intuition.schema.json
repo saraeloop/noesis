@@ -57,6 +57,35 @@
       "type": ["object", "null"],
       "additionalProperties": true
     },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "moderate", "high", "critical"]
+    },
+    "salience_signals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["task_complexity", "normalization_gap", "policy_hint", "safety_boundary"]
+      }
+    },
+    "strategy_hints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["conservative", "verify_first", "retrieve_more", "narrow_scope"]
+      }
+    },
+    "tool_constraints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["no_side_effects", "read_only", "require_double_check"]
+      }
+    },
+    "scrutiny_level": {
+      "type": "string",
+      "enum": ["normal", "elevated", "strict"]
+    },
     "target": {
       "type": "string"
     },

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from .interfaces import ActuationResult, Actuator, EventBus, Planner
+from ..faculties.intuition import IntuitionAssessment
 from ..state import (
     ActionRecord,
     NoesisState,
@@ -24,7 +25,14 @@ from ..state import (
 class MinimalPlanner(Planner):
     """Maps the goal into a deterministic detect → act → verify plan."""
 
-    def build_plan(self, *, goal: str, beliefs: Sequence[str]) -> list[PlanStep]:
+    def build_plan(
+        self,
+        *,
+        goal: str,
+        beliefs: Sequence[str],
+        intuition: IntuitionAssessment | None = None,
+    ) -> list[PlanStep]:
+        _ = intuition
         description_suffix = goal if goal else "task"
         return [
             PlanStep(id="step-1", kind=PlanKind.DETECT, description="Collect relevant context"),

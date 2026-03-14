@@ -259,6 +259,7 @@ def direction_event(
     payload: Dict[str, Any],
     *,
     agent: str = "system",
+    evidence_ids: Optional[List[str]] = None,
     caused_by: Optional[str] = None,
     metrics: Optional[Dict[str, Any]] = None,
     now_fn: Callable[[], str] | None = None,
@@ -274,7 +275,7 @@ def direction_event(
         "agent_id": agent,
         "phase": "direction",
         "payload": payload,
-        "evidence_ids": [],
+        "evidence_ids": list(evidence_ids or []),
     }
     if caused_by:
         record["caused_by"] = caused_by

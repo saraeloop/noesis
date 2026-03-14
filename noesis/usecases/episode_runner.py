@@ -24,7 +24,11 @@ from noesis.domain.planner.interfaces import (
     Planner,
 )
 from noesis.domain.planner.meta import MetaPlanner
-from noesis.domain.faculties.direction import PlannerDirective, DirectiveStatus
+from noesis.domain.faculties.direction import (
+    DirectiveStatus,
+    PlannerDirective,
+    planner_directive_from_intuition,
+)
 from noesis.domain.faculties.governance import (
     GovernanceDecision,
     GovernanceFailurePolicy,
@@ -33,7 +37,12 @@ from noesis.domain.faculties.governance import (
     PreActGovernor,
     with_governance_context,
 )
-from noesis.domain.faculties.intuition import Intuition, IntuitionEvent
+from noesis.domain.faculties.intuition import (
+    Intuition,
+    IntuitionAssessment,
+    IntuitionEvent,
+    derive_intuition_assessment,
+)
 from noesis.domain.snapshot import DEFAULT_IGNORE, Snapshot, SnapshotPolicy
 from noesis.domain.state import CognitiveEvent, CognitiveMetrics, CognitiveVerb, LineageTracker, NoesisState, PlanKind, PlanStep, OUTCOME_STATUS_VETOED
 from noesis.domain.verification import Assertion, FileContentReader, SnapshotPaths, VerificationSummary
@@ -201,6 +210,15 @@ class EpisodeOutcome:
     summary: str | None
     metrics: dict[str, float]
     reasons: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class IntuitionRunResult:
+    """Canonical intuition handoff for the runtime path."""
+
+    signals: tuple[str, ...]
+    event_id: UUID | None
+    assessment: IntuitionAssessment | None
 
 
 @dataclass(slots=True)
@@ -616,10 +634,16 @@ class EpisodeRunner:
         state = self._deps.state_repository.init(request.context)
 
         observe_event = self._run_observe(request, state)
-        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
-        signals = tuple(request.beliefs) + tuple(intuition_signals)
-        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
-        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
+        intuition_result = self._run_intuition(request, state, observe_event.event_id)
+        signals = tuple(request.beliefs) + intuition_result.signals
+        _ = self._run_interpret(request, signals, caused_by=intuition_result.event_id)
+        plan, plan_event, direction_event_id = self._run_plan(
+            request,
+            state,
+            signals,
+            intuition=intuition_result.assessment,
+            intuition_event_id=intuition_result.event_id,
+        )
         return self._execute_from_plan(
             request=request,
             state=state,
@@ -634,10 +658,16 @@ class EpisodeRunner:
         state = self._deps.state_repository.init(request.context)
 
         observe_event = self._run_observe(request, state)
-        intuition_signals, intuition_event_id = self._run_intuition(request, state, observe_event.event_id)
-        signals = tuple(request.beliefs) + tuple(intuition_signals)
-        _ = self._run_interpret(request, signals, caused_by=intuition_event_id)
-        plan, plan_event, direction_event_id = self._run_plan(request, state, signals)
+        intuition_result = self._run_intuition(request, state, observe_event.event_id)
+        signals = tuple(request.beliefs) + intuition_result.signals
+        _ = self._run_interpret(request, signals, caused_by=intuition_result.event_id)
+        plan, plan_event, direction_event_id = self._run_plan(
+            request,
+            state,
+            signals,
+            intuition=intuition_result.assessment,
+            intuition_event_id=intuition_result.event_id,
+        )
         return await self._execute_from_plan_async(
             request=request,
             state=state,
@@ -766,14 +796,14 @@ class EpisodeRunner:
         request: EpisodeRequest,
         state: NoesisState,
         caused_by: UUID | None,
-    ) -> tuple[list[str], UUID | None]:
+    ) -> IntuitionRunResult:
         if not self._deps.intuition_enabled or self._deps.intuition_policy is None:
-            return [], None
+            return IntuitionRunResult(signals=(), event_id=None, assessment=None)
 
         snapshot = self._build_snapshot(request, state)
         result: IntuitionEvent | None = self._deps.intuition_policy.advise(snapshot)
         if result is None:
-            return [], None
+            return IntuitionRunResult(signals=(), event_id=None, assessment=None)
 
         event_id = self._event_id_factory()
         timestamp = self._now().isoformat()
@@ -784,7 +814,7 @@ class EpisodeRunner:
             "agent_id": "intuition",
             "phase": "intuition",
             "payload": result.to_dict(),
-            "evidence_ids": [],
+            "evidence_ids": list(result.evidence_ids),
         }
         if caused_by is not None:
             record["caused_by"] = str(caused_by)
@@ -807,8 +837,12 @@ class EpisodeRunner:
                 event_id=event_id,
             )
 
-        signals = [f"directive:{result.kind}", result.advice]
-        return signals, event_id
+        signals = (f"directive:{result.kind}", result.advice)
+        return IntuitionRunResult(
+            signals=signals,
+            event_id=event_id,
+            assessment=derive_intuition_assessment(result),
+        )
 
     def _maybe_emit_terminate(self, context: EpisodeContextPort, payload: Dict[str, object]) -> None:
         """Emit terminate once if not already recorded."""
@@ -906,21 +940,30 @@ class EpisodeRunner:
         request: EpisodeRequest,
         state: NoesisState,
         beliefs: Sequence[str],
+        *,
+        intuition: IntuitionAssessment | None = None,
+        intuition_event_id: UUID | None = None,
     ) -> tuple[list[PlanStep], CognitiveEvent, Optional[UUID]]:
         verb = CognitiveVerb.PLAN
         context = request.context
         self._hooks.before_phase(verb, context)
         token = self._clock.start(verb)
-        plan = self._deps.planner.build_plan(goal=request.goal, beliefs=beliefs)
+        plan = self._deps.planner.build_plan(goal=request.goal, beliefs=beliefs, intuition=intuition)
         directive: PlannerDirective | None = None
         if self._deps.direction_planner is not None:
             proposed = self._deps.direction_planner.propose(
                 goal=request.goal,
                 beliefs=beliefs,
                 base_plan=plan,
+                intuition=intuition,
             )
             if proposed is not None:
                 directive = _with_stable_directive_id(proposed, context.episode_id)
+                directive = planner_directive_from_intuition(
+                    directive=directive,
+                    intuition_event_id=str(intuition_event_id) if intuition_event_id else None,
+                    assessment=intuition,
+                )
                 if directive.applied:
                     _apply_directive(plan, directive)
         metrics = self._clock.stop(token)
