@@ -5,6 +5,8 @@ description: "Complete reference for Noēsis event types and their payloads."
 
 Events are stored in `events.jsonl` as newline-delimited JSON. Each event represents a phase transition in the cognitive loop.
 
+Current event schema version: `1.3.0` ([JSON schema](/schema/event/1.3.0.json)).
+
 ## Integrity contract (`events.jsonl`)
 
 `events.jsonl` is the canonical append-only trace for an episode. Noēsis treats corruption as a hard integrity failure.
@@ -352,6 +354,10 @@ Additional governance details.
 
 Logs tool or adapter invocations.
 
+The runtime emits an action projection that is intentionally close to the persisted
+`state.json` action record so action outcomes are reconstructible from
+`events.jsonl`.
+
 ```json
 {
   "phase": "act",
@@ -368,16 +374,28 @@ Logs tool or adapter invocations.
 }
 ```
 
+<ResponseField name="payload.action_id" type="string">
+Action record identifier (for example `act-1`).
+</ResponseField>
+
+<ResponseField name="payload.kind" type="string">
+Action kind (for example `tool`).
+</ResponseField>
+
 <ResponseField name="payload.tool" type="string">
 Tool that was invoked.
 </ResponseField>
 
-<ResponseField name="payload.adapter" type="string">
-Adapter that was invoked.
+<ResponseField name="payload.input_excerpt" type="string" required>
+Truncated input for logging.
 </ResponseField>
 
-<ResponseField name="payload.input_excerpt" type="string">
-Truncated input for logging.
+<ResponseField name="payload.outcome" type="string" required>
+Compatibility status field for existing consumers.
+</ResponseField>
+
+<ResponseField name="payload.result_status" type="string">
+Canonical action status mirrored from state (`ok`, `error`, `vetoed`, etc.).
 </ResponseField>
 
 <ResponseField name="payload.outcome" type="string" required>
@@ -396,9 +414,20 @@ Plan step ID associated with this action.
 Resulting status for `payload.step_id`. This field is used to project final step status from `act` evidence.
 </ResponseField>
 
-<ResponseField name="payload.error" type="string">
-Error message if action failed.
+<ResponseField name="payload.x-*" type="any">
+Extension keys from the action record. Only `x-` prefixed extension keys are emitted.
 </ResponseField>
+
+<Info>
+`outcome` and `result_status` currently carry the same status value. `outcome`
+is retained for compatibility with older consumers.
+</Info>
+
+<Info>
+For runtime-emitted actions, `state.json` action timestamps are aligned to the
+event completion time before persistence, so
+`state.outcomes.actions[n].timestamp == act_event.timestamp`.
+</Info>
 
 ### reflect
 
