@@ -151,6 +151,7 @@ Identity and binding rules:
 | `ApprovalDecisionRequiredError` | decision missing or not `approved` | write an approved `ToolApprovalDecision` before execute |
 | `ApprovalDecisionBindingError` | decision is not bound to reviewed prepared intent | store `request_id`, `reviewed_fingerprint`, and `impact_hash` from the prepared artifact and verify before save |
 | `tool.replayed` result with no dispatch | same idempotency key and fingerprint seen previously | treat as successful replay; do not retry with a new side effect |
+| `summary.json` / `manifest.json` missing while run is paused | expected non-terminal lifecycle state | inspect latest `run.state_projection` links; resume and terminate run to produce final artifacts |
 
 ### Runtime bridge guardrails (current)
 
@@ -186,6 +187,22 @@ Recommended flow:
 1. Confirm one pending draft exists in `tool_invocations/prepared/` for the target run.
 2. Persist an approved `ToolApprovalDecision` bound to the same `run_id + draft_id`.
 3. Resume the run (`ns.resume_run(...)`) so continuation can execute the pending draft through the runtime bridge.
+
+### Runtime evidence checks (pause/continue)
+
+When a run pauses before side effects, inspect runtime events to confirm bridge
+evidence is complete:
+
+- expect `phase="runtime"`, `event_type="run.interrupt"` and `run.checkpoint`
+- expect a `phase="runtime"`, `event_type="run.state_projection"` event
+- on paused runs, `run.state_projection.payload.links` should contain only
+  `events` and `learn` (no `summary`/`manifest` yet)
+- on paused runs, `run.state_projection.payload.status` should match the pause
+  status (for example `interrupted`)
+
+After approval and `ns.resume_run(...)` completes terminally, the latest
+`run.state_projection` should include terminal links (`summary`, `manifest`) and
+state finalization artifacts will be present.
 
 When you call `ns.solve()` with `using=`, Noēsis:
 

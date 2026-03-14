@@ -3,7 +3,7 @@ title: "State schema"
 description: "Complete reference for the Noēsis state.json artifact."
 ---
 
-The `state.json` artifact captures the cognitive state at the end of each episode. It provides a complete view of what was planned and what happened.
+The `state.json` artifact captures cognitive state snapshots during execution and at terminal completion. It provides a complete view of what was planned and what happened.
 
 ## Schema overview
 
@@ -16,7 +16,8 @@ The `state.json` artifact captures the cognitive state at the end of each episod
   "beliefs": [ ... ],
   "plan": { ... },
   "memory": { ... },
-  "outcomes": { ... }
+  "outcomes": { ... },
+  "links": { ... }
 }
 ```
 
@@ -28,6 +29,11 @@ Backwards-compatible identifier. Currently `"1.0"`.
 
 <ResponseField name="state_schema_version" type="string" required>
 Semantic version for the schema contract. Currently `"1.0.0"`.
+</ResponseField>
+
+<ResponseField name="links" type="object">
+Relative artifact paths for this run (for example `events.jsonl`,
+`learn.jsonl`, `summary.json`, `manifest.json`). Keys vary by lifecycle state.
 </ResponseField>
 
 ## Episode
@@ -73,6 +79,45 @@ ISO 8601 start timestamp.
 Intuition posture for the episode (advisory | interventive | hybrid). Runs created
 with older Noēsis versions may omit this field (default advisory).
 </ResponseField>
+
+## Artifact links
+
+`links` points to run-local artifacts in the episode directory.
+
+```json
+{
+  "links": {
+    "events": "events.jsonl",
+    "learn": "learn.jsonl",
+    "summary": "summary.json",
+    "manifest": "manifest.json"
+  }
+}
+```
+
+<ResponseField name="links.events" type="string">
+Event timeline artifact path.
+</ResponseField>
+
+<ResponseField name="links.learn" type="string">
+Learning timeline artifact path.
+</ResponseField>
+
+<ResponseField name="links.summary" type="string">
+Final summary artifact path (terminal runs only).
+</ResponseField>
+
+<ResponseField name="links.manifest" type="string">
+Final manifest artifact path (terminal runs only).
+</ResponseField>
+
+<Info>
+Lifecycle constraint:
+
+- non-terminal runs (for example approval pauses) persist `links.events` and
+  `links.learn`
+- terminal runs additionally persist `links.summary` and `links.manifest`
+</Info>
 
 ## Goal
 
@@ -344,6 +389,16 @@ mirrors `act` event payloads, and runtime emission aligns each action
 <ResponseField name="outcomes.metrics" type="object">
 Outcome metrics (e.g., total duration).
 </ResponseField>
+
+## Traceability guarantees
+
+- `episode.started_at` is aligned to the `start` event timestamp and remains
+  stable across continuation.
+- Whenever `state.json` is persisted, runtime emits
+  `phase="runtime"`, `event_type="run.state_projection"` with projection
+  evidence for outcomes and links.
+- For terminal runs, projection `outcomes` and `links` mirror the final
+  persisted `state.json` values.
 
 ## Complete example
 
