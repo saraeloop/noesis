@@ -178,35 +178,44 @@ Policy that performed interpretation.
 
 ### plan
 
-Records the selected action steps.
+Records the selected action steps and projection metadata used to rebuild `state.json`.
 
 ```json
 {
   "phase": "plan",
   "payload": {
     "steps": [
+      "detect:Collect context",
+      "act:Execute task"
+    ],
+    "step_records": [
       {
-        "id": "step_1",
+        "id": "step-1",
         "kind": "detect",
-        "description": "Read changelog entries",
+        "description": "Collect context",
         "status": "pending"
       },
       {
-        "id": "step_2",
+        "id": "step-2",
         "kind": "act",
-        "description": "Generate summary",
+        "description": "Execute task",
         "status": "pending"
       }
     ],
-    "confidence": 0.85
+    "source": "planner.minimal",
+    "rationale": "minimal planner"
   }
 }
 ```
 
 <ResponseField name="payload.steps" type="array" required>
-Ordered list of planned steps.
+Compatibility labels in `<kind>:<description>` format. Legacy consumers may rely on this field.
+</ResponseField>
 
-<Expandable title="Step properties">
+<ResponseField name="payload.step_records" type="array">
+Structured plan records used for deterministic plan-state projection.
+
+<Expandable title="Step record properties">
   <ResponseField name="id" type="string" required>
   Unique step identifier.
   </ResponseField>
@@ -222,11 +231,27 @@ Ordered list of planned steps.
   <ResponseField name="status" type="string" required>
   Step status: `pending`, `running`, `done`, `skipped`, `failed`, `vetoed`.
   </ResponseField>
+
+  <ResponseField name="depends_on" type="array">
+  Optional list of predecessor step IDs.
+  </ResponseField>
+
+  <ResponseField name="inputs" type="object">
+  Optional structured inputs for the step.
+  </ResponseField>
+
+  <ResponseField name="outputs" type="object">
+  Optional structured outputs for the step.
+  </ResponseField>
 </Expandable>
 </ResponseField>
 
-<ResponseField name="payload.confidence" type="number">
-Confidence score for the plan (0-1).
+<ResponseField name="payload.source" type="string">
+Planner source identifier (for example, `planner.minimal`). Runtime-emitted plan events always include this.
+</ResponseField>
+
+<ResponseField name="payload.rationale" type="string">
+Optional planner rationale.
 </ResponseField>
 
 ### direction
@@ -337,26 +362,14 @@ The runtime emits an action projection that is intentionally close to the persis
 {
   "phase": "act",
   "payload": {
-    "action_id": "act-1",
-    "kind": "tool",
-    "tool": "adapter:demo",
-    "input_excerpt": "CHANGELOG.md",
+    "action_id": "act-2",
+    "kind": "adapter",
+    "tool": "adapter:core.minimal",
+    "input_excerpt": "Execute goal: Draft release notes",
     "outcome": "ok",
     "result_status": "ok",
     "step_id": "step-2",
-    "action_candidate_id": "ac_123",
-    "provenance": {
-      "source": "planner",
-      "adapter_id": "adapter:demo"
-    },
-    "result_artifacts": [
-      {
-        "type": "doc",
-        "uri": "artifact://demo/result",
-        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      }
-    ],
-    "x-tool_draft_id": "draft-1"
+    "step_status": "done"
   }
 }
 ```
@@ -385,20 +398,20 @@ Compatibility status field for existing consumers.
 Canonical action status mirrored from state (`ok`, `error`, `vetoed`, etc.).
 </ResponseField>
 
-<ResponseField name="payload.action_candidate_id" type="string">
-Candidate identity linked from governance/action-candidate flow (when present).
+<ResponseField name="payload.outcome" type="string" required>
+Action outcome value.
+</ResponseField>
+
+<ResponseField name="payload.result_status" type="string">
+Canonical action status string from the action record (for example, `ok`).
 </ResponseField>
 
 <ResponseField name="payload.step_id" type="string">
-Plan step ID associated with the action (when available).
+Plan step ID associated with this action.
 </ResponseField>
 
-<ResponseField name="payload.provenance" type="object">
-Structured provenance (source, evidence IDs, policy/adapter metadata).
-</ResponseField>
-
-<ResponseField name="payload.result_artifacts" type="array">
-Artifacts produced by the action (type/uri/hash plus optional `x-` fields).
+<ResponseField name="payload.step_status" type="string">
+Resulting status for `payload.step_id`. This field is used to project final step status from `act` evidence.
 </ResponseField>
 
 <ResponseField name="payload.x-*" type="any">
@@ -576,6 +589,27 @@ def get_chain(events, event_id):
         current = next((e for e in events if e["id"] == caused_by), None)
     return chain
 ```
+
+### Troubleshooting: verify plan derivability
+
+Use the runtime projector to confirm `state.json.plan` is derivable from `events.jsonl`.
+
+```python
+import noesis as ns
+from noesis.runtime.plan_projection import project_plan_state
+
+episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
+events = list(ns.events.read(episode_id))
+projected = project_plan_state(events)
+state = ns.state.read(episode_id)
+
+assert projected is not None
+assert projected.to_dict() == state["plan"]
+```
+
+If this assertion fails, inspect:
+- the latest `plan` payload for `step_records` and `source`
+- `act` payload entries for both `step_id` and `step_status`
 
 If this exception is raised, treat the episode trace as untrusted until the underlying `events.jsonl` is repaired or replaced.
 
