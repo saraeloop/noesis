@@ -335,7 +335,10 @@ Final outcome status (controlled vocabulary):
 </ResponseField>
 
 <ResponseField name="outcomes.actions" type="array">
-Structured action records (id, kind, tool, result_status, artifacts, provenance). Shape mirrors the events emitted during execution.
+Structured action records (`id`, `kind`, `tool`, `input_excerpt`, `result_status`,
+`step_id`, `provenance`, `result_artifacts`, plus `x-` extensions). The shape
+mirrors `act` event payloads, and runtime emission aligns each action
+`timestamp` to the corresponding `act` event timestamp.
 </ResponseField>
 
 <ResponseField name="outcomes.metrics" type="object">
