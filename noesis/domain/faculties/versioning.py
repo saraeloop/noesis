@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Dict
 
 FACULTY_SCHEMA_VERSIONS: Dict[str, str] = {
-    "intuition": "1.0.0",
-    "direction": "1.1.0",
+    "intuition": "1.1.0",
+    "direction": "1.2.0",
     "governance": "1.1.0",
     "insight": "1.0.0",
 }

@@ -80,7 +80,8 @@ class AllowActionGovernor(PreActGovernor):
 
 @dataclass(slots=True)
 class SingleStepPlanner(Planner):
-    def build_plan(self, *, goal: str, beliefs):  # type: ignore[no-untyped-def]
+    def build_plan(self, *, goal: str, beliefs, intuition=None):  # type: ignore[no-untyped-def]
+        _ = beliefs, intuition
         return [PlanStep(id="step-1", kind=PlanKind.ACT, description=f"Execute {goal}")]
 
 
