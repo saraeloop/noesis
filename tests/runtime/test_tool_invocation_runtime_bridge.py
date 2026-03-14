@@ -31,6 +31,7 @@ from noesis.infrastructure.tool_invocation.repositories import (
     FileIdempotencyStore,
     FilePreparedInvocationRepository,
 )
+from noesis.runtime.state_projection import project_state_projection
 from noesis.trace.events import read_events
 from noesis.usecases.run_lifecycle import create_run_lifecycle_service
 from noesis.usecases.tool_invocation.models import ToolInvocationInput
@@ -102,12 +103,16 @@ def test_approval_required_prepared_write_pauses_before_side_effects(tmp_path: P
             for event in events
             if event.get("phase") == "runtime" and event.get("event_type") == "run.checkpoint"
         )
+        projection = project_state_projection(events)
 
         assert candidate_tool_event["caused_by"] == candidate_event["id"]
         assert candidate_tool_event["id"] in _causal_chain_ids(events, pending_event["id"])
         assert interrupt_event["caused_by"] == pending_event["id"]
         assert checkpoint_event["caused_by"] == interrupt_event["id"]
         assert (pending_event.get("payload") or {}).get("draft_id") == draft_id
+        assert projection is not None
+        assert projection.status == "interrupted"
+        assert projection.links == {"events": "events.jsonl", "learn": "learn.jsonl"}
 
 
 def test_resume_run_executes_same_prepared_draft_without_reprepare(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

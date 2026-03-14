@@ -51,8 +51,13 @@ from .runtime.utils import now as _now
 from .runtime.clock import RuntimeClock
 from .runtime.events_emitter import CognitiveEventEmitter
 from .runtime.prompt_recorder import PromptRecorder
-from .runtime.events import start_event as _start_event, terminate_event as _terminate_event
+from .runtime.events import (
+    runtime_lifecycle_event,
+    start_event as _start_event,
+    terminate_event as _terminate_event,
+)
 from .runtime.normalization import normalize_using
+from .runtime.state_projection import build_state_projection_payload, derive_state_links
 from .runtime.summary import finalize_summary as _finalize_summary
 from .runtime.learning import ensure_learn_file
 from .trace.schema import SUMMARY_SCHEMA_VERSION
@@ -196,6 +201,41 @@ def _workspace_identity(workspace: Path | str | None) -> str:
     if workspace is None:
         return str(Path.cwd().resolve())
     return str(Path(workspace).expanduser().resolve())
+
+def _latest_event_id(run_dir: Path) -> str | None:
+    events = read_events(run_dir)
+    if not events:
+        return None
+    event_id = events[-1].get("id")
+    return event_id if isinstance(event_id, str) and event_id.strip() else None
+
+
+def _emit_state_projection(
+    *,
+    setup: "_EpisodeRuntime",
+    status: str,
+    summary: str | None,
+    metrics: Mapping[str, Any] | None,
+    terminal: bool,
+) -> dict[str, str]:
+    links = derive_state_links(terminal=terminal)
+    payload = build_state_projection_payload(
+        status=status,
+        summary=summary,
+        metrics=metrics,
+        links=links,
+    )
+    runtime_lifecycle_event(
+        setup.ctx.run_dir,
+        setup.ctx.episode_id,
+        event_type="run.state_projection",
+        payload=payload,
+        caused_by=_latest_event_id(setup.ctx.run_dir),
+        now_fn=setup.now_fn if setup.determinism else None,
+        id_factory=setup.event_id_factory,
+    )
+    return links
+
 
 def _resolve_governed_adapter_label(kind: str, payload: Mapping[str, Any]) -> str:
     adapter_label = payload.get("adapter_label")
@@ -873,7 +913,7 @@ def _bootstrap_episode(
         ctx.run_dir,
         ctx.episode_id,
         start_payload,
-        now_fn=now_fn if determinism else None,
+        now_fn=lambda: ctx.started_at,
         id_factory=event_id_factory,
     )
 
@@ -1094,10 +1134,8 @@ def _run_episode(
         if status_value in _NONTERMINAL_RUN_STATUSES:
             state = result.state
             ensure_learn_file(setup.ctx.run_dir)
-            state.set_links(
-                events="events.jsonl",
-                learn="learn.jsonl",
-            )
+            links = derive_state_links(terminal=False)
+            state.set_links(**links)
             setup.state_repo.persist(state)
             if actuation_bindings is not None:
                 actuator = actuation_bindings.actuator
@@ -1112,6 +1150,13 @@ def _run_episode(
                         caused_by=actuator.pause_cause_event_id,
                     )
                     lifecycle.checkpoint(setup.ctx.episode_id, caused_by=interrupt_id)
+            _emit_state_projection(
+                setup=setup,
+                status=status_value,
+                summary=result.outcome.summary,
+                metrics=result.outcome.metrics,
+                terminal=False,
+            )
             return setup.ctx.episode_id
 
         existing_events = read_events(setup.ctx.run_dir)
@@ -1126,12 +1171,14 @@ def _run_episode(
 
         state = result.state
         ensure_learn_file(setup.ctx.run_dir)
-        state.set_links(
-            events="events.jsonl",
-            summary="summary.json",
-            learn="learn.jsonl",
-            manifest="manifest.json",
+        links = _emit_state_projection(
+            setup=setup,
+            status=status_value,
+            summary=result.outcome.summary,
+            metrics=result.outcome.metrics,
+            terminal=True,
         )
+        state.set_links(**links)
         setup.state_repo.persist(state)
 
         _finalize_episode(
@@ -1276,10 +1323,14 @@ async def _run_episode_async(
         if status_value in _NONTERMINAL_RUN_STATUSES:
             state = result.state
             ensure_learn_file(setup.ctx.run_dir)
-            state.set_links(
-                events="events.jsonl",
-                learn="learn.jsonl",
+            links = _emit_state_projection(
+                setup=setup,
+                status=status_value,
+                summary=result.outcome.summary,
+                metrics=result.outcome.metrics,
+                terminal=False,
             )
+            state.set_links(**links)
             setup.state_repo.persist(state)
             return setup.ctx.episode_id
 
@@ -1295,12 +1346,14 @@ async def _run_episode_async(
 
         state = result.state
         ensure_learn_file(setup.ctx.run_dir)
-        state.set_links(
-            events="events.jsonl",
-            summary="summary.json",
-            learn="learn.jsonl",
-            manifest="manifest.json",
+        links = _emit_state_projection(
+            setup=setup,
+            status=status_value,
+            summary=result.outcome.summary,
+            metrics=result.outcome.metrics,
+            terminal=True,
         )
+        state.set_links(**links)
         setup.state_repo.persist(state)
 
         _finalize_episode(

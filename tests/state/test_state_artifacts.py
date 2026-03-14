@@ -5,6 +5,8 @@ import noesis as ns
 from noesis.episode import EpisodeIndex
 from noesis.context import get_config_port
 from noesis.runtime.paths import resolve_noesis_paths
+from noesis.runtime.state_projection import project_state_projection
+from noesis.trace.events import read_events
 
 
 def test_state_artifact_written(tmp_path) -> None:
@@ -33,6 +35,17 @@ def test_state_artifact_written(tmp_path) -> None:
         assert payload["state_schema_version"] == "1.0.0"
         assert payload["links"]["events"] == "events.jsonl"
         assert payload["links"]["summary"] == "summary.json"
+
+        events = read_events(state_path.parent)
+        start_event = next(event for event in events if event.get("phase") == "start")
+        assert payload["episode"]["started_at"] == start_event["timestamp"]
+
+        projection = project_state_projection(events)
+        assert projection is not None
+        assert projection.status == payload["outcomes"]["status"]
+        assert projection.summary == payload["outcomes"]["summary"]
+        assert projection.metrics == payload["outcomes"]["metrics"]
+        assert projection.links == payload["links"]
     finally:
         cfg_port.set(**baseline.to_mapping())
 
