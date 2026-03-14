@@ -23,6 +23,7 @@ from noesis.domain.state import (
     CognitiveVerb,
     LineageTracker,
     PlanStep,
+    StepStatus,
 )
 from noesis.infrastructure.state_repository import EpisodeContext
 from noesis.runtime.clock import RuntimeClock
@@ -59,10 +60,7 @@ class RuntimeEventBus(EventBus):
         self._plan_steps = [step.id for step in steps]
         if metrics is not None and caused_by is not None:
             self.lineage.seed(last_event_id=caused_by)
-        labels = [f"{step.kind.value}:{step.description}" for step in steps]
-        payload = {"steps": labels}
-        if rationale:
-            payload["rationale"] = rationale
+        payload = self._plan_payload(steps=steps, rationale=rationale, source=source)
         event_metrics = metrics or self._instant_metric(CognitiveVerb.PLAN)
         event = CognitiveEvent(
             episode_id=self.context.episode_id,
@@ -76,6 +74,22 @@ class RuntimeEventBus(EventBus):
         linked = self.lineage.register(event, cause=self.lineage.last_event_id if caused_by is None else caused_by)  # type: ignore[arg-type]
         self.emitter.emit(linked, agent_id=source or "system")
         return linked
+
+    @staticmethod
+    def _plan_payload(
+        *,
+        steps: Sequence[PlanStep],
+        rationale: str,
+        source: str,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "steps": [f"{step.kind.value}:{step.description}" for step in steps],
+            "step_records": [step.to_dict() for step in steps],
+            "source": source,
+        }
+        if rationale:
+            payload["rationale"] = rationale
+        return payload
 
     def emit_direction(
         self,
@@ -148,6 +162,7 @@ class RuntimeEventBus(EventBus):
         action: ActionRecord,
         *,
         metrics: CognitiveMetrics | None = None,
+        step_status: StepStatus | str | None = None,
         caused_by: UUID | None = None,
     ) -> None:
         candidate_id = action.extensions.get("x-action_candidate_id") if action.extensions else None
@@ -155,7 +170,11 @@ class RuntimeEventBus(EventBus):
             raise ValueError("action_candidate_id requires explicit caused_by for act lineage")
         metrics = metrics or self._instant_metric(CognitiveVerb.ACT)
         action.timestamp = metrics.completed_at.isoformat()
-        payload = self._action_payload(action=action, action_candidate_id=candidate_id)
+        payload = self._action_payload(
+            action=action,
+            action_candidate_id=candidate_id,
+            step_status=step_status,
+        )
         event = CognitiveEvent(
             episode_id=self.context.episode_id,
             verb=CognitiveVerb.ACT,
@@ -173,6 +192,7 @@ class RuntimeEventBus(EventBus):
         *,
         action: ActionRecord,
         action_candidate_id: str | None,
+        step_status: StepStatus | str | None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "action_id": action.id,
@@ -186,6 +206,10 @@ class RuntimeEventBus(EventBus):
             payload["action_candidate_id"] = action_candidate_id
         if action.step_id:
             payload["step_id"] = action.step_id
+        if step_status is not None:
+            payload["step_status"] = (
+                step_status.value if isinstance(step_status, StepStatus) else str(step_status)
+            )
         if action.provenance:
             payload["provenance"] = action.provenance.to_dict()
         if action.result_artifacts:

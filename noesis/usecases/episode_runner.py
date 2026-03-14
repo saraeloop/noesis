@@ -927,7 +927,13 @@ class EpisodeRunner:
         rationale = "minimal planner"
         if directive and directive.applied:
             rationale = f"{rationale} + meta"
-        state.set_plan(steps=plan, rationale=rationale, source="planner.minimal")
+        plan_updated_at = metrics.completed_at.isoformat()
+        state.set_plan(
+            steps=plan,
+            rationale=rationale,
+            source="planner.minimal",
+            updated_at=plan_updated_at,
+        )
         plan_event = self._deps.event_bus.emit_plan(
             steps=plan,
             rationale=rationale,

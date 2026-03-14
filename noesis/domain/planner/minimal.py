@@ -57,7 +57,7 @@ class MinimalActuator(Actuator):
                 result_status="ok",
                 step_id=step.id,
             )
-            event_bus.emit_action(action)
+            event_bus.emit_action(action, step_status=step.status)
             reasons.append(f"step:{step.id}:{step.kind.value}")
 
         return ActuationResult(

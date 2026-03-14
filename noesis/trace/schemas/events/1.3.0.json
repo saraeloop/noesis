@@ -137,6 +137,7 @@
               "adapter": { "type": "string" },
               "action_candidate_id": { "type": "string" },
               "step_id": { "type": "string" },
+              "step_status": { "type": "string" },
               "provenance": { "type": "object" },
               "result_artifacts": {
                 "type": "array",

@@ -12,7 +12,7 @@ from typing import Mapping, Protocol, Sequence
 from uuid import UUID
 
 from ..action_candidates import ActionCandidate
-from ..state import ActionRecord, NoesisState, PlanStep, CognitiveMetrics, CognitiveEvent
+from ..state import ActionRecord, CognitiveEvent, CognitiveMetrics, NoesisState, PlanStep, StepStatus
 from noesis.domain.faculties.direction import PlannerDirective
 from noesis.domain.faculties.governance import GovernanceResult
 
@@ -106,6 +106,7 @@ class EventBus(Protocol):
         action: ActionRecord,
         *,
         metrics: CognitiveMetrics | None = None,
+        step_status: StepStatus | str | None = None,
         caused_by: UUID | None = None,
     ) -> None:
         ...
