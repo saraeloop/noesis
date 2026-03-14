@@ -128,8 +128,8 @@ class _FakeEventBus(EventBus):
         _ = result, caused_by
         return uuid4()
 
-    def emit_action(self, action: ActionRecord, *, metrics=None, caused_by=None) -> None:
-        _ = metrics, caused_by
+    def emit_action(self, action: ActionRecord, *, metrics=None, step_status=None, caused_by=None) -> None:
+        _ = metrics, step_status, caused_by
         self.actions.append(action)
 
     def emit_reflect(self, *, success: bool, reasons: list[str], metrics=None, caused_by=None) -> None:

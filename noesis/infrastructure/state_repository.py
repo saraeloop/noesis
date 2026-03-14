@@ -190,6 +190,11 @@ def _rehydrate_state(*, payload: dict[str, object], context: EpisodeContext) -> 
                 steps=steps,
                 rationale=str(rationale) if isinstance(rationale, str) else None,
                 source=str(source) if isinstance(source, str) else None,
+                updated_at=(
+                    str(plan_payload.get("updated_at"))
+                    if isinstance(plan_payload.get("updated_at"), str)
+                    else None
+                ),
             )
 
     beliefs_payload = payload.get("beliefs")

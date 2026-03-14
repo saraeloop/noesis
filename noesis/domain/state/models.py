@@ -220,12 +220,13 @@ class NoesisState:
         steps: Iterable[PlanStep],
         rationale: Optional[str] = None,
         source: Optional[str] = None,
+        updated_at: Optional[str] = None,
     ) -> None:
         self.plan_steps = [step for step in steps]
         self.plan_rationale = rationale
         if source:
             self.plan_source = source
-        self.plan_updated_at = _now_iso()
+        self.plan_updated_at = updated_at or _now_iso()
 
     def add_belief(self, *, statement: str, confidence: float, provenance: Provenance) -> None:
         self.beliefs.append(

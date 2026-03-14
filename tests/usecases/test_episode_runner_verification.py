@@ -57,7 +57,7 @@ class DummyEventBus(EventBus):
     def emit_governance(self, *, result, caused_by=None) -> UUID:  # type: ignore[override]
         return uuid4()
 
-    def emit_action(self, action: ActionRecord, *, metrics=None, caused_by=None) -> None:
+    def emit_action(self, action: ActionRecord, *, metrics=None, step_status=None, caused_by=None) -> None:
         return None
 
     def emit_reflect(self, *, success: bool, reasons: list[str], metrics=None, caused_by=None) -> None:

@@ -124,6 +124,7 @@ def plan_event(
     episode_id: str,
     *,
     steps: List[str],
+    step_records: Optional[List[Dict[str, Any]]] = None,
     rationale: Optional[str] = None,
     source: str = "system",
     now_fn: Callable[[], str] | None = None,
@@ -132,8 +133,11 @@ def plan_event(
     now_fn = now_fn or now
     id_factory = id_factory or uuid4
     payload: Dict[str, Any] = {"steps": steps}
+    if step_records:
+        payload["step_records"] = step_records
     if rationale:
         payload["rationale"] = rationale
+    payload["source"] = source
     payload["experimental"] = {"source": source}
     write_event(
         run_dir,
@@ -185,6 +189,7 @@ def act_event(
     tool: Optional[str] = None,
     input_excerpt: str,
     outcome: str,
+    step_status: Optional[str] = None,
     error: Optional[str] = None,
     now_fn: Callable[[], str] | None = None,
     id_factory: Callable[[], UUID] | None = None,
@@ -199,6 +204,8 @@ def act_event(
         payload["adapter"] = adapter
     if tool:
         payload["tool"] = tool
+    if step_status:
+        payload["step_status"] = step_status
     if error:
         payload["error"] = error
     write_event(

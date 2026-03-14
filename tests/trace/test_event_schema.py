@@ -84,9 +84,41 @@ def test_act_event_schema_with_rich_action_payload() -> None:
             "outcome": "ok",
             "result_status": "ok",
             "step_id": "step-1",
+            "step_status": "done",
             "provenance": {"source": "planner", "adapter_id": "adapter:demo"},
             "result_artifacts": [{"type": "doc", "uri": "artifact://result"}],
             "x-tool_draft_id": "draft-1",
+        },
+        "evidence_ids": [],
+    }
+    validate(instance=event, schema=schema)
+
+
+def test_plan_event_schema_with_step_records() -> None:
+    schema = _load_events_schema()
+    event = {
+        "id": "evt-5",
+        "timestamp": "2025-01-01T00:00:01+00:00",
+        "episode_id": "ep-5",
+        "phase": "plan",
+        "payload": {
+            "steps": ["detect:Collect context", "act:Execute task"],
+            "step_records": [
+                {
+                    "id": "step-1",
+                    "kind": "detect",
+                    "description": "Collect context",
+                    "status": "pending",
+                },
+                {
+                    "id": "step-2",
+                    "kind": "act",
+                    "description": "Execute task",
+                    "status": "pending",
+                },
+            ],
+            "source": "planner.minimal",
+            "rationale": "minimal planner",
         },
         "evidence_ids": [],
     }

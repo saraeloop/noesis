@@ -141,13 +141,19 @@ class _ActionCandidateEventBus(EventBus):
         action: ActionRecord,
         *,
         metrics=None,
+        step_status=None,
         caused_by=None,
     ) -> None:
         extensions = action.extensions
         if "x-action_candidate_id" in extensions and extensions["x-action_candidate_id"] != self.candidate_id:
             raise ValueError("action_candidate_id mismatch for guarded action emission")
         extensions["x-action_candidate_id"] = self.candidate_id
-        self.base.emit_action(action, metrics=metrics, caused_by=self.caused_by)
+        self.base.emit_action(
+            action,
+            metrics=metrics,
+            step_status=step_status,
+            caused_by=self.caused_by,
+        )
 
     def emit_reflect(self, **kwargs):  # type: ignore[no-untyped-def]
         return self.base.emit_reflect(**kwargs)
