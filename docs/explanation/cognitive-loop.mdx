@@ -151,9 +151,9 @@ The **act** phase executes the planned actions.
 **Purpose**: Log every tool or adapter invocation with inputs and outcomes.
 
 **What gets recorded**:
-- Tool or adapter name
-- Input excerpt
-- Output or result
+- Action identity (`action_id`, `kind`, `tool`)
+- Input excerpt and status (`outcome`, `result_status`)
+- Optional execution context (`step_id`, provenance, artifacts, `x-` extensions)
 - Execution metrics
 
 **Example event**:
@@ -162,12 +162,23 @@ The **act** phase executes the planned actions.
 {
   "phase": "act",
   "payload": {
-    "tool": "changelog_reader",
+    "action_id": "act-1",
+    "kind": "tool",
+    "tool": "adapter:demo",
     "input_excerpt": "CHANGELOG.md",
-    "outcome": {"entries_found": 15},
-    "status": "success"
+    "outcome": "ok",
+    "result_status": "ok",
+    "step_id": "step-2",
+    "provenance": {
+      "source": "planner",
+      "adapter_id": "adapter:demo"
+    },
+    "result_artifacts": [
+      {"type": "doc", "uri": "artifact://demo/result"}
+    ],
+    "x-tool_draft_id": "draft-1"
   },
-  "caused_by": "plan_event_id",
+  "caused_by": "governance_event_id",
   "metrics": {
     "started_at": "2024-01-15T10:30:01Z",
     "completed_at": "2024-01-15T10:30:02Z",
@@ -175,6 +186,8 @@ The **act** phase executes the planned actions.
   }
 }
 ```
+
+When governance/action-candidate flow is active, act events are causally linked to governance through `caused_by`, and state action timestamps align with the act event timestamp.
 
 **Why it matters**: You get a measurable execution history instead of guesswork about what happened.
 
