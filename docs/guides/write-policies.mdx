@@ -20,7 +20,13 @@ Every policy extends `DirectedIntuition` and implements the `advise` method:
 
 ```python
 import noesis as ns
-from noesis.intuition import IntuitionEvent
+from noesis.intuition import (
+    IntuitionEvent,
+    RiskLevel,
+    ScrutinyLevel,
+    StrategyHint,
+    ToolConstraint,
+)
 
 
 class MyPolicy(ns.DirectedIntuition):
@@ -45,6 +51,9 @@ def advise(self, state: dict) -> IntuitionEvent | None:
             advice="Consider testing in staging first.",
             target="plan",
             rationale="Production changes benefit from staging validation.",
+            risk_level=RiskLevel.MODERATE,
+            strategy_hints=(StrategyHint.VERIFY_FIRST,),
+            scrutiny_level=ScrutinyLevel.ELEVATED,
         )
     return None
 ```
@@ -66,6 +75,9 @@ def advise(self, state: dict) -> IntuitionEvent | None:
             patch={"task": f"{task} LIMIT 1000"},
             target="input",
             rationale="Unbounded queries can overwhelm the database.",
+            tool_constraints=(ToolConstraint.REQUIRE_DOUBLE_CHECK,),
+            strategy_hints=(StrategyHint.VERIFY_FIRST,),
+            scrutiny_level=ScrutinyLevel.ELEVATED,
         )
     return None
 ```
@@ -89,7 +101,7 @@ def advise(self, state: dict) -> IntuitionEvent | None:
     return None
 ```
 
-Vetoes stop execution and record the reason in the timeline.
+Veto signals are recorded in the timeline. Runtime blocking is enforced by Governance when `governance_mode="enforce"`.
 
 ## Common patterns
 
@@ -213,12 +225,12 @@ class TestSqlSafetyPolicy:
     def test_blocks_drop_table(self):
         result = self.policy.advise({"task": "DROP TABLE users"})
         assert result is not None
-        assert result.action == "veto"
+        assert result.kind == "veto"
     
     def test_blocks_pii_access(self):
         result = self.policy.advise({"task": "SELECT password FROM users"})
         assert result is not None
-        assert result.action == "veto"
+        assert result.kind == "veto"
         assert "PII" in result.advice
 ```
 
@@ -268,20 +280,18 @@ class CompositePolicy(ns.DirectedIntuition):
         return None
 ```
 
-## Versioning policies
+## Policy identity in artifacts
 
-Always include a `__version__` attribute:
+`DirectedIntuition.hint()/intervene()/veto()` return `IntuitionEvent` with default policy metadata (`policy_id="unspecified"`, `policy_version="0.0.0"`). To keep artifacts auditable, set identity fields before returning:
 
 ```python
-class MyPolicy(ns.DirectedIntuition):
-    __version__ = "1.2"  # Increment when logic changes
+def advise(self, state: dict) -> IntuitionEvent | None:
+    event = self.hint(advice="Use read-only mode")
+    event.policy_id = "policy:safety.sql"
+    event.policy_version = "1.2.0"
+    event.policy_kind = "rules"
+    return event
 ```
-
-This version appears in event payloads as `policy_id: "MyPolicy@1.2"`, enabling:
-
-- Audit trails showing which policy version made decisions
-- A/B testing different policy versions
-- Rollback to previous policy versions
 
 ## Best practices
 
@@ -302,12 +312,12 @@ This version appears in event payloads as `policy_id: "MyPolicy@1.2"`, enabling:
 ### Policy not being called
 
 - Verify `intuition=True` or `intuition=MyPolicy()` is passed to `ns.run()`
-- Check planner mode is `meta` (default), not `minimal`
 
 ### Veto not blocking
 
 - Ensure you're returning the result: `return self.veto(...)` not just `self.veto(...)`
 - Check that the condition actually matches your input
+- Ensure governance is enforcing: `ns.set(governance_mode="enforce")`
 
 ### Intervention not applied
 

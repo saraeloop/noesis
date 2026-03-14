@@ -107,6 +107,12 @@ Intuition events appear in `events.jsonl` with `phase="intuition"`:
     "policy_kind": "rules",
     "rationale": "Unbounded query detected",
     "patch": {"limit": 100},
+    "evidence_ids": ["event:observe:1"],
+    "risk_level": "moderate",
+    "salience_signals": ["policy_hint"],
+    "strategy_hints": ["verify_first"],
+    "tool_constraints": ["require_double_check"],
+    "scrutiny_level": "elevated",
     "target": "input",
     "scope": "episode",
     "blocking": false
@@ -120,6 +126,28 @@ Intuition events appear in `events.jsonl` with `phase="intuition"`:
 | `confidence` | 0.0 – 1.0 |
 | `patch` | State modifications (for interventions) |
 | `blocking` | `true` for vetoes |
+| `risk_level` | Optional risk posture: `low` \| `moderate` \| `high` \| `critical` |
+| `salience_signals` | Optional cues for Direction: `task_complexity`, `normalization_gap`, `policy_hint`, `safety_boundary` |
+| `strategy_hints` | Optional planning hints: `conservative`, `verify_first`, `retrieve_more`, `narrow_scope` |
+| `tool_constraints` | Optional tool constraints: `no_side_effects`, `read_only`, `require_double_check` |
+| `scrutiny_level` | Optional review level: `normal` \| `elevated` \| `strict` |
+
+### Structured steering contract (runtime handoff)
+
+Before planning, runtime converts `IntuitionEvent` into a typed `IntuitionAssessment` via `derive_intuition_assessment()`. This guarantees Direction receives a canonical steering shape even when an intuition policy omits optional fields.
+
+Defaulting rules in `derive_intuition_assessment()`:
+
+- `risk_level`: `critical` for veto/blocking, `moderate` for intervention, otherwise `low`
+- `scrutiny_level`: `strict` for veto/blocking, `elevated` for intervention, otherwise `normal`
+- `salience_signals`: `policy_hint` for hint/intervention, `safety_boundary` for veto/blocking
+- `strategy_hints`: `conservative` + `verify_first` for veto/blocking, `verify_first` for intervention
+- `tool_constraints`: `no_side_effects` + `require_double_check` for veto/blocking
+
+The event lineage is preserved into Direction through:
+
+- `payload.intuition_event_id` on `phase="direction"` events
+- top-level `evidence_ids` on the direction event record
 
 ### Intuition modes
 
@@ -143,17 +171,31 @@ Direction events appear in `events.jsonl` with `phase="direction"`:
 {
   "phase": "direction",
   "payload": {
-    "schema_version": "1.0.0",
-    "steps": ["detect:Gather data", "act:Process"],
+    "schema_version": "1.2.0",
+    "steps": ["meta:start", "intuition:risk-review", "intuition:read-only"],
     "status": "applied",
-    "reason": "Added safety bounds",
-    "diff": [{"key": "plan.steps[0].params.limit", "before": null, "after": 100}],
+    "reason": "heuristic-adjustment",
+    "diff": [
+      {
+        "key": "plan.steps[1].description",
+        "before": "Execute goal: Review incidents",
+        "after": "Execute read-only analysis for goal: Review incidents"
+      }
+    ],
     "applied": true,
-    "policy_id": "SafetyPolicy",
+    "policy_id": "planner.meta",
     "policy_version": "1.0.0",
     "policy_kind": "rules",
-    "directive_id": "dir-abc123..."
-  }
+    "directive_id": "dir-abc123...",
+    "intuition_event_id": "evt_2222...",
+    "risk_level": "high",
+    "salience_signals": ["policy_hint"],
+    "strategy_hints": ["verify_first", "retrieve_more"],
+    "tool_constraints": ["read_only"],
+    "scrutiny_level": "strict",
+    "evidence_ids": ["event:observe:1"]
+  },
+  "evidence_ids": ["event:observe:1"]
 }
 ```
 
@@ -175,6 +217,17 @@ Direction events appear in `events.jsonl` with `phase="direction"`:
 ### Deterministic IDs
 
 Directive IDs are computed from content for reproducible lineage.
+
+### How Direction consumes intuition
+
+In meta mode, `MetaPlanner.propose(..., intuition=IntuitionAssessment)` applies explicit mutations:
+
+- high/critical `risk_level` appends risk review language to the first step
+- `retrieve_more` appends supporting-evidence retrieval on the first step
+- `narrow_scope`, `read_only`, `no_side_effects` constrain the second step description
+- elevated/strict `scrutiny_level` and `verify_first` tighten the verify step description
+
+Direction does not enforce vetoes; enforcement happens in Governance.
 
 ---
 
