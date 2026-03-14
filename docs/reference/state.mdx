@@ -136,6 +136,9 @@ Ordered steps describing the execution plan.
 ```json
 {
   "plan": {
+    "source": "planner.minimal",
+    "updated_at": "2024-01-15T10:30:01Z",
+    "rationale": "minimal planner",
     "steps": [
       {
         "id": "step_1",
@@ -178,11 +181,11 @@ Ordered list of plan steps.
 </ResponseField>
 
 <ResponseField name="plan.source" type="string">
-Origin of the plan (e.g., `"direction"`, when present).
+Origin of the plan (for example, `"planner.minimal"` or `"planner.resume"`). When projected from events, this comes from the latest `plan` payload `source` value (with `agent_id` as fallback).
 </ResponseField>
 
 <ResponseField name="plan.updated_at" type="string">
-ISO 8601 timestamp of the last plan update (when present).
+ISO 8601 timestamp of the last plan update. For event-projected plans, this is the timestamp of the latest `plan` event.
 </ResponseField>
 ### Step fields
 
@@ -231,6 +234,18 @@ Inputs provided to the step.
 <ResponseField name="plan.steps[].outputs" type="object">
 Outputs produced by the step.
 </ResponseField>
+
+### Plan reconstruction contract
+
+The runtime can reconstruct `state.plan` from `events.jsonl`:
+
+1. Locate the latest `plan` event.
+2. Build steps from `payload.step_records` when present.
+3. Fall back to parsing legacy `payload.steps` labels (`<kind>:<description>`) when `step_records` is absent.
+4. Apply subsequent `act` events that include both `payload.step_id` and `payload.step_status`.
+5. Keep existing step status when no `step_status` evidence exists.
+
+This contract is implemented by `noesis.runtime.plan_projection.project_plan_state(...)`.
 
 ## Memory
 

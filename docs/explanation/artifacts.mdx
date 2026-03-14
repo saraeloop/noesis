@@ -250,11 +250,27 @@ Events are stored as newline-delimited JSON (JSONL):
 {
   "id": "evt_abc123",
   "phase": "plan",
-  "agent_id": "meta_planner",
+  "agent_id": "planner.minimal",
   "payload": {
     "steps": [
-      {"kind": "detect", "description": "Gather data"}
-    ]
+      "detect:Gather data",
+      "act:Execute task"
+    ],
+    "step_records": [
+      {
+        "id": "step-1",
+        "kind": "detect",
+        "description": "Gather data",
+        "status": "pending"
+      },
+      {
+        "id": "step-2",
+        "kind": "act",
+        "description": "Execute task",
+        "status": "pending"
+      }
+    ],
+    "source": "planner.minimal"
   },
   "metrics": {
     "started_at": "2024-01-15T10:30:00.500Z",
@@ -266,6 +282,8 @@ Events are stored as newline-delimited JSON (JSONL):
 ```
 
 Event metrics always include `started_at`, `completed_at`, and `duration_ms`, which you can aggregate for per-phase latency.
+
+Plan derivability contract: `state.json.plan` can be reconstructed from the latest `plan` event (`steps` + `step_records` + `source`) plus subsequent `act` events carrying `step_id` and `step_status`.
 
 ### Event phases
 
