@@ -82,6 +82,7 @@ print(f"Governance events: {len(governance)}")
 - **MetaPlanner**: Threads through every episode for structured planning
 - **PreActGovernor**: Audits actions before execution, can veto
 - **Direction events**: Records directive status (`applied`, `blocked`, `skipped`)
+- **Intuition steering handoff**: Carries `risk_level`, `strategy_hints`, `tool_constraints`, and `scrutiny_level` into Direction
 - **Governance events**: Records decisions (`allow`, `audit`, `veto`)
 - **Full insight metrics**: Plan adherence, veto count, tool coverage
 
@@ -91,11 +92,27 @@ print(f"Governance events: {len(governance)}")
 {
   "phase": "direction",
   "payload": {
+    "schema_version": "1.2.0",
+    "directive_id": "dir_0f7f...",
     "status": "applied",
-    "advice": "Added safety bounds",
-    "diff": ["plan.steps[0].description"],
-    "policy_id": "SafetyPolicy@1.0"
+    "reason": "heuristic-adjustment",
+    "diff": [
+      {
+        "key": "plan.steps[1].description",
+        "before": "Execute goal: Review incidents",
+        "after": "Execute read-only analysis for goal: Review incidents"
+      }
+    ],
+    "policy_id": "planner.meta",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "intuition_event_id": "evt_2d3b...",
+    "risk_level": "high",
+    "strategy_hints": ["verify_first", "retrieve_more"],
+    "tool_constraints": ["read_only"],
+    "scrutiny_level": "strict"
   },
+  "evidence_ids": ["event:observe:1"],
   "caused_by": "7e0f..."
 }
 ```
@@ -178,39 +195,32 @@ The PreActGovernor can make three decisions:
 
 ## Handling vetoes
 
-When an action is vetoed, the episode continues but the action is blocked:
+Vetoes are emitted by **Governance** (not Direction) and only block actions in `governance_mode="enforce"`:
 
 ```python
 import noesis as ns
-from noesis import NoesisVeto
 
+ns.set(planner_mode="meta")
+ns.set(governance_mode="enforce")
 
-try:
-    episode_id = ns.run("DROP TABLE users", intuition=True)
-except NoesisVeto as e:
-    print(f"Vetoed: {e.reason}")
-    print(f"Policy: {e.policy_id}")
-    print(f"Episode: {e.episode_id}")
-```
-
-Or check the events after the fact:
-
-```python
 episode_id = ns.run("DROP TABLE users", intuition=True)
 events = list(ns.events.read(episode_id))
 
-vetoed = any(
-    e["phase"] == "direction" and e.get("payload", {}).get("status") == "blocked"
-    for e in events
+governance_veto = next(
+    (
+        e
+        for e in events
+        if e["phase"] == "governance" and e.get("payload", {}).get("decision") == "veto"
+    ),
+    None,
 )
 
-if vetoed:
-    veto_event = next(
-        e for e in events
-        if e["phase"] == "direction" and e.get("payload", {}).get("status") == "blocked"
-    )
-    print(f"Vetoed: {veto_event['payload']['advice']}")
+if governance_veto:
+    print("Governance vetoed the action")
+    print(governance_veto["payload"]["rule_id"])
 ```
+
+If `governance_pause_on_veto=true`, enforce vetoes pause the run with runtime lifecycle events (`run.interrupt`, `run.checkpoint`) instead of immediate termination.
 
 ## Switching modes dynamically
 
@@ -276,14 +286,15 @@ NOESIS_PLANNER=minimal noesis run "Quick test"
   </Accordion>
   
   <Accordion title="Veto not blocking actions">
-    Ensure intuition is enabled:
+    Ensure Governance is enforcing:
     
     ```python
-    # Must pass intuition=True or a policy instance
+    ns.set(planner_mode="meta")
+    ns.set(governance_mode="enforce")
     ns.run("task", intuition=True)
-    # or
-    ns.run("task", intuition=MyPolicy())
     ```
+
+    In `governance_mode="audit"` or `off`, veto-like risk signals can still appear in direction/intuition artifacts, but they do not block actuation.
   </Accordion>
   
   <Accordion title="Governance metrics are zero">
