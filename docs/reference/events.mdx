@@ -46,7 +46,11 @@ Unique event identifier.
 </ResponseField>
 
 <ResponseField name="phase" type="string" required>
-Event phase. Canonical values: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `act`, `reflect`, `learn`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`. Extensions may emit additional phases.
+Event phase. Canonical values: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `action_candidate`, `act`, `reflect`, `learn`, `runtime`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`. Extensions may emit additional phases.
+</ResponseField>
+
+<ResponseField name="event_type" type="string">
+Subtype for `phase="runtime"` events (for example `run.interrupt`, `run.checkpoint`, `run.resume`, `run.state_projection`).
 </ResponseField>
 
 <ResponseField name="agent_id" type="string">
@@ -91,6 +95,7 @@ Additional phases you may see:
 - **memory**: reads/writes performed by the memory port.
 - **insight**: computed insight metrics (alias of events --phase insight).
 - **reason**: reasoning traces from the planner.
+- **runtime**: lifecycle and projection evidence (`run.*` event types).
 - **error**: fatal errors.
 
 ### observe
@@ -613,6 +618,61 @@ Whether the proposed updates were applied.
 Update scope: `session`, `episode`, `policy`, `global`.
 </ResponseField>
 
+### runtime (`run.*`)
+
+Runtime events share `phase="runtime"` and use `event_type` as the stable subtype.
+The current lifecycle family includes `run.interrupt`, `run.checkpoint`,
+`run.resume`, and `run.state_projection`.
+
+`run.state_projection` is emitted whenever state is persisted so `state.json`
+outcome/link fields have explicit event evidence.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.state_projection",
+  "payload": {
+    "kind": "run.state_projection",
+    "status": "interrupted",
+    "outcomes": {
+      "status": "interrupted",
+      "summary": "Awaiting approval",
+      "metrics": {}
+    },
+    "links": {
+      "events": "events.jsonl",
+      "learn": "learn.jsonl"
+    }
+  },
+  "caused_by": "evt_prev123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.state_projection` for projection evidence records.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Mirrors `payload.outcomes.status` for compatibility with existing consumers.
+</ResponseField>
+
+<ResponseField name="payload.outcomes" type="object" required>
+Trace-backed projection of persisted state outcome fields: `status`, `summary`,
+and `metrics`.
+</ResponseField>
+
+<ResponseField name="payload.links" type="object" required>
+Trace-backed projection of persisted `state.json.links`.
+
+- Non-terminal runs: `events`, `learn`
+- Terminal runs: `events`, `learn`, `summary`, `manifest`
+</ResponseField>
+
+<ResponseField name="caused_by" type="string">
+For runtime lifecycle/projection events, points to the latest prior event in the
+trace when available.
+</ResponseField>
+
 ### terminate
 
 Marks the end of an episode.
@@ -642,7 +702,7 @@ Total episode duration in milliseconds.
 
 ## Phase order (partial)
 
-Current phases: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `act`, `reflect`, `learn`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`.
+Current phases: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `action_candidate`, `act`, `reflect`, `learn`, `runtime`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`.
 
 - Required: `start` kicks off every episode; `terminate` marks completion.
 - Typical loop: `observe` → `interpret` → `plan` → (`direction`/`governance` in meta mode) → `act` → `reflect` → (`learn` optionally).
