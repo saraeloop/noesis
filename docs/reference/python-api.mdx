@@ -214,6 +214,13 @@ Adapter continuity:
 - `resume_run(..., using=...)` must match the persisted adapter from checkpoint/state.
 - For minimal runs (`ns.run(...)`), omitting `using` is allowed.
 
+Checkpoint integrity contract:
+
+- `ns.checkpoint(...)` writes `checkpoints/<checkpoint_id>/checkpoint.json`.
+- Checkpoint payload includes `event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`, and optional `adapter_label`.
+- `ns.resume(...)` / `ns.resume_run(...)` validate checkpoint consistency before emitting `run.resume`.
+- If you pass `caused_by` to `resume`, it must match either the checkpoint `last_event_id` or the run's latest event ID.
+
 ### Common failure modes
 
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
@@ -225,6 +232,36 @@ Adapter continuity:
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
 
 All errors above are defined in `noesis.domain.run_lifecycle`.
+
+### Troubleshooting resume/checkpoint failures
+
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| `CheckpointNotFoundError` | wrong checkpoint ID or run directory | verify `checkpoints/<checkpoint_id>/checkpoint.json` exists under the run directory |
+| `CheckpointConsistencyError: ... causal anchor ...` | `events.jsonl` changed relative to checkpoint anchor | compare checkpoint `event_offset` and `last_event_id` to the event at `events[event_offset-1]["id"]` |
+| `CheckpointConsistencyError: ... state hash ...` | `state.json` changed after checkpoint | recompute `sha256(state.json)` and compare to checkpoint `state_hash` |
+| `CheckpointConsistencyError: ... artifact manifest hash ...` | artifact set changed after checkpoint | restore artifact set to checkpoint boundary; avoid editing run artifacts manually |
+| `ResumeAdapterRequiredError` | resumed a non-minimal checkpoint without `using` | pass the same adapter used by the original run |
+| `ResumeAdapterMismatchError` | `using` differs from checkpoint adapter metadata | use the adapter label persisted in checkpoint/state |
+
+Quick diagnostic snippet:
+
+```python
+from pathlib import Path
+import json
+
+run_dir = Path(".noesis/episodes/<episode_id>")
+checkpoint_path = run_dir / "checkpoints" / "<checkpoint_id>" / "checkpoint.json"
+checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+anchor_event = events[checkpoint["event_offset"] - 1]
+
+print("checkpoint_id:", checkpoint["checkpoint_id"])
+print("checkpoint last_event_id:", checkpoint["last_event_id"])
+print("event at offset:", anchor_event.get("id"))
+print("state_hash:", checkpoint["state_hash"])
+print("artifact_manifest_hash:", checkpoint["artifact_manifest_hash"])
+```
 
 ### Verification helpers
 
@@ -286,6 +323,49 @@ try:
 except EventLogIntegrityError as exc:
     print(exc.corruption.path, exc.corruption.line_number, exc.corruption.reason)
     raise
+```
+
+### noesis.events emission helpers (advanced)
+
+`ns.events` also exposes public event emitters for adapter and runtime integrators:
+
+- `ns.events.start(...)`
+- `ns.events.observe(...)`
+- `ns.events.interpret(...)`
+- `ns.events.plan(...)`
+- `ns.events.direction(...)`
+- `ns.events.act(...)`
+- `ns.events.ensure(...)`
+- `ns.events.reflect(...)`
+- `ns.events.terminate(...)`
+- `ns.events.last_event_of_phase(...)`
+
+These helpers write directly to the run's canonical `events.jsonl`, so prefer high-level APIs (`ns.run`, `ns.solve`, `ns.resume_run`) unless you are building runtime plumbing.
+
+```python
+from pathlib import Path
+import noesis as ns
+
+run_dir = Path(".noesis/episodes/<episode_id>")
+
+ns.events.direction(
+    run_dir,
+    "<episode_id>",
+    payload={
+        "status": "intervene",
+        "advice": "route through approval queue",
+        "target": "plan",
+    },
+    agent="policy.approval",
+)
+
+ns.events.ensure(
+    run_dir,
+    "<episode_id>",
+    adapter_label="my-adapter",
+    input_excerpt="...",
+    outcome="already reviewed",
+)
 ```
 
 ### noesis.io.list_runs()
