@@ -297,17 +297,22 @@ async def run_async_approval(task: str):
     
     events = list(ns.events.read(episode_id))
     if any(e.get("payload", {}).get("requires_approval") for e in events):
+        interrupt_id = ns.interrupt(episode_id, reason="Awaiting async approval")
+        checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
         request = await queue.request_approval(episode_id, task, {})
         
         if request.status == ApprovalStatus.APPROVED:
-            # Continue with approved action
-            return ns.run(f"{task} [APPROVED by {request.approver}]", intuition=True)
+            # Continue the same run after approval.
+            return ns.resume_run(
+                episode_id,
+                checkpoint_id=checkpoint["checkpoint_id"],
+            )
         elif request.status == ApprovalStatus.EXPIRED:
             print("Approval timed out")
-            return None
+            return {"status": "expired", "episode_id": episode_id}
         else:
             print(f"Rejected by {request.approver}")
-            return None
+            return {"status": "rejected", "episode_id": episode_id}
     
     return episode_id
 ```
