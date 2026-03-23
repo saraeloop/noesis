@@ -320,6 +320,25 @@ from noesis.io import last, list_runs
 episode_id = last(*, context: Any | None = None) -> str | None
 ```
 
+### noesis.io.paths()
+
+Resolve canonical artifact file paths for an episode.
+
+```python
+from noesis.io import paths
+
+artifact_paths = paths("ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C")
+print(artifact_paths["events"])
+print(artifact_paths["summary"])
+print(artifact_paths["manifest"])
+```
+
+```python
+from noesis.io import paths
+
+artifact_paths = paths(episode_id: str, *, context: Any | None = None) -> dict[str, str]
+```
+
 ### ns.set() / ns.get()
 
 Update or read the current configuration snapshot.
@@ -332,6 +351,33 @@ config = ns.get()  # returns a mapping of current config values
 `runs_dir` points to the episodes root directory (for example, `.noesis/episodes`).
 
 Common keys: `runs_dir`, `planner_mode` (`meta`/`minimal`), `direction_min_confidence`, `governance_mode` (`off`/`audit`/`enforce`), `governance_failure_policy`, `governance_timeout_ms` (reserved/unused), `governance_pause_on_veto`, `policy_aliases`, `learn_home`, `learn_mode`, `learn_auto_apply_min_confidence`, `learn_auto_apply_min_successes`, `intuition_mode`, `timeout_sec`, `prompt_provenance_enabled`, `prompt_provenance_mode`, `agents` (reserved/unused), `tasks` (reserved/unused).
+
+<Note>
+Use `ns.get()` to read config. `ns.config()` is not part of the public module API.
+</Note>
+
+### Projection diagnostics helpers (advanced)
+
+Use these helpers when validating that persisted `state.json` remains derivable from `events.jsonl`:
+
+```python
+import noesis as ns
+from noesis.runtime.plan_projection import project_plan_state
+from noesis.runtime.state_projection import project_state_projection
+
+episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
+events = list(ns.events.read(episode_id))
+state = ns.state.read(episode_id)
+
+plan_projection = project_plan_state(events)
+assert plan_projection is not None
+assert plan_projection.to_dict() == state["plan"]
+
+state_projection = project_state_projection(events)
+assert state_projection is not None
+assert state_projection.status == state["outcomes"]["status"]
+assert state_projection.links == state["links"]
+```
 
 ## Intuition and policies
 
