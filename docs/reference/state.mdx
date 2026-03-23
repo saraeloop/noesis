@@ -415,6 +415,35 @@ Outcome metrics (e.g., total duration).
 - For terminal runs, projection `outcomes` and `links` mirror the final
   persisted `state.json` values.
 
+### Troubleshooting projection mismatches
+
+Use this runbook when `state.json` appears out of sync with `events.jsonl`.
+
+```python
+import noesis as ns
+from noesis.runtime.state_projection import project_state_projection
+
+episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
+events = list(ns.events.read(episode_id))
+state = ns.state.read(episode_id)
+
+projection = project_state_projection(events)
+assert projection is not None
+
+# 1) Outcome status/summary/metrics should match projection evidence
+assert projection.status == state["outcomes"]["status"]
+assert projection.summary == state["outcomes"].get("summary")
+assert projection.metrics == state["outcomes"].get("metrics", {})
+
+# 2) Links should match the latest run.state_projection payload
+assert projection.links == state["links"]
+```
+
+Interpretation:
+
+- paused/non-terminal runs should only have `links.events` and `links.learn`
+- terminal runs should additionally include `links.summary` and `links.manifest`
+
 ## Complete example
 
 ```json

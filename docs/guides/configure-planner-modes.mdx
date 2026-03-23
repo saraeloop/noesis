@@ -24,8 +24,8 @@ ns.set(planner_mode="meta")  # Full governance (default)
 ns.set(planner_mode="minimal")  # Skip governance
 
 # Check current mode
-config = ns.config()
-print(config.planner_mode)
+config = ns.get()
+print(config["planner_mode"])
 ```
 
 ### Environment variable
@@ -278,8 +278,8 @@ NOESIS_PLANNER=minimal noesis run "Quick test"
     You're likely in `minimal` mode. Check with:
     
     ```python
-    config = ns.config()
-    print(config.planner_mode)  # Should be "meta"
+    config = ns.get()
+    print(config["planner_mode"])  # Should be "meta"
     ```
     
     Set to meta mode: `ns.set(planner_mode="meta")`

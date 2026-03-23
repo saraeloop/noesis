@@ -673,6 +673,33 @@ For runtime lifecycle/projection events, points to the latest prior event in the
 trace when available.
 </ResponseField>
 
+### Troubleshooting: projection mismatch
+
+Use this runbook when `state.json` links or outcomes do not match runtime
+projection evidence:
+
+```python
+import noesis as ns
+from noesis.runtime.state_projection import project_state_projection
+
+episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
+events = list(ns.events.read(episode_id))
+state = ns.state.read(episode_id)
+
+projection = project_state_projection(events)
+assert projection is not None, "missing run.state_projection event"
+
+assert projection.status == state["outcomes"]["status"]
+assert projection.links == state["links"]
+```
+
+Check these invariants before debugging higher layers:
+
+- Latest `phase="runtime"` / `event_type="run.state_projection"` event must exist.
+- Paused runs should include only `links.events` and `links.learn`.
+- Terminal runs should additionally include `links.summary` and `links.manifest`.
+- `payload.outcomes.status` should mirror `state["outcomes"]["status"]`.
+
 ### terminate
 
 Marks the end of an episode.
