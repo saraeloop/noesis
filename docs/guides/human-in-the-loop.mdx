@@ -59,6 +59,28 @@ def run_with_approval(task: str, using):
 Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
 </Tip>
 
+## Resume troubleshooting runbook
+
+When approval is granted but continuation fails, use this checklist before retrying:
+
+1. Confirm the run is still unsealed:
+   - `final.json` present means the run is already sealed; lifecycle writes fail with `RunSealedError`.
+2. Confirm checkpoint artifacts are still anchored:
+   - `checkpoints/<checkpoint_id>/checkpoint.json` must still match current `events.jsonl` and `state.json`.
+3. Confirm no artifact drift after pause:
+   - checkpoint validation compares event/history anchors and artifact digests; edits to run artifacts can trigger `CheckpointConsistencyError`.
+4. Confirm adapter continuity:
+   - for non-minimal runs, `ns.resume_run(..., using=...)` must match the adapter label persisted in checkpoint/state.
+
+Common failure modes:
+
+| Error | Typical cause | What to do |
+| --- | --- | --- |
+| `RunSealedError` | run already terminal (`final.json` exists) | resume from a new run, not this sealed run |
+| `CheckpointNotFoundError` | wrong or missing `checkpoint_id` | list checkpoint directories and retry with the correct id |
+| `CheckpointConsistencyError` | checkpoint/event/state/artifact digest mismatch | treat run artifacts as drifted; restore known-good artifacts or checkpoint again before resume |
+| `ResumeAdapterMismatchError` | `using=` differs from checkpoint adapter | pass the same adapter used when the checkpoint was created |
+
 ## Policy-driven approval
 
 Create a policy that flags operations for approval:
