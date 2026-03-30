@@ -219,12 +219,32 @@ Adapter continuity:
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint no longer matches run artifacts (`event_offset`, `last_event_id`, `state_hash`, or `artifact_manifest_hash`).
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
 
 All errors above are defined in `noesis.domain.run_lifecycle`.
+
+### Resume integrity runbook
+
+Use this checklist when `resume(...)` or `resume_run(...)` fails with lifecycle consistency errors.
+
+1. Verify the run is still unsealed:
+   - `final.json` present means the run is sealed and lifecycle writes will fail with `RunSealedError`.
+2. Verify checkpoint metadata is still anchored:
+   - `checkpoints/<checkpoint_id>/checkpoint.json` should still match current `events.jsonl` and `state.json`.
+3. Verify artifacts were not edited between checkpoint and resume:
+   - `events.jsonl`, `state.json`, and (when present) `manifest.json` are part of checkpoint consistency validation.
+4. Verify explicit causal anchors:
+   - if you pass `caused_by=` to `ns.resume(...)`, it must match either the checkpoint `last_event_id` or the latest event id.
+
+Typical `CheckpointConsistencyError` causes:
+
+- checkpoint causal anchor drift (`last_event_id` mismatch)
+- `state.json` hash drift after checkpoint
+- artifact digest drift (for example `manifest.json` added/removed/changed after checkpoint)
+- malformed checkpoint payload (`checkpoint.json` invalid JSON/object shape)
 
 ### Verification helpers
 
