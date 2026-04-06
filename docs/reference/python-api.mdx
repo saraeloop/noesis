@@ -224,6 +224,31 @@ Adapter continuity:
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
 
+### Checkpoint consistency troubleshooting
+
+`CheckpointConsistencyError` is fail-closed by design. Resume is blocked when
+the stored checkpoint anchor no longer matches run artifacts.
+
+Checks performed before `run.resume` is emitted:
+
+- Event lineage still matches (`event_offset` and `last_event_id`).
+- `state.json` SHA-256 still matches the checkpoint `state_hash`.
+- Artifact digest still matches `artifact_manifest_hash`.
+  If `manifest.json` exists, its hash is used.
+  Otherwise a deterministic digest is derived from the current artifact set
+  (`events.jsonl` prefix through `event_offset`, plus existing
+  `prompts.jsonl`, `state.json`, `summary.json`, and `learn.jsonl`).
+- If you pass `caused_by` to `resume`/`resume_run`, it must equal either the
+  checkpoint `last_event_id` or the latest run event id.
+
+Runbook:
+
+1. Avoid editing run artifacts manually between checkpoint and resume.
+2. If recovery is needed, restore `events.jsonl`, `state.json`, and
+   `manifest.json` (when present) from a known-good copy.
+3. If artifacts cannot be restored, create a new checkpoint from the current
+   run state and resume from that new checkpoint id.
+
 All errors above are defined in `noesis.domain.run_lifecycle`.
 
 ### Verification helpers

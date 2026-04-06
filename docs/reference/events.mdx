@@ -627,6 +627,121 @@ The current lifecycle family includes `run.interrupt`, `run.checkpoint`,
 `run.state_projection` is emitted whenever state is persisted so `state.json`
 outcome/link fields have explicit event evidence.
 
+### `run.interrupt`
+
+Pause intent before a checkpoint or manual review gate.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.interrupt",
+  "payload": {
+    "kind": "run.interrupt",
+    "status": "interrupted",
+    "reason": "Awaiting approval"
+  },
+  "caused_by": "evt_prev123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.interrupt`.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Always `interrupted`.
+</ResponseField>
+
+<ResponseField name="payload.reason" type="string">
+Optional caller-provided explanation for the pause.
+</ResponseField>
+
+### `run.checkpoint`
+
+Append-only checkpoint anchor for same-run continuation.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.checkpoint",
+  "payload": {
+    "kind": "run.checkpoint",
+    "status": "paused",
+    "checkpoint_id": "chk_abc123def456",
+    "event_offset": 42,
+    "checkpoint_path": "checkpoints/chk_abc123def456/checkpoint.json"
+  },
+  "caused_by": "evt_interrupt123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.checkpoint`.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Always `paused`.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_id" type="string" required>
+Stable checkpoint identifier (`chk_*`).
+</ResponseField>
+
+<ResponseField name="payload.event_offset" type="number" required>
+1-indexed event count at checkpoint creation.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_path" type="string" required>
+Relative path to checkpoint metadata file.
+</ResponseField>
+
+Checkpoint metadata lives at `checkpoints/<checkpoint_id>/checkpoint.json`
+and includes `event_offset`, `last_event_id`, `state_hash`,
+`artifact_manifest_hash`, and optional `adapter_label`.
+
+### `run.resume`
+
+Lifecycle evidence that continuation has been authorized on the same run ID.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.resume",
+  "payload": {
+    "kind": "run.resume",
+    "status": "resuming",
+    "checkpoint_id": "chk_abc123def456",
+    "event_offset": 42,
+    "resume_strategy": "same_run_id"
+  },
+  "caused_by": "evt_checkpoint123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.resume`.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Always `resuming`.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_id" type="string" required>
+Checkpoint used for continuation.
+</ResponseField>
+
+<ResponseField name="payload.event_offset" type="number" required>
+Checkpoint anchor offset used for consistency validation.
+</ResponseField>
+
+<ResponseField name="payload.resume_strategy" type="string" required>
+Currently always `same_run_id`.
+</ResponseField>
+
+Before emitting `run.resume`, runtime validates checkpoint consistency against
+the current trace and artifacts (`event_offset`/`last_event_id`, `state_hash`,
+and `artifact_manifest_hash`).
+
 ```json
 {
   "phase": "runtime",
