@@ -208,6 +208,10 @@ Continuation contract:
 - Same run ID.
 - Append-only artifacts preserved.
 - Resume continues post-plan by default (no replan) with anchor validation.
+- Resume validates checkpoint integrity against the checkpoint anchor: `event_offset`/`last_event_id`, `state_hash`, and `artifact_manifest_hash`.
+- Event-log checks are prefix-aware at `event_offset`, so lifecycle appends after checkpoint creation do not invalidate an otherwise unchanged checkpoint.
+- For pre-manifest checkpoints, adding `manifest.json` before resume is treated as artifact-set drift and rejected.
+- For manifest-anchored checkpoints, deleting or rewriting `manifest.json` before resume is rejected.
 
 Adapter continuity:
 
@@ -219,7 +223,7 @@ Adapter continuity:
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`) no longer matches the current run artifacts.
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.

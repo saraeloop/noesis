@@ -152,6 +152,7 @@ Identity and binding rules:
 | `ApprovalDecisionBindingError` | decision is not bound to reviewed prepared intent | store `request_id`, `reviewed_fingerprint`, and `impact_hash` from the prepared artifact and verify before save |
 | `tool.replayed` result with no dispatch | same idempotency key and fingerprint seen previously | treat as successful replay; do not retry with a new side effect |
 | `summary.json` / `manifest.json` missing while run is paused | expected non-terminal lifecycle state | inspect latest `run.state_projection` links; resume and terminate run to produce final artifacts |
+| `CheckpointConsistencyError` with `artifact manifest hash` on `resume`/`resume_run` | checkpoint-visible artifact set changed while paused (for example state/event tampering, or manifest added/removed/rewritten) | restore anchored artifacts to the checkpoint state or create a new checkpoint from current state; avoid mutating run artifacts outside Noēsis while paused |
 
 ### Runtime bridge guardrails (current)
 
@@ -199,6 +200,8 @@ evidence is complete:
   `events` and `learn` (no `summary`/`manifest` yet)
 - on paused runs, `run.state_projection.payload.status` should match the pause
   status (for example `interrupted`)
+- do not manually write or delete `manifest.json` while paused; resume validation treats manifest appearance/disappearance as checkpoint drift
+- appending lifecycle events after checkpoint creation is expected and does not break resume validation on its own
 
 After approval and `ns.resume_run(...)` completes terminally, the latest
 `run.state_projection` should include terminal links (`summary`, `manifest`) and
