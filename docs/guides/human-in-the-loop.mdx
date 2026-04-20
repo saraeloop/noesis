@@ -59,6 +59,26 @@ def run_with_approval(task: str, using):
 Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
 </Tip>
 
+## Resume integrity checks
+
+Before `ns.resume(...)` or `ns.resume_run(...)`, Noēsis validates checkpoint
+consistency against the current run artifacts:
+
+- causal anchor integrity: checkpoint `event_offset` and `last_event_id` must
+  still match `events.jsonl`
+- state integrity: current `state.json` hash must match checkpoint `state_hash`
+- artifact integrity: current artifact digest must match checkpoint
+  `artifact_manifest_hash` (via `manifest.json` when present, otherwise
+  deterministic digest fallback)
+
+If any check fails, resume fails closed with `CheckpointConsistencyError`.
+
+Operational implication:
+
+- do not edit run artifacts manually between checkpoint and resume
+- treat checkpoint artifacts as immutable runbook evidence
+- if drift occurs, start a new run instead of forcing continuation
+
 ## Policy-driven approval
 
 Create a policy that flags operations for approval:
