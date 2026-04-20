@@ -624,6 +624,113 @@ Runtime events share `phase="runtime"` and use `event_type` as the stable subtyp
 The current lifecycle family includes `run.interrupt`, `run.checkpoint`,
 `run.resume`, and `run.state_projection`.
 
+#### `run.interrupt`
+
+Pause intent before checkpointing or other continuation flows.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.interrupt",
+  "payload": {
+    "kind": "run.interrupt",
+    "status": "interrupted",
+    "reason": "Awaiting human approval"
+  },
+  "caused_by": "evt_prev123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.interrupt`.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Always `interrupted`.
+</ResponseField>
+
+<ResponseField name="payload.reason" type="string">
+Optional operator- or policy-provided reason.
+</ResponseField>
+
+#### `run.checkpoint`
+
+Checkpoint pointer emission for same-run continuation.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.checkpoint",
+  "payload": {
+    "kind": "run.checkpoint",
+    "status": "paused",
+    "checkpoint_id": "chk_0123456789ab",
+    "event_offset": 42,
+    "checkpoint_path": "checkpoints/chk_0123456789ab/checkpoint.json"
+  },
+  "caused_by": "evt_prev123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.checkpoint`.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Always `paused`.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_id" type="string" required>
+Run-local checkpoint identifier.
+</ResponseField>
+
+<ResponseField name="payload.event_offset" type="integer" required>
+1-based event history anchor used by resume consistency checks.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_path" type="string" required>
+Relative path to persisted checkpoint artifact.
+</ResponseField>
+
+#### `run.resume`
+
+Resume evidence emitted before continuation execution.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.resume",
+  "payload": {
+    "kind": "run.resume",
+    "status": "resuming",
+    "checkpoint_id": "chk_0123456789ab",
+    "event_offset": 42,
+    "resume_strategy": "same_run_id"
+  },
+  "caused_by": "evt_prev123"
+}
+```
+
+<ResponseField name="payload.kind" type="string" required>
+Always `run.resume`.
+</ResponseField>
+
+<ResponseField name="payload.status" type="string" required>
+Always `resuming`.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_id" type="string" required>
+Checkpoint being resumed.
+</ResponseField>
+
+<ResponseField name="payload.event_offset" type="integer" required>
+Copied from the resolved checkpoint anchor.
+</ResponseField>
+
+<ResponseField name="payload.resume_strategy" type="string" required>
+Current value is `same_run_id`.
+</ResponseField>
+
 `run.state_projection` is emitted whenever state is persisted so `state.json`
 outcome/link fields have explicit event evidence.
 
@@ -670,7 +777,8 @@ Trace-backed projection of persisted `state.json.links`.
 
 <ResponseField name="caused_by" type="string">
 For runtime lifecycle/projection events, points to the latest prior event in the
-trace when available.
+trace when available. For `run.resume`, explicit anchors must match either the
+checkpoint's `last_event_id` or the run's current latest event ID.
 </ResponseField>
 
 ### terminate

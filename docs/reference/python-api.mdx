@@ -207,7 +207,16 @@ Continuation contract:
 
 - Same run ID.
 - Append-only artifacts preserved.
-- Resume continues post-plan by default (no replan) with anchor validation.
+- Resume continues post-plan by default (no replan) with fail-closed anchor validation.
+
+Resume consistency checks (enforced before `run.resume` is emitted):
+
+- `event_offset` + `last_event_id` in checkpoint must still match current `events.jsonl`.
+- `state_hash` in checkpoint must match current `state.json`.
+- `artifact_manifest_hash` in checkpoint must match current artifact digest:
+  - if `manifest.json` exists, hash that file
+  - otherwise hash canonical artifact set (`events.jsonl` prefix at `event_offset`, `prompts.jsonl`, `state.json`, `summary.json`, `learn.jsonl`) when present.
+- explicit `caused_by=` for `ns.resume(...)` must match either checkpoint `last_event_id` or the current latest run event ID.
 
 Adapter continuity:
 
@@ -219,7 +228,11 @@ Adapter continuity:
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint anchor drift, including:
+  - event history mismatch (`event_offset` / `last_event_id`)
+  - `state.json` hash mismatch (`state_hash`)
+  - artifact digest mismatch (`artifact_manifest_hash`, including manifest presence/content drift)
+  - invalid explicit resume anchor (`caused_by` not allowed for this checkpoint/run head)
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
