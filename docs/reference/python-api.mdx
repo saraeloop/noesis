@@ -29,6 +29,7 @@ episode_id = ns.run(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
@@ -57,6 +58,10 @@ Optional runtime context. If provided, execution bypasses the default session.
 Workspace root to snapshot for verification.
 </ParamField>
 
+<ParamField body="process" type="str | None" default="None">
+Optional process label used to group related episodes in the process registry.
+</ParamField>
+
 <ParamField body="verify" type="VerifySpec | Sequence[VerifySpec] | None" default="None">
 Verification assertions to evaluate against the workspace.
 </ParamField>
@@ -69,7 +74,12 @@ Verification assertions to evaluate against the workspace.
 import noesis as ns
 
 episode_id = ns.run("Draft release notes")
-episode_id = ns.run("Draft release notes", intuition=False, tags={"env": "staging"})
+episode_id = ns.run(
+    "Draft release notes",
+    intuition=False,
+    tags={"env": "staging"},
+    process="release-docs",
+)
 ```
 
 **Runtime context example**:
@@ -99,12 +109,18 @@ episode_id = ns.solve(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
 
 <ParamField body="using" type="GraphSource" required>
 Adapter name/import path or callable to execute the task.
+</ParamField>
+
+<ParamField body="process" type="str | None" default="None">
+Optional process label used to group related adapter-backed episodes in the
+process registry.
 </ParamField>
 
 **Example**:
@@ -117,7 +133,7 @@ def to_upper(task: str) -> dict:
     return {"result": task.upper()}
 
 episode_id = ns.solve("process this", using=to_upper)
-episode_id = ns.solve("process this", using="my.module:adapter_fn")
+episode_id = ns.solve("process this", using="my.module:adapter_fn", process="etl")
 ```
 
 ### Run lifecycle APIs
@@ -309,6 +325,24 @@ Each row includes `episode_id`, `task`, `started_at`, `flags`, `success`, `manif
 <Note>
 In v1.0.0, `ns.list_runs()` exists as a deprecated legacy alias. Prefer `noesis.io.list_runs()`.
 </Note>
+
+When an episode is started with `process=...`, each row also includes a `process`
+block from the episode summary:
+
+```python
+{
+    "process": {
+        "id": "7b4f5c2a91ef",
+        "name": "release-docs",
+        "run_index": 3,
+        "kind": "oneshot",
+    }
+}
+```
+
+The `id` is derived from the resolved workspace identity plus the process name.
+Use the stable `name` for operator-facing filters and the opaque `id` for exact
+machine references.
 
 ### noesis.io.last()
 

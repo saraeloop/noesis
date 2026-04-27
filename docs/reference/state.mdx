@@ -17,6 +17,7 @@ The `state.json` artifact captures cognitive state snapshots during execution an
   "plan": { ... },
   "memory": { ... },
   "outcomes": { ... },
+  "process": { ... },
   "links": { ... }
 }
 ```
@@ -78,6 +79,41 @@ ISO 8601 start timestamp.
 <ResponseField name="episode.intuition_mode" type="string">
 Intuition posture for the episode (advisory | interventive | hybrid). Runs created
 with older Noēsis versions may omit this field (default advisory).
+</ResponseField>
+
+## Process
+
+When a run is started with a process label, `state.json` includes the stable
+process identity and per-process run index:
+
+```json
+{
+  "process": {
+    "id": "7b4f5c2a91ef",
+    "name": "release-docs",
+    "run_index": 3,
+    "kind": "oneshot"
+  }
+}
+```
+
+<ResponseField name="process.id" type="string">
+Opaque process identifier derived from the resolved workspace identity plus the
+optional process name.
+</ResponseField>
+
+<ResponseField name="process.name" type="string">
+Operator-facing process label. If no explicit label was supplied, Noēsis derives
+a workspace-based display name.
+</ResponseField>
+
+<ResponseField name="process.run_index" type="number">
+Monotonic 1-based counter allocated by the process registry for this process.
+</ResponseField>
+
+<ResponseField name="process.kind" type="string">
+Execution style recorded by the registry. The current runtime records `"oneshot"`
+for `ns.run(...)`, `ns.solve(...)`, and `noesis run`.
 </ResponseField>
 
 ## Artifact links
