@@ -122,12 +122,33 @@ noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --phase governance
 ### Process-oriented inspection
 
 ```bash
+# Start grouped runs
+noesis run "Draft release notes" --process release-docs
+noesis run "Publish changelog" --process release-docs
+
 # Process liveness and metadata
 noesis processes --limit 20
+noesis processes --process release-docs
 
 # Runs for a specific process
-noesis runs --process alpha --limit 20
+noesis runs --process release-docs --limit 20
 ```
+
+`--process` is an operator-facing label. The runtime derives an opaque
+`process_id` from the resolved workspace identity plus the label, then stores a
+record under the configured Noēsis root's `processes/` directory. Runs started
+with the same label from the same workspace share the same process record and a
+monotonic `run_index`.
+
+Process liveness is best-effort metadata:
+
+- `running`: the process has a recent heartbeat.
+- `stale`: the last heartbeat is older than the registry stale threshold.
+- `idle`: the latest run completed and no active run is registered.
+- `error`: the registry recorded a terminal error status.
+
+Use `noesis ps --process <name-or-id>` or `noesis runs --process <name-or-id>`
+to filter episode rows by process name or process id.
 
 ### Diagnostics and integrity
 
@@ -180,6 +201,7 @@ The verification parser enforces:
 - `run --json` emits a run-result envelope (`episode_id`, `episode_dir`, `artifacts`, `outcome`, `verification`, `capabilities`)
 - `ps --json` emits `{"episodes":[...], ...}`
 - `processes --json` emits `{"processes":[...], ...}`
+- `runs --json` emits the filtered episode row list directly
 - `events --json` emits JSONL (one event per line)
 - `events --envelope` emits one JSON object containing all selected events
 

@@ -20,6 +20,7 @@ The `summary.json` artifact provides a high-level view of episode outcomes, metr
   "flags": { ... },
   "metrics": { ... },
   "insight": { ... },
+  "process": { ... },
   "tags": { ... }
 }
 ```
@@ -255,6 +256,42 @@ Computed insight metrics.
 </Expandable>
 </ResponseField>
 
+## Process
+
+Process metadata is present when the episode was started with `process=...` in
+Python or `noesis run --process ...` in the CLI. It groups related episodes under
+a stable operator-facing label.
+
+```json
+{
+  "process": {
+    "id": "7b4f5c2a91ef",
+    "name": "release-docs",
+    "run_index": 3,
+    "kind": "oneshot"
+  }
+}
+```
+
+<ResponseField name="process.id" type="string">
+Opaque stable process identifier. It is derived from the resolved workspace
+identity plus the optional process name.
+</ResponseField>
+
+<ResponseField name="process.name" type="string">
+Human-readable process label. When no label is supplied, Noēsis derives one from
+the workspace basename and process id prefix.
+</ResponseField>
+
+<ResponseField name="process.run_index" type="number | null">
+Monotonic 1-based run number allocated within the process.
+</ResponseField>
+
+<ResponseField name="process.kind" type="string | null">
+Execution style for the process. The current public run helpers record
+`"oneshot"`.
+</ResponseField>
+
 ## Tags
 
 User-provided metadata.
@@ -326,6 +363,12 @@ Key-value pairs of user-provided metadata.
       "branching_factor": 2,
       "plan_revisions": 1
     }
+  },
+  "process": {
+    "id": "7b4f5c2a91ef",
+    "name": "release-docs",
+    "run_index": 3,
+    "kind": "oneshot"
   },
   "tags": {
     "environment": "staging",
