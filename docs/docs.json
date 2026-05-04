@@ -87,7 +87,8 @@
             "group": "API reference",
             "pages": [
               "reference/python-api",
-              "reference/cli"
+              "reference/cli",
+              "reference/process-registry"
             ]
           },
           {
