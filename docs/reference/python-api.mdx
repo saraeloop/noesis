@@ -208,18 +208,26 @@ Continuation contract:
 - Same run ID.
 - Append-only artifacts preserved.
 - Resume continues post-plan by default (no replan) with anchor validation.
+- Checkpoints store `event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`, and adapter metadata.
 
 Adapter continuity:
 
 - `resume_run(..., using=...)` must match the persisted adapter from checkpoint/state.
 - For minimal runs (`ns.run(...)`), omitting `using` is allowed.
 
+Checkpoint integrity:
+
+- If `manifest.json` exists when the checkpoint is created, `artifact_manifest_hash` is the SHA-256 of that manifest.
+- If the run is paused before `manifest.json` exists, Noēsis hashes the checkpointed artifact set (`events.jsonl`, `prompts.jsonl`, `state.json`, `summary.json`, `learn.jsonl` when present).
+- For pre-manifest checkpoints, only the `events.jsonl` prefix up to `event_offset` is included so later `run.checkpoint` and `run.resume` events do not invalidate the checkpoint.
+- Resume fails closed if the manifest appears, disappears, changes, or if checkpointed artifacts change before continuation.
+
 ### Common failure modes
 
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`) no longer matches artifacts.
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.

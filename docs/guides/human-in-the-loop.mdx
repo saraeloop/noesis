@@ -3,442 +3,219 @@ title: "Human-in-the-loop"
 description: "How to add human approval workflows to your Noēsis episodes."
 ---
 
-Many agent scenarios require human oversight before executing high-risk operations. This guide shows how to implement human-in-the-loop patterns with Noēsis.
+Human approval in Noēsis is a runtime lifecycle, not a post-processing step.
+Pause before a side effect, checkpoint the unsealed run, record approval in the
+same integration, then resume the same run ID.
 
-## When to use human approval
+<Warning>
+Do not call `ns.interrupt(...)` or `ns.checkpoint(...)` after a normal
+`ns.run(...)` or terminal `ns.solve(...)` has returned. Terminal runs are sealed
+with `final.json` and `manifest.json`; lifecycle mutations on sealed runs raise
+`RunSealedError`.
+</Warning>
 
-Add human approval when:
+## When to Use Approval
 
-- Actions are **irreversible** (deletes, deployments, financial transactions)
-- Risk scores **exceed thresholds**
-- Policies flag operations as **requiring review**
-- Regulations demand **audit trails** with human sign-off
+Add a human gate when:
 
-## Basic approval pattern
+- the action is irreversible, such as deletes, deployments, or financial writes
+- a policy veto should become a review queue instead of an immediate terminal failure
+- a protocol adapter prepares durable tool intent that must be approved elsewhere
+- regulations require an auditable approver, reason, and reviewed payload binding
 
-The recommended pattern is pause -> checkpoint -> approve -> resume (same run):
+## Runtime Contract
 
-```python
-import noesis as ns
+The same-run lifecycle is:
 
-
-def require_approval(episode_id: str, action: str) -> bool:
-    """
-    In production, replace with:
-    - Slack interactive message
-    - ServiceNow approval workflow
-    - Custom approval UI
-    """
-    print(f"\n⚠️  Approval required for episode {episode_id}")
-    print(f"   Action: {action}")
-    response = input("   Approve? (y/n): ")
-    return response.lower() == "y"
-
-
-def run_with_approval(task: str, using):
-    # Start run
-    episode_id = ns.solve(task, using=using, intuition=True)
-
-    # Pause and checkpoint before high-risk continuation
-    interrupt_id = ns.interrupt(episode_id, reason="High-risk action requires approval")
-    checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
-
-    if not require_approval(episode_id, task):
-        print("❌ Action rejected by human reviewer")
-        return None
-
-    # Continue same run ID from checkpoint (no rerun)
-    return ns.resume_run(
-        episode_id,
-        checkpoint_id=checkpoint["checkpoint_id"],
-        using=using,
-    )
+```text
+running -> run.interrupt -> run.checkpoint -> approval -> run.resume -> act -> terminate
 ```
 
-<Tip>
-Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
-</Tip>
+Key properties:
 
-## Policy-driven approval
+- `interrupt` emits a runtime `run.interrupt` event.
+- `checkpoint` writes `checkpoints/<checkpoint_id>/checkpoint.json` and emits `run.checkpoint`.
+- `resume` emits lifecycle evidence only; it does not continue execution.
+- `resume_run` emits `run.resume` and continues the existing run ID.
+- `resume_run(..., using=...)` must match the adapter captured in the checkpoint for non-minimal runs.
 
-Create a policy that flags operations for approval:
+## Choose a Pause Mechanism
+
+| Mechanism | Use when | Notes |
+| --- | --- | --- |
+| Governed side effects | You use `ns.governed_act(...)` or governance-enforced `ns.solve(...)` for high-risk actions | Set `governance_mode="enforce"` and `governance_pause_on_veto=True`; vetoes emit `run.interrupt -> run.checkpoint` and skip `act`. |
+| Protocol-first tool invocation | You are building an adapter around prepared tool intent | Use `prepare_tool_invocation(...)`, persist approval with the same `run_id + draft_id`, then call `ns.resume_run(...)`. |
+| Manual lifecycle primitives | Your own orchestrator is still inside an unsealed run | Call `ns.interrupt(...)` and `ns.checkpoint(...)` before terminal finalization. |
+
+## Policy-Driven Pause
+
+Use a veto for operations that must stop before the act phase. In enforce mode,
+`governance_pause_on_veto=True` converts the veto into a paused, unsealed run.
 
 ```python
 import noesis as ns
 from noesis.intuition import IntuitionEvent
 
 
-class ApprovalPolicy(ns.DirectedIntuition):
-    """Policy that requires approval for high-risk operations."""
-    
-    __version__ = "1.0"
-    
-    HIGH_RISK_KEYWORDS = {"delete", "drop", "truncate", "deploy", "rollback"}
-    
+class ProductionApproval(ns.DirectedIntuition):
     def advise(self, state: dict) -> IntuitionEvent | None:
-        task = state.get("task", "").lower()
-        
-        # Check for high-risk keywords
-        if any(kw in task for kw in self.HIGH_RISK_KEYWORDS):
-            return self.intervene(
-                advice="High-risk operation detected. Requiring human approval.",
-                patch={
-                    "requires_approval": True,
-                    "risk_reason": "high_risk_keyword",
-                },
-                target="plan",
-                rationale="Operations matching high-risk patterns need review.",
+        task = str(state.get("task", "")).lower()
+        if "production" in task and ("delete" in task or "deploy" in task):
+            return self.veto(
+                advice="Production side effect requires human approval.",
+                target="act",
+                rationale="High-risk production changes must be reviewed.",
             )
-        
-        # Check for production environment
-        if "production" in task or state.get("environment") == "production":
-            return self.intervene(
-                advice="Production operation detected. Requiring human approval.",
-                patch={
-                    "requires_approval": True,
-                    "risk_reason": "production_environment",
-                },
-                target="plan",
-                rationale="All production changes require human sign-off.",
-            )
-        
         return None
+
+
+ns.set(
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
+)
+
+def deploy_graph(task: str) -> dict[str, str]:
+    return {"task": task, "status": "approved-path"}
+
+
+episode_id = ns.solve(
+    "Deploy payment service to production",
+    using=deploy_graph,
+    intuition=ProductionApproval(),
+)
 ```
 
-## Slack integration
+When the policy vetoes:
 
-Send approval requests to Slack:
+- no `act` event is emitted
+- no `terminate` event is emitted
+- `final.json` and `manifest.json` are absent until continuation finalizes
+- `state.json` records a partial outcome
+- a checkpoint is available under the run directory
+
+## Approval Resume Runbook
+
+Use this flow after your approval system has identified a paused run.
 
 ```python
-import os
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 import noesis as ns
 
 
-class SlackApproval:
-    """Handle approvals via Slack interactive messages."""
-    
-    def __init__(self, channel: str):
-        self.client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
-        self.channel = channel
-        self.pending = {}  # episode_id -> message_ts
-    
-    def request_approval(self, episode_id: str, action: str, context: dict) -> str:
-        """Send approval request to Slack."""
-        blocks = [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "🔒 Approval Required"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Episode:* `{episode_id}`\n*Action:* {action}",
-                },
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {"type": "mrkdwn", "text": f"*Reason:* {context.get('reason', 'Policy requirement')}"},
-                ],
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "✅ Approve"},
-                        "style": "primary",
-                        "action_id": f"approve_{episode_id}",
-                    },
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "❌ Reject"},
-                        "style": "danger",
-                        "action_id": f"reject_{episode_id}",
-                    },
-                ],
-            },
-        ]
-        
-        try:
-            response = self.client.chat_postMessage(
-                channel=self.channel,
-                blocks=blocks,
-                text=f"Approval required for {episode_id}",
-            )
-            self.pending[episode_id] = response["ts"]
-            return response["ts"]
-        except SlackApiError as e:
-            raise RuntimeError(f"Slack API error: {e.response['error']}")
-    
-    def handle_response(self, episode_id: str, approved: bool, user: str):
-        """Handle approval response from Slack."""
-        if episode_id in self.pending:
-            # Update the message
-            status = "✅ Approved" if approved else "❌ Rejected"
-            self.client.chat_update(
-                channel=self.channel,
-                ts=self.pending[episode_id],
-                text=f"{status} by {user}",
-            )
-            del self.pending[episode_id]
-        
-        return approved
-
-
-# Usage
-slack = SlackApproval(channel="#approvals")
-
-def run_with_slack_approval(task: str):
-    episode_id = ns.run(task, intuition=ApprovalPolicy())
-    
-    # Check if approval needed
+def latest_checkpoint_id(episode_id: str) -> str:
     events = list(ns.events.read(episode_id))
-    approval_event = next(
-        (e for e in events if e.get("payload", {}).get("requires_approval")),
-        None,
+    checkpoints = [
+        event
+        for event in events
+        if event.get("phase") == "runtime"
+        and event.get("event_type") == "run.checkpoint"
+    ]
+    if not checkpoints:
+        raise RuntimeError(f"No checkpoint found for {episode_id}")
+
+    payload = checkpoints[-1].get("payload") or {}
+    checkpoint_id = payload.get("checkpoint_id")
+    if not isinstance(checkpoint_id, str) or not checkpoint_id:
+        raise RuntimeError(f"Checkpoint event for {episode_id} has no checkpoint_id")
+    return checkpoint_id
+
+
+def resume_after_approval(episode_id: str, using) -> str:
+    checkpoint_id = latest_checkpoint_id(episode_id)
+    return ns.resume_run(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+        using=using,
     )
-    
-    if approval_event:
-        slack.request_approval(
-            episode_id,
-            task,
-            {"reason": approval_event["payload"].get("risk_reason")},
+```
+
+<Note>
+Approval must change the condition that caused the pause. For a prepared tool
+draft, that means persisting an approved `ToolApprovalDecision`. For a policy
+veto, make the approval visible to the policy or continuation path before
+calling `resume_run(...)`; otherwise the same veto may recur.
+</Note>
+
+## Prepared Tool Approval
+
+Protocol adapters should use the tool invocation contract when the side effect
+must be reviewed outside the runtime process.
+
+The durable identity is `run_id + draft_id`:
+
+```python
+from noesis.domain.tool_contract import ApprovalDecisionStatus, ToolApprovalDecision
+from noesis.infrastructure.tool_invocation.repositories import (
+    FileApprovalDecisionRepository,
+    FilePreparedInvocationRepository,
+)
+
+
+def approve_pending_draft(*, run_dir, run_id: str, approver_id: str) -> str:
+    prepared_repo = FilePreparedInvocationRepository(run_dir=run_dir)
+    approval_repo = FileApprovalDecisionRepository(run_dir=run_dir)
+
+    prepared = prepared_repo.load_pending_for_run(run_id=run_id)
+    if prepared is None or prepared.draft_id is None:
+        raise RuntimeError(f"No pending draft for {run_id}")
+
+    approval_repo.save(
+        ToolApprovalDecision(
+            decision_id=f"approval:{prepared.draft_id}",
+            run_id=prepared.run_id,
+            request_id=prepared.request_id,
+            candidate_id=prepared.governance.candidate_id,
+            draft_id=prepared.draft_id,
+            status=ApprovalDecisionStatus.APPROVED,
+            reviewed_fingerprint=prepared.payload.request_fingerprint,
+            impact_hash=prepared.preflight.impact_hash if prepared.preflight else None,
+            approver_id=approver_id,
         )
-        return {"status": "pending_approval", "episode_id": episode_id}
-    
-    return {"status": "completed", "episode_id": episode_id}
+    )
+    return prepared.draft_id
 ```
 
-## Async approval workflow
+After saving approval, call `ns.resume_run(episode_id, checkpoint_id=...)`.
+The runtime bridge loads exactly one pending draft for the run and dispatches it
+only if the approval binding still matches the prepared payload.
 
-For production systems, use an async workflow:
+## Operational Checks
 
-```python
-import asyncio
-from dataclasses import dataclass
-from enum import Enum
-import noesis as ns
+Before asking for approval:
 
+- confirm there is a runtime `run.interrupt` event caused by the governance or tool event
+- confirm there is a runtime `run.checkpoint` event caused by the interrupt
+- inspect `tool_invocations/prepared/*.json` for prepared tool drafts, if applicable
+- show reviewers the redacted payload, request fingerprint, impact hash, and policy reason
 
-class ApprovalStatus(Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
+After approval and resume:
 
+- expect a runtime `run.resume` event
+- expect actuation evidence or `tool.execution.*` / `tool.replayed` events
+- expect terminal artifacts (`final.json`, `manifest.json`) once continuation completes
+- treat repeated `tool.replayed` outcomes as successful idempotent replays, not new dispatches
 
-@dataclass
-class ApprovalRequest:
-    episode_id: str
-    action: str
-    context: dict
-    status: ApprovalStatus = ApprovalStatus.PENDING
-    approver: str | None = None
+## Troubleshooting
 
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `RunSealedError` | The run already has `final.json` and `manifest.json` | Start a new run or move the approval gate before terminal finalization. |
+| `CheckpointNotFoundError` | Wrong `checkpoint_id` or wrong run directory | Read the latest `run.checkpoint` event and use its `payload.checkpoint_id`. |
+| `CheckpointConsistencyError` mentioning event history | Events before the checkpoint were edited or truncated | Restore the original `events.jsonl` prefix from the checkpointed run. |
+| `CheckpointConsistencyError` mentioning state hash | `state.json` changed after checkpoint | Resume from the original state or create a new checkpoint from the new state. |
+| `CheckpointConsistencyError` mentioning artifact manifest hash | Manifest presence/content or checkpointed artifacts changed | Restore the checkpointed artifact set; pre-manifest checkpoints hash the artifact set and the event prefix at the checkpoint boundary. |
+| `ResumeAdapterRequiredError` | The checkpoint came from a non-minimal adapter run | Pass the original adapter to `resume_run(..., using=...)`. |
+| `ResumeAdapterMismatchError` | `using` does not match checkpoint metadata | Resume with the same adapter label/callable used by the paused run. |
+| `ApprovalDecisionBindingError` | Approval does not match the reviewed draft | Persist approval with the prepared draft's `request_id`, `reviewed_fingerprint`, and `impact_hash`. |
+| `AmbiguousPreparedToolInvocationError` | More than one pending draft exists for one run | Resolve or cancel duplicate drafts before resuming. |
+| `UnsupportedToolProtocolError` | Runtime bridge received a non-subprocess draft | Route HTTP/MCP approvals through adapter-specific execution until bridge support is added. |
 
-class ApprovalQueue:
-    """Async approval queue with timeout support."""
-    
-    def __init__(self, timeout_seconds: int = 3600):
-        self.requests: dict[str, ApprovalRequest] = {}
-        self.timeout = timeout_seconds
-        self._events: dict[str, asyncio.Event] = {}
-    
-    async def request_approval(self, episode_id: str, action: str, context: dict) -> ApprovalRequest:
-        """Submit an approval request and wait for response."""
-        request = ApprovalRequest(episode_id, action, context)
-        self.requests[episode_id] = request
-        self._events[episode_id] = asyncio.Event()
-        
-        # Send to your approval channel (Slack, email, etc.)
-        await self._notify_approvers(request)
-        
-        # Wait for response with timeout
-        try:
-            await asyncio.wait_for(
-                self._events[episode_id].wait(),
-                timeout=self.timeout,
-            )
-        except asyncio.TimeoutError:
-            request.status = ApprovalStatus.EXPIRED
-        
-        return request
-    
-    async def approve(self, episode_id: str, approver: str):
-        """Mark request as approved."""
-        if episode_id in self.requests:
-            self.requests[episode_id].status = ApprovalStatus.APPROVED
-            self.requests[episode_id].approver = approver
-            self._events[episode_id].set()
-    
-    async def reject(self, episode_id: str, approver: str):
-        """Mark request as rejected."""
-        if episode_id in self.requests:
-            self.requests[episode_id].status = ApprovalStatus.REJECTED
-            self.requests[episode_id].approver = approver
-            self._events[episode_id].set()
-    
-    async def _notify_approvers(self, request: ApprovalRequest):
-        """Send notification to approvers."""
-        # Implement your notification logic here
-        print(f"Approval requested: {request.episode_id}")
-
-
-# Usage
-queue = ApprovalQueue(timeout_seconds=300)
-
-
-async def run_async_approval(task: str):
-    episode_id = ns.run(task, intuition=ApprovalPolicy())
-    
-    events = list(ns.events.read(episode_id))
-    if any(e.get("payload", {}).get("requires_approval") for e in events):
-        request = await queue.request_approval(episode_id, task, {})
-        
-        if request.status == ApprovalStatus.APPROVED:
-            # Continue with approved action
-            return ns.run(f"{task} [APPROVED by {request.approver}]", intuition=True)
-        elif request.status == ApprovalStatus.EXPIRED:
-            print("Approval timed out")
-            return None
-        else:
-            print(f"Rejected by {request.approver}")
-            return None
-    
-    return episode_id
-```
-
-## Recording approval in events
-
-The approval decision should be captured in the event timeline:
-
-```python
-import noesis as ns
-
-
-def record_approval(episode_id: str, approved: bool, approver: str):
-    """Record approval decision in a new episode that references the original."""
-    
-    summary = ns.summary.read(episode_id)
-    original_task = summary.get("task", "")
-    
-    # Create a linked episode with the decision
-    approval_episode = ns.run(
-        f"Human review of: {original_task}",
-        intuition=False,
-        tags={
-            "type": "approval",
-            "original_episode": episode_id,
-            "approved": approved,
-            "approver": approver,
-        },
-    )
-    
-    return approval_episode
-```
-
-## UI for approvals
-
-Build a simple approval UI with Gradio:
-
-```python
-import gradio as gr
-import noesis as ns
-
-
-def get_pending_approvals():
-    """Get episodes awaiting approval."""
-    episodes = ns.list_runs(limit=50)
-    pending = []
-    
-    for ep in episodes:
-        events = list(ns.events.read(ep["episode_id"]))
-        if any(e.get("payload", {}).get("requires_approval") for e in events):
-            summary = ns.summary.read(ep["episode_id"])
-            if not summary.get("tags", {}).get("approved"):
-                pending.append({
-                    "episode_id": ep["episode_id"],
-                    "task": summary.get("task", ""),
-                    "timestamp": ep["timestamp"],
-                })
-    
-    return pending
-
-
-def approve_episode(episode_id: str, approver: str):
-    """Approve an episode."""
-    ns.run(
-        f"[APPROVED] {ns.summary.read(episode_id).get('task', '')}",
-        tags={"approved": True, "approver": approver, "original": episode_id},
-    )
-    return f"✅ Approved by {approver}"
-
-
-def reject_episode(episode_id: str, approver: str, reason: str):
-    """Reject an episode."""
-    ns.run(
-        f"[REJECTED] {ns.summary.read(episode_id).get('task', '')}",
-        tags={"rejected": True, "approver": approver, "reason": reason, "original": episode_id},
-    )
-    return f"❌ Rejected by {approver}: {reason}"
-
-
-# Build Gradio interface
-with gr.Blocks(title="Approval Queue") as app:
-    gr.Markdown("# 🔐 Approval Queue")
-    
-    with gr.Row():
-        refresh_btn = gr.Button("Refresh")
-        pending_list = gr.Dataframe(headers=["Episode ID", "Task", "Timestamp"])
-    
-    with gr.Row():
-        episode_input = gr.Textbox(label="Episode ID")
-        approver_input = gr.Textbox(label="Your name")
-        reason_input = gr.Textbox(label="Rejection reason (if rejecting)")
-    
-    with gr.Row():
-        approve_btn = gr.Button("✅ Approve", variant="primary")
-        reject_btn = gr.Button("❌ Reject", variant="stop")
-    
-    result = gr.Textbox(label="Result")
-    
-    refresh_btn.click(
-        lambda: [[p["episode_id"], p["task"], p["timestamp"]] for p in get_pending_approvals()],
-        outputs=pending_list,
-    )
-    approve_btn.click(approve_episode, inputs=[episode_input, approver_input], outputs=result)
-    reject_btn.click(reject_episode, inputs=[episode_input, approver_input, reason_input], outputs=result)
-
-
-if __name__ == "__main__":
-    app.launch()
-```
-
-## Best practices
-
-<Tip>
-**Set reasonable timeouts.** Pending approvals shouldn't block indefinitely—expire them after a reasonable period.
-</Tip>
-
-<Warning>
-**Authenticate approvers.** In production, verify the identity of approvers through SSO or similar.
-</Warning>
-
-<Info>
-**Create audit trails.** Record all approval decisions with timestamps, approvers, and reasons in the event timeline.
-</Info>
-
-## Next steps
+## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Trace-Based Evals" icon="triangle-exclamation" href="/tutorials/trace-based-evals">
-    Full example harness with veto visibility and scoring.
+  <Card title="Integrate adapters" icon="plug" href="/guides/integrate-adapters">
+    Build protocol-first prepared tool flows.
   </Card>
-  <Card title="Governance guide" icon="shield" href="/guides/configure-planner-modes">
-    Configure governance for approval requirements.
+  <Card title="Governed side effects" icon="shield" href="/tutorials/governed-side-effects">
+    Exercise veto, pause, and trace evidence.
   </Card>
 </CardGroup>
