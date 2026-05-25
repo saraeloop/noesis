@@ -56,7 +56,7 @@
 - [ ] KPI updates include version bumps plus math/clamp/rationale updates in `internal_docs/schema/kpi*.yaml`
 - [ ] Relevant entry added to `MIGRATIONS.schema.md` or `MIGRATIONS.kpi.md`
 - [ ] `python scripts/schema_guard.py --strict --json` passes locally
-- [ ] Docs under `docs/app/reference/*` updated when new fields/KPIs surface to users
+- [ ] Docs under `docs/reference/*` updated when new fields/KPIs surface to users
 
 ## Observability & Safety
 

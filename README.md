@@ -80,6 +80,7 @@ episode_id = ns.solve(
 # Governance vetoes the risky write →
 # run automatically emits interrupt + checkpoint
 # UI shows: run is paused, waiting on you
+```
 
 ## How it works
 
@@ -158,9 +159,14 @@ except NoesisVeto as veto:
 
 ## Workspace verification
 
-## Artifact contract
+Verification compares pre/post workspace snapshots and records the result in the episode artifacts.
 
-Every episode writes a sealed artifact pack:
+```python
+verify = (
+    ns.file_exists("canary-rollout.json"),
+    ns.file_contains("canary-rollout.json", "canary: true"),
+    ns.only_modified(["canary-rollout.json"]),
+)
 
 episode_id = ns.solve(
     "Update config",
@@ -169,6 +175,12 @@ episode_id = ns.solve(
     verify=verify,
 )
 ```
+
+Verification produces `snapshots/pre.json` and `snapshots/post.json` when a workspace is provided.
+
+## Artifact contract
+
+Terminal episodes are sealed with `final.json` and `manifest.json`. Paused runs keep the mutable lifecycle open and may only expose `events.jsonl`, `learn.jsonl`, and checkpoint metadata until continuation completes.
 
 ## Pause, checkpoint, and continue
 
@@ -185,11 +197,6 @@ episode_id = ns.solve(
         ns.only_modified(["canary-rollout.json"]),
     ),
 )
-```
-
-Verification produces `snapshots/pre.json` and `snapshots/post.json` and records verification state in the episode artifacts.
-
----
 
 interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
 checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
@@ -201,9 +208,6 @@ episode_id = ns.resume_run(
     checkpoint_id=checkpoint["checkpoint_id"],
     using=my_graph,
 )
-
-episode_id = session.solve(task="...", using=lambda: my_agent())
-restore()
 ```
 
 Rule of thumb:
@@ -240,10 +244,11 @@ uv run python examples/demo.py
 
 ## Docs and links
 
-- Artifacts guide: `docs/artifacts/state.md`
-- Schema index: `docs/app/reference/schema-index.mdx`
-- CLI reference: `docs/app/reference/cli/page.mdx`
-- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
+- Artifacts guide: `docs/explanation/artifacts.mdx`
+- State schema: `docs/reference/state.mdx`
+- Events schema: `docs/reference/events.mdx`
+- CLI reference: `docs/reference/cli.mdx`
+- Quickstart guide: `docs/quickstart.mdx`
 - Examples: `examples/README.md`
 
 ## Status
