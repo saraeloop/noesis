@@ -1,0 +1,43 @@
+---
+title: "llms.txt"
+description: "How Noesis exposes LLM-friendly documentation indexes."
+---
+
+Noesis publishes a root `llms.txt` index so assistants and search tools can discover the most useful documentation pages without crawling the whole site.
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `llms.txt` | Curated index of public documentation URLs and short descriptions. |
+| `llms-full.txt` | Optional expanded documentation bundle. This repository currently ships the curated `llms.txt`; generate a full bundle from the docs site if your publishing pipeline needs one. |
+
+## Source of truth
+
+The checked-in `llms.txt` file is maintained by hand alongside the Mintlify pages under `docs/`.
+
+When changing docs navigation, keep these files aligned:
+
+- `docs/docs.json`: sidebar and site navigation.
+- `llms.txt`: assistant-friendly public index.
+- `docs/reference/llms-txt.mdx`: this reference page, linked from both navigation and `llms.txt`.
+
+## Update checklist
+
+1. Add or rename the MDX page under `docs/`.
+2. Update `docs/docs.json` if the page should appear in navigation.
+3. Update `llms.txt` only for public pages that should be easy for assistants to find.
+4. Remove links for deleted pages instead of leaving placeholders.
+5. Run the docs link checker when Mintlify is available:
+
+```bash
+cd docs
+mintlify broken-links
+```
+
+## Constraints
+
+- Use canonical public URLs rooted at `https://docs.noesis.systems`.
+- Keep descriptions short enough to scan.
+- Do not include private run artifacts, unpublished internal paths, API keys, or workspace-specific data.
+- Verify every linked page exists under `docs/` before adding it to `llms.txt`.

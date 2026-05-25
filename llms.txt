@@ -21,8 +21,6 @@
 - [Human-in-the-loop](https://docs.noesis.systems/guides/human-in-the-loop): How to add human approval workflows to your Noēsis episodes.
 - [Integrate adapters](https://docs.noesis.systems/guides/integrate-adapters): How to connect Noēsis to LangGraph, CrewAI, or your own agent runtime.
 - [Write intuition policies](https://docs.noesis.systems/guides/write-policies): How to create, test, and deploy policies that guide and guard your agent episodes.
-- [Use Noēsis in Cursor](https://docs.noesis.systems/guides/use-noesis-in-cursor): Run episodes, add guardrails, and inspect traces without leaving your editor.
-- [Use GitHub Copilot with Noēsis](https://docs.noesis.systems/guides/use-copilot): Pasteable Noēsis cheat sheet for Copilot to guide users through the API and CLI without hallucinations.
 
 ## Explanation
 - [Core concepts](https://docs.noesis.systems/explanation/core-concepts): Understand the fundamental building blocks of Noēsis: episodes, faculties, and artifacts.

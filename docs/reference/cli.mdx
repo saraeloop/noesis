@@ -145,6 +145,23 @@ noesis diagnostics replay .noesis/episodes/ep_a .noesis/episodes/ep_b
 noesis validate-ports
 ```
 
+`diagnostics replay` compares two episode directories using the same drift logic as the CI replay gate:
+
+```bash
+noesis diagnostics replay .noesis/episodes/ep_a .noesis/episodes/ep_b --json
+```
+
+Replay returns `0` for `NO_DRIFT`, `1` for behavioral drift, and `2` for missing replay arguments. JSON mode emits:
+
+```json
+{
+  "status": "DRIFT",
+  "mismatches": [
+    {"artifact": "events.jsonl", "detail": "structural drift"}
+  ]
+}
+```
+
 Trace integrity is fail-closed. Commands that read `events.jsonl` (for example `noesis events` and `noesis view`) return a non-zero exit code when the event log is corrupted, rather than skipping bad lines.
 
 ### Other utility commands
@@ -227,4 +244,20 @@ Fix: install UI dependencies, then re-run `noesis browse`.
 
 Cause: unsupported `--cli-version` value.
 
-Fix: use `cli/1.0` or omit `--cli-version`.
+Fix: use a `cli/1.x` value such as `cli/1.1`, or omit `--cli-version`.
+
+### `DRIFT detected` from `diagnostics replay`
+
+Cause: the compared episode directories differ after replay normalization, or an action-candidate invariant failed.
+
+Fix:
+
+- inspect each reported `artifact` / `detail` pair
+- compare `events.jsonl` phase order and payloads first
+- re-run `uv run python scripts/replay_gate.py` if the drift affects checked-in golden fixtures
+
+### `usage: noesis diagnostics replay <run_a_dir> <run_b_dir>`
+
+Cause: replay mode needs two episode directories.
+
+Fix: pass concrete run directories, not only episode IDs.

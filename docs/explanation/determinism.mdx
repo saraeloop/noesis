@@ -49,38 +49,43 @@ This locks timestamps, random numbers, and episode timestamps; the configuration
 
 ## Replay and comparison
 
-Compare two episodes to check for drift. Ignore timing fields to focus on behavior:
+Use the shipped diagnostics command to compare two episode directories:
 
-```python
-import noesis as ns
-
-
-def compare_episodes(ep_a: str, ep_b: str) -> dict:
-    events_a = list(ns.events.read(ep_a))
-    events_b = list(ns.events.read(ep_b))
-
-    diffs = {
-        "event_count_match": len(events_a) == len(events_b),
-        "phase_sequence_match": True,
-        "payload_diffs": [],
-    }
-
-    for e1, e2 in zip(events_a, events_b):
-        if e1["phase"] != e2["phase"]:
-            diffs["phase_sequence_match"] = False
-            break
-
-        # Ignore timing differences; compare payloads to catch behavioral drift
-        p1 = dict(e1.get("payload", {}))
-        p2 = dict(e2.get("payload", {}))
-
-        if p1 != p2:
-            diffs["payload_diffs"].append(
-                {"phase": e1["phase"], "diff": {"expected": p1, "actual": p2}}
-            )
-
-    return diffs
+```bash
+noesis diagnostics replay \
+  .noesis/episodes/<episode-a> \
+  .noesis/episodes/<episode-b>
 ```
+
+The command is backed by `noesis.diagnostics.compare_runs()` and reports `NO DRIFT` or `DRIFT detected`.
+
+Use JSON output for CI logs or custom gates:
+
+```bash
+noesis diagnostics replay \
+  .noesis/episodes/<episode-a> \
+  .noesis/episodes/<episode-b> \
+  --json
+```
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | No drift found. |
+| `1` | Drift found. Inspect `mismatches[].artifact` and `mismatches[].detail`. |
+| `2` | Usage error, usually a missing run directory argument. |
+
+What replay compares:
+
+- file set parity between the two episode directories
+- byte-identical `summary.json`
+- normalized `state.json`, `manifest.json`, and `events.jsonl`
+- action-candidate invariants on both event logs
+
+Timestamps, generated event IDs, snapshot payloads, and manifest hashes are normalized where appropriate so replay focuses on behavioral drift instead of observational noise.
+
+Run replay after changes to planners, governance, action gating, event emission, state projection, artifact sealing, or deterministic clocks/IDs.
 
 ## Golden tests (pytest)
 
@@ -166,26 +171,19 @@ Avoid deterministic mode for:
 
 ## CI validation
 
-Add deterministic tests and replay checks to CI:
+The repository replay gate runs in `.github/workflows/determinism-replay.yml`:
 
-```yaml
-# .github/workflows/determinism.yml
-name: Determinism Validation
-
-on: [push, pull_request]
-
-jobs:
-  golden-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-
-      - name: Run golden tests
-        run: uv run pytest tests/golden/ -v
-
-      - name: Check replay stability
-        run: uv run python scripts/validate_replay.py
+```bash
+uv run python scripts/replay_gate.py
 ```
 
-The replay gate includes multiple goldens; one is an enforce-veto run (`tests/golden/veto_enforce/run_{a,b}`) to ensure governance veto semantics remain deterministic (no Act events, terminate status `vetoed`, direction_blocked + governance lineage intact).
+The gate currently checks golden pairs under:
+
+- `tests/golden/deterministic_run`
+- `tests/golden/veto_enforce`
+- `tests/golden/llm_real`
+- `tests/golden/adr_008/*`
+
+The veto golden ensures governance veto semantics remain deterministic: no `act` event is emitted, terminal status stays `vetoed`, and action-candidate/governance lineage remains intact.
+
+Set `NOESIS_REPLAY_GATE_DEBUG=1` when you need full fixture-hygiene errors instead of the compact CI failure message.

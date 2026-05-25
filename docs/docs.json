@@ -48,7 +48,11 @@
           {
             "group": "Tutorials",
             "pages": [
+              "tutorials/first-episode",
+              "tutorials/first-policy",
+              "tutorials/guarded-langgraph-agent",
               "tutorials/hello-episode",
+              "tutorials/incident-triage",
               "tutorials/langgraph-episode",
               "tutorials/governed-side-effects",
               "tutorials/trace-based-evals"
