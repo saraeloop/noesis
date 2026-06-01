@@ -28,9 +28,13 @@ Every event follows this base structure:
 ```json
 {
   "id": "evt_abc123",
+  "timestamp": "2024-01-15T10:30:00.512Z",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "phase": "plan",
-  "agent_id": "meta_planner",
-  "payload": { ... },
+  "agent_id": "planner.minimal",
+  "payload": {
+    "steps": ["detect:Collect context"]
+  },
   "evidence_ids": ["event:observe:1"],
   "metrics": {
     "started_at": "2024-01-15T10:30:00.500Z",
@@ -45,6 +49,14 @@ Every event follows this base structure:
 Unique event identifier.
 </ResponseField>
 
+<ResponseField name="timestamp" type="string" required>
+ISO 8601 event timestamp.
+</ResponseField>
+
+<ResponseField name="episode_id" type="string" required>
+Episode identifier for the run that owns this trace record.
+</ResponseField>
+
 <ResponseField name="phase" type="string" required>
 Event phase. Canonical values: `start`, `observe`, `interpret`, `plan`, `direction`, `governance`, `action_candidate`, `act`, `reflect`, `learn`, `runtime`, `terminate`, `insight`, `memory`, `intuition`, `reason`, `error`. Extensions may emit additional phases.
 </ResponseField>
@@ -57,12 +69,16 @@ Subtype for `phase="runtime"` events (for example `run.interrupt`, `run.checkpoi
 Identifier of the component that emitted the event.
 </ResponseField>
 
+<ResponseField name="faculty" type="string">
+Faculty marker automatically added for faculty phases: `intuition`, `direction`, `governance`, or `insight`.
+</ResponseField>
+
 <ResponseField name="payload" type="object" required>
 Phase-specific payload data.
 </ResponseField>
 
-<ResponseField name="evidence_ids" type="array">
-Optional evidence references carried forward into the event record.
+<ResponseField name="evidence_ids" type="array" required>
+Evidence references carried forward into the event record. Use an empty array when no evidence applies.
 </ResponseField>
 
 <ResponseField name="metrics" type="object">
@@ -86,6 +102,26 @@ Timing metrics for the event.
 <ResponseField name="caused_by" type="string">
 ID of the event that caused this one (for lineage tracking).
 </ResponseField>
+
+### Emission constraints
+
+Runtime writers validate the persisted record, not just the caller input:
+
+- `write_event()` adds `id` when omitted, but every stored event has an `id`.
+- `event.timestamp` must be an ISO 8601 string. When `metrics.completed_at` is present, the runtime aligns `event.timestamp` to that value.
+- Event timestamps cannot move backward. Non-metric events are clamped to the prior timestamp; metric-bearing events older than the prior event fail validation.
+- `metrics`, when present, must include `started_at`, `completed_at`, and numeric `duration_ms`.
+- Faculty phases (`intuition`, `direction`, `governance`, `insight`) receive a matching top-level `faculty` field.
+- Runtime lifecycle records use `phase="runtime"`, require `event_type`, and require `payload.status`.
+
+Common validation failures:
+
+| Symptom | Likely cause |
+| --- | --- |
+| `event missing required keys` | Missing `timestamp`, `episode_id`, `phase`, `payload`, or `evidence_ids` |
+| `event.payload must be a dict` | Payload was serialized as a string/list instead of an object |
+| `event.metrics is missing ...` | Metrics object omitted `started_at`, `completed_at`, or `duration_ms` |
+| `runtime events require event_type` | A lifecycle/projection event used `phase="runtime"` without a subtype |
 
 ## Event phases
 
@@ -502,14 +538,6 @@ Compatibility status field for existing consumers.
 
 <ResponseField name="payload.result_status" type="string">
 Canonical action status mirrored from state (`ok`, `error`, `vetoed`, etc.).
-</ResponseField>
-
-<ResponseField name="payload.outcome" type="string" required>
-Action outcome value.
-</ResponseField>
-
-<ResponseField name="payload.result_status" type="string">
-Canonical action status string from the action record (for example, `ok`).
 </ResponseField>
 
 <ResponseField name="payload.step_id" type="string">
