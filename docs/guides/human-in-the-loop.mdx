@@ -59,6 +59,12 @@ def run_with_approval(task: str, using):
 Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
 </Tip>
 
+For protocol-first side-effect tools, prefer the prepared invocation bridge
+instead of inventing a second approval store. It persists the reviewed draft
+under `tool_invocations/prepared/`, pauses the episode, and lets
+`ns.resume_run(...)` execute the same `run_id + draft_id` after approval. See
+[Integrate adapters](/guides/integrate-adapters#episode-runtime-bridge).
+
 ## Policy-driven approval
 
 Create a policy that flags operations for approval:

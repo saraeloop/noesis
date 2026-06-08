@@ -498,15 +498,37 @@ from noesis.usecases.tool_invocation import (
     prepare_tool_invocation,
     execute_prepared_tool_invocation,
 )
+from noesis.usecases.tool_invocation.runtime_bridge import (
+    ToolRuntimeBridgePorts,
+    build_tool_invocation_actuation_bindings,
+    build_resumed_tool_invocation_actuation_bindings,
+)
 ```
 
 Use this contract when you need explicit prepare/approve/execute boundaries for side-effecting tools. The canonical identity key is `run_id + draft_id`.
 
+Use `prepare_tool_invocation(...)` and `execute_prepared_tool_invocation(...)`
+when your adapter owns the approval workflow. Use
+`build_tool_invocation_actuation_bindings(...)` when the prepared invocation
+should pause a Noesis episode before a side effect and continue through
+`ns.resume_run(...)` after approval.
+
+Bridge constraints:
+
+- runtime bridge continuation currently supports `ToolProtocol.SUBPROCESS` only
+- prepare requires `normalizer`, `authenticator`, and `authorizer` ports
+- resume uses the pending draft already persisted for the run and does not call
+  the original request factory again
+- `ns.resume_run(...)` auto-attaches resumed bindings when exactly one pending
+  prepared draft exists for the run
+
 Execution-time failures are surfaced as typed errors from `noesis.domain.tool_contract`:
 
 - `PreparedToolInvocationNotFoundError`
+- `AmbiguousPreparedToolInvocationError`
 - `ApprovalDecisionRequiredError`
 - `ApprovalDecisionBindingError`
+- `UnsupportedToolProtocolError`
 
 For full workflow, event ordering, and troubleshooting guidance, see [Integrate adapters](/guides/integrate-adapters).
 
