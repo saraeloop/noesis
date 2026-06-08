@@ -14,14 +14,50 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
       events.jsonl             # cognitive event timeline with lineage
       summary.json             # metrics and KPIs (insight.metrics)
       state.json               # plan, beliefs, memory, outcomes
+      final.json               # sealed terminal result
       manifest.json            # SHA-256 catalog + optional HMAC
       learn.jsonl              # learning signals (optional)
       prompts.jsonl            # prompt provenance (opt-in, ADR-005)
+      checkpoints/             # resume anchors for interrupted runs
+      tool_invocations/        # prepared side-effect state (when used)
+        prepared/
+        approvals/
+        idempotency/
 ```
 
 <Info>
 **Episode IDs** use ULID format (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
 </Info>
+
+Paused approval workflows are intentionally not sealed. While a run is waiting
+for approval, expect `events.jsonl`, `state.json`, `learn.jsonl`, and checkpoint
+or tool-invocation records to exist, but not terminal-only files such as
+`final.json`, `summary.json`, or `manifest.json`. Those terminal artifacts are
+written after the run resumes and completes.
+
+## Tool invocation state
+
+Protocol-first tool integrations persist review and idempotency state under the
+episode directory:
+
+| Path | Purpose |
+| --- | --- |
+| `tool_invocations/prepared/*.json` | Reviewable prepared tool intent keyed by `run_id + draft_id` |
+| `tool_invocations/approvals/*.json` | Human or policy decisions bound to the reviewed draft |
+| `tool_invocations/idempotency/*.json` | Execution fingerprints used to replay or reject duplicate side effects |
+
+For approval-gated subprocess tools, the runtime bridge prepares the draft,
+emits `tool.approval.pending`, interrupts the run, and writes a checkpoint. After
+an approved `ToolApprovalDecision` is persisted, `ns.resume_run(...)` continues
+the same run and executes the existing draft without re-preparing it.
+
+Constraints to check during incident response:
+
+- there should be exactly one `pending_approval` prepared draft for the run
+- unsupported bridge protocols (`http`, `mcp`) fail before draft persistence on
+  prepare or before `run.resume` is emitted on resume
+- missing `final.json` or `manifest.json` is expected until the resumed run
+  reaches a terminal state
 
 ## summary.json
 

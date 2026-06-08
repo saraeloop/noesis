@@ -124,23 +124,98 @@ result = execute_prepared_tool_invocation(
 )
 ```
 
+### Episode runtime bridge
+
+Use the runtime bridge when a prepared tool invocation should participate in the
+same episode lifecycle as `ns.run(...)`, `ns.solve(...)`, and `ns.resume_run(...)`.
+The bridge is internal and intentionally narrow: it currently supports
+`ToolProtocol.SUBPROCESS` only.
+
+```python
+from noesis.usecases.tool_invocation.runtime_bridge import (
+    ToolRuntimeBridgePorts,
+    build_tool_invocation_actuation_bindings,
+)
+
+ports = ToolRuntimeBridgePorts(
+    prepared_repository=prepared_repository,
+    approval_repository=approval_repository,
+    idempotency_store=idempotency_store,
+    dispatch=subprocess_dispatch,
+    normalizer=normalizer,
+    authenticator=authenticator,
+    authorizer=authorizer,
+    preflight=preflight,
+)
+
+bindings = build_tool_invocation_actuation_bindings(
+    request_factory=lambda run_id: ToolInvocationInput(
+        run_id=run_id,
+        request_id="req-apply-canary",
+        draft_id=f"draft:{run_id}:req-apply-canary",
+        protocol=ToolProtocol.SUBPROCESS,
+        tool=ToolIdentity(namespace="deploy", name="apply_canary", version="1"),
+        raw_payload={"argv": ["./scripts/apply-canary.sh"]},
+        execution=ExecutionContext(timeout_ms=30_000, retry_limit=0),
+        security=SecurityContext(
+            principal_id="user:ops",
+            scopes=("deploy:write",),
+            policy_scope="prod/canary",
+        ),
+        governance=GovernanceContext(
+            effect_kind=EffectKind.WRITE,
+            risk_tier=RiskTier.HIGH,
+            requires_approval=True,
+        ),
+    ),
+    run_dir=run_dir,
+    ports=ports,
+    run_lifecycle=run_lifecycle,
+)
+```
+
+The prepare side of the bridge:
+
+- creates canonical `action_candidate` evidence before any side effect
+- persists a pending prepared draft for `run_id + draft_id`
+- returns an interrupted actuation result when approval is required
+- lets the run lifecycle emit `run.interrupt`, `run.checkpoint`, and
+  `run.state_projection`
+
+After an approval service writes a bound `ToolApprovalDecision`, call
+`ns.resume_run(episode_id, checkpoint_id=...)`. `resume_run(...)` detects a
+pending prepared draft for the same run, builds resumed bindings internally, and
+executes that draft without calling the original `request_factory` again.
+
 ### Event and identity invariants
 
 For write + approval-required flows, prepare emits:
 
 `tool.requested -> tool.validated -> tool.authn.passed -> tool.authz.passed -> action.candidate_emitted -> tool.preflight.computed -> tool.draft_created -> tool.approval.pending`
 
+When the runtime bridge pauses a run, the episode trace also contains:
+
+`action_candidate -> action.candidate_emitted -> tool.approval.pending -> run.interrupt -> run.checkpoint -> run.state_projection`
+
 For approved execution, execute emits:
 
 - new execution: `tool.approved -> tool.execution.started -> tool.execution.succeeded` (or `tool.execution.failed`)
 - replay path: `tool.approved -> tool.replayed`
 
+For `ns.resume_run(...)` continuation, the existing event log remains an
+append-only prefix and resume adds:
+
+`run.resume -> tool.execution.started -> ... -> terminate`
+
 Identity and binding rules:
 
 - execute lookup key is `run_id + draft_id`
+- runtime resume lookup expects exactly one pending draft for the run
 - missing prepared draft raises `PreparedToolInvocationNotFoundError`
+- multiple pending drafts raise `AmbiguousPreparedToolInvocationError`
 - missing/non-approved decision raises `ApprovalDecisionRequiredError`
 - mismatched `request_id`, reviewed fingerprint, or impact hash raises `ApprovalDecisionBindingError`
+- non-subprocess runtime bridge protocols raise `UnsupportedToolProtocolError`
 - idempotency `replay` or `conflict` returns without dispatching side effects
 
 ### Common pitfalls
@@ -148,6 +223,9 @@ Identity and binding rules:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `PreparedToolInvocationNotFoundError` | approval service called execute with wrong `run_id`/`draft_id` | persist and pass durable identity unchanged across systems |
+| `UnsupportedToolProtocolError` before draft files exist | runtime bridge prepare received `http` or `mcp` | use `ToolProtocol.SUBPROCESS` for bridge continuation, or call lower-level prepare/execute outside the bridge |
+| `UnsupportedToolProtocolError` during `resume_run` with no `run.resume` event | pending draft has an unsupported protocol | correct/remove the draft before resuming; unsupported drafts fail before lifecycle mutation |
+| `AmbiguousPreparedToolInvocationError` | more than one `pending_approval` draft exists for the same run | resolve or archive extra drafts so one pending draft remains |
 | `ApprovalDecisionRequiredError` | decision missing or not `approved` | write an approved `ToolApprovalDecision` before execute |
 | `ApprovalDecisionBindingError` | decision is not bound to reviewed prepared intent | store `request_id`, `reviewed_fingerprint`, and `impact_hash` from the prepared artifact and verify before save |
 | `tool.replayed` result with no dispatch | same idempotency key and fingerprint seen previously | treat as successful replay; do not retry with a new side effect |
@@ -158,6 +236,8 @@ Identity and binding rules:
 The runtime continuation bridge currently enforces the following:
 
 - only `ToolProtocol.SUBPROCESS` is supported for prepare/resume bridging
+- unsupported protocols fail before prepared-draft persistence on prepare
+- unsupported pending drafts fail before `run.resume` is emitted on resume
 - resume lookup expects exactly one pending draft for the run (`load_pending_for_run`)
 - multiple pending drafts for one run raise `AmbiguousPreparedToolInvocationError`
 
