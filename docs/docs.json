@@ -95,7 +95,8 @@
             "pages": [
               "reference/events",
               "reference/state",
-              "reference/summary"
+              "reference/summary",
+              "reference/final"
             ]
           },
           {

@@ -151,6 +151,7 @@ Every episode produces structured **artifacts** that capture the full cognitive 
       summary.json         # metrics and outcomes
       state.json           # cognitive state
       events.jsonl         # timeline
+      final.json           # terminal seal marker
       manifest.json        # integrity checksums
       learn.jsonl          # learning signals (optional)
 ```
@@ -256,10 +257,13 @@ The manifest provides integrity verification:
   "created_at": "2024-01-15T10:30:05Z",
   "files": [
     {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
-    {"name": "events.jsonl", "sha256": "sha256:def456...", "size_bytes": 5678, "kind": "events"}
+    {"name": "events.jsonl", "sha256": "sha256:def456...", "size_bytes": 5678, "kind": "events"},
+    {"name": "final.json", "sha256": "sha256:ghi789...", "size_bytes": 234, "kind": "attachment"}
   ]
 }
 ```
+
+Terminal runs also write `final.json` before `manifest.json`. The final marker is the seal; the manifest records checksums for the sealed bundle, including `final.json`.
 
 ## Adapters
 
@@ -344,6 +348,7 @@ flowchart TD
     A --> SUM[summary.json]
     A --> ST[state.json]
     A --> EV[events.jsonl]
+    A --> FIN[final.json]
 ```
 
 1. A **task** creates an **episode**
