@@ -1,0 +1,144 @@
+---
+title: "Final schema"
+description: "Complete reference for the Noesis final.json seal marker."
+---
+
+The `final.json` artifact marks an episode run as terminal and sealed. It is small by design: consumers can check one file to decide whether a run may accept lifecycle mutations, then use `manifest.json` to verify the sealed bundle.
+
+Current final schema version: `final/2.0.0` ([JSON schema](/schema/final/2.0.0.json)).
+
+## Schema overview
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "process_id": "proc_abc123",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "unverified"
+}
+```
+
+## Root fields
+
+<ResponseField name="schema_version" type="string" required>
+Final marker schema. Currently `"final/2.0.0"`.
+</ResponseField>
+
+<ResponseField name="episode_id" type="string" required>
+Episode/run ID being finalized.
+</ResponseField>
+
+<ResponseField name="process_id" type="string" required>
+Stable process lineage ID for the run.
+</ResponseField>
+
+<ResponseField name="run_index" type="integer" required>
+1-based run number within the process lineage.
+</ResponseField>
+
+<ResponseField name="finalized_at" type="string" required>
+ISO 8601 timestamp when the final marker was written.
+</ResponseField>
+
+<ResponseField name="outcome" type="string" required>
+Terminal outcome class.
+
+| Value | Meaning |
+| --- | --- |
+| `success` | The run reached a successful terminal state |
+| `failed` | Verification completed and the goal was not achieved |
+| `vetoed` | Governance enforced a veto before side effects completed |
+| `cancelled` | The run was cancelled |
+| `interrupted` | The run ended as interrupted |
+| `error` | The run ended due to an execution or runtime error |
+</ResponseField>
+
+<ResponseField name="verification_status" type="string" required>
+Verification result class.
+
+| Value | Meaning |
+| --- | --- |
+| `verified` | Verification assertions ran and passed or failed deterministically |
+| `unverified` | The run succeeded without verification assertions |
+| `not_applicable` | Verification does not apply, such as veto or error outcomes |
+</ResponseField>
+
+## Sealing contract
+
+Noesis treats `final.json` as the canonical seal marker. Once it exists, lifecycle writes and resume attempts fail with `RunSealedError`. The artifact immutability guard also blocks later writes, except for the single `manifest.json` seal write that completes finalization.
+
+Terminal sealing is ordered:
+
+1. Write `final.json`.
+2. Write `manifest.json`, including a checksum entry for `final.json`.
+
+If manifest writing fails, Noesis removes `final.json` so the episode is not left in a falsely sealed state. Double-seal attempts raise `ImmutabilityError` and do not mutate the existing final marker or manifest.
+
+## Lifecycle constraints
+
+Terminal runs include both `final.json` and `manifest.json`. This covers successful runs, failed verification, errors, and enforced vetoes that terminate the episode.
+
+Paused runs are intentionally unsealed. For example, `governance_pause_on_veto=true` emits `run.interrupt` and `run.checkpoint` lifecycle events, but does not write `final.json` or `manifest.json` until the run continues or terminates.
+
+## Examples
+
+### Successful unverified run
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_2024_success_s0",
+  "process_id": "proc_success",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "unverified"
+}
+```
+
+### Enforced veto
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_2024_veto_s0",
+  "process_id": "proc_veto",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "vetoed",
+  "verification_status": "not_applicable"
+}
+```
+
+## Reading final markers
+
+### File access
+
+```bash
+EP_DIR=$(noesis view ep_abc123 --json | jq -r '.episode_dir')
+jq '.outcome, .verification_status' "$EP_DIR/final.json"
+```
+
+### Sealed check
+
+```python
+from pathlib import Path
+
+
+def is_sealed(episode_dir: Path) -> bool:
+    return (episode_dir / "final.json").exists()
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Artifacts" icon="files" href="/explanation/artifacts">
+    Learn how final markers and manifests seal evidence bundles.
+  </Card>
+  <Card title="State schema" icon="database" href="/reference/state">
+    See lifecycle links for terminal and non-terminal runs.
+  </Card>
+</CardGroup>

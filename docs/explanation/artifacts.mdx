@@ -14,6 +14,7 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
       events.jsonl             # cognitive event timeline with lineage
       summary.json             # metrics and KPIs (insight.metrics)
       state.json               # plan, beliefs, memory, outcomes
+      final.json               # terminal seal marker
       manifest.json            # SHA-256 catalog + optional HMAC
       learn.jsonl              # learning signals (optional)
       prompts.jsonl            # prompt provenance (opt-in, ADR-005)
@@ -334,6 +335,49 @@ noesis events ep_abc123 --phase act
 noesis events ep_abc123 -j | jq '.[] | select(.phase == "plan")'
 ```
 
+## final.json
+
+`final.json` is the terminal seal marker for an episode. If it exists, Noēsis treats the run as finalized and blocks lifecycle mutations such as checkpoint or resume.
+
+### Schema
+
+Current final schema version: `final/2.0.0` ([JSON schema](/schema/final/2.0.0.json)).
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "process_id": "proc_abc123",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "unverified"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Final marker schema (`final/2.0.0`) |
+| `episode_id` | Episode/run ID being sealed |
+| `process_id` | Process lineage ID for the run |
+| `run_index` | 1-based run number within the process |
+| `finalized_at` | ISO 8601 timestamp for finalization |
+| `outcome` | One of `success`, `failed`, `vetoed`, `cancelled`, `interrupted`, `error` |
+| `verification_status` | One of `verified`, `unverified`, `not_applicable` |
+
+### Sealing contract
+
+Terminal runs seal in a fixed order:
+
+1. Write `final.json`.
+2. Write `manifest.json` with a checksum entry for `final.json`.
+
+If manifest writing fails, Noēsis removes `final.json` so the run is not left in a falsely sealed state. A second seal attempt raises an immutability error and leaves existing artifacts unchanged.
+
+<Info>
+Pause-on-veto runs (`governance_pause_on_veto=true`) stay unsealed: they emit lifecycle evidence such as `run.interrupt` and `run.checkpoint`, but do not write `final.json` or `manifest.json` until continuation or explicit termination.
+</Info>
+
 ## manifest.json
 
 The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional signatures.
@@ -348,7 +392,8 @@ The manifest provides integrity verification for all artifacts with SHA-256 hash
   "files": [
     {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
     {"name": "state.json", "sha256": "sha256:def456...", "size_bytes": 5678, "kind": "state"},
-    {"name": "events.jsonl", "sha256": "sha256:ghi789...", "size_bytes": 9012, "kind": "events"}
+    {"name": "events.jsonl", "sha256": "sha256:ghi789...", "size_bytes": 9012, "kind": "events"},
+    {"name": "final.json", "sha256": "sha256:jkl012...", "size_bytes": 234, "kind": "attachment"}
   ],
   "signature": {
     "alg": "hs256",
@@ -364,6 +409,8 @@ The manifest provides integrity verification for all artifacts with SHA-256 hash
 | `schema_version` | Manifest schema (`manifest/1.0`) |
 | `files` | Array of files with `name`, `sha256`, `size_bytes`, `kind` (`summary`, `state`, `events`, `learn`, `attachment`, `custom`) |
 | `signature` | Optional signature block with algorithm, key ID, value, timestamp |
+
+For sealed terminal runs, verifiers should expect both `final.json` and `manifest.json`. `manifest.json` is not the seal marker by itself; `final.json` is.
 
 ### Artifact immutability guarantees
 
@@ -389,16 +436,16 @@ def verify_manifest(episode_dir: Path) -> bool:
     with open(manifest_path) as f:
         manifest = json.load(f)
     
-    for filename, info in manifest["files"].items():
-        file_path = episode_dir / filename
+    for info in manifest["files"]:
+        file_path = episode_dir / info["name"]
         
         # Check size
-        if file_path.stat().st_size != info["size"]:
+        if file_path.stat().st_size != info["size_bytes"]:
             return False
         
         # Check hash
         with open(file_path, "rb") as f:
-            actual_hash = hashlib.sha256(f.read()).hexdigest()
+            actual_hash = "sha256:" + hashlib.sha256(f.read()).hexdigest()
         
         if actual_hash != info["sha256"]:
             return False
@@ -517,7 +564,7 @@ store.vacuum()  # Remove episodes older than 14 days
 </Warning>
 
 <Info>
-**Use manifests for compliance.** The SHA-256 checksums in manifest.json provide tamper evidence for audits.
+**Use manifests with final markers for compliance.** `final.json` marks a terminal seal; the SHA-256 checksums in `manifest.json` provide tamper evidence for the sealed bundle.
 </Info>
 
 ## Next steps
@@ -534,5 +581,8 @@ store.vacuum()  # Remove episodes older than 14 days
   </Card>
   <Card title="Summary reference" icon="file" href="/reference/summary">
     Complete summary schema documentation.
+  </Card>
+  <Card title="Final reference" icon="stamp" href="/reference/final">
+    Final marker schema and sealing semantics.
   </Card>
 </CardGroup>
