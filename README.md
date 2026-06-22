@@ -11,7 +11,7 @@ _Understanding, made observable._
 
 Noēsis is a cognitive runtime for agent workflows. It turns each run into an auditable episode with a causal event chain, governed side effects, and resumable execution.
 
-Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`) that can be inspected, audited, and verified.
+Each run produces structured artifacts that can be inspected, audited, and verified. Terminal runs seal `events.jsonl`, `summary.json`, `state.json`, `final.json`, and `manifest.json`; paused runs keep append-only trace and state evidence until continuation.
 
 Bring your own graphs, loops, tools, and prompts. Noēsis adds runtime evidence, verification, and governance boundaries without replacing your orchestrator or agent framework.
 
@@ -42,7 +42,7 @@ Noēsis gives you a third option: keep your orchestrator, but run it inside a ru
 
 ## What Noēsis does
 
-- **structured episodes**: every run emits `events.jsonl`, `summary.json`, `state.json`, `final.json`, and `manifest.json`
+- **structured episodes**: every run emits append-only trace and state artifacts; terminal runs seal the final pack
 - **governed side effects**: review, audit, veto, or pause actions before they execute
 - **resumable execution**: interrupt, checkpoint, and continue the same run
 - **verification**: capture workspace evidence and assert expected changes
@@ -80,6 +80,7 @@ episode_id = ns.solve(
 # Governance vetoes the risky write →
 # run automatically emits interrupt + checkpoint
 # UI shows: run is paused, waiting on you
+```
 
 ## How it works
 
@@ -158,17 +159,52 @@ except NoesisVeto as veto:
 
 ## Workspace verification
 
-## Artifact contract
+Use `verify=...` with a workspace root to assert expected file changes. The
+runtime writes pre/post workspace snapshots and records verification state in
+the episode artifacts.
 
-Every episode writes a sealed artifact pack:
+```python
+import noesis as ns
+
+verify = (
+    ns.file_exists("canary-rollout.json"),
+    ns.file_contains("canary-rollout.json", "canary: true"),
+    ns.only_modified(["canary-rollout.json"]),
+)
 
 episode_id = ns.solve(
-    "Update config",
+    task="Update rollout config",
     using="my.module:adapter_fn",
-    workspace=".",
+    workspace="./repo",
     verify=verify,
 )
 ```
+
+Common constraints:
+
+- `file_exists(path)` requires a file to exist after the run.
+- `file_contains(path, text)` matches literal text. It does not evaluate regular
+  expressions; compiled patterns must be passed with `literal=True`, which
+  matches the pattern text.
+- `only_modified(paths)` fails when files outside the allowlist change.
+- `no_modifications()` requires a clean post-run workspace.
+
+## Artifact contract
+
+Terminal runs write a sealed artifact pack:
+
+```text
+.noesis/episodes/ep_.../
+  events.jsonl
+  state.json
+  summary.json
+  final.json
+  manifest.json
+```
+
+Paused runs remain unsealed until continuation or termination. They keep
+`events.jsonl`, `state.json`, and `learn.jsonl`, but do not write `final.json`
+or the terminal `manifest.json` yet.
 
 ## Pause, checkpoint, and continue
 
@@ -176,40 +212,35 @@ episode_id = ns.solve(
 import noesis as ns
 
 episode_id = ns.solve(
-    task="Update rollout config",
-    using=lambda: my_agent(),
+    task="Apply canary rollout config to production",
+    using=my_graph,
     workspace="./repo",
-    verify=(
-        ns.file_exists("canary-rollout.json"),
-        ns.file_contains("canary-rollout.json", "canary: true"),
-        ns.only_modified(["canary-rollout.json"]),
-    ),
+    verify=verify,
 )
-```
-
-Verification produces `snapshots/pre.json` and `snapshots/post.json` and records verification state in the episode artifacts.
-
----
 
 interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
 checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
 
-ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
+# Emit resume evidence only.
+resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
 
+# Emit run.resume and continue execution on the same run ID.
 episode_id = ns.resume_run(
     episode_id,
     checkpoint_id=checkpoint["checkpoint_id"],
     using=my_graph,
 )
-
-episode_id = session.solve(task="...", using=lambda: my_agent())
-restore()
 ```
 
 Rule of thumb:
 
-- `resume()` emits lifecycle evidence only
-- `resume_run()` emits `run.resume` and continues execution
+- `interrupt()` and `checkpoint()` create auditable pause evidence.
+- `checkpoint()` records the event offset, last event ID, state hash, artifact
+  digest, and adapter label.
+- `resume()` emits lifecycle evidence only.
+- `resume_run()` emits `run.resume` and continues execution on the same run ID.
+- Resume fails if the run is sealed, the checkpoint is missing/stale, or the
+  continuation adapter does not match the checkpoint adapter contract.
 
 ## Install
 
