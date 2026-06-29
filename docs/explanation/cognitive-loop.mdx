@@ -14,7 +14,8 @@ flowchart TD
     C --> D[Interpret]
     D --> E[Plan]
     E --> F[Direction]
-    F --> G{Governance}
+    F --> AC[Action candidate]
+    AC --> G{Governance}
     G -->|allow/audit| H[Act]
     G -->|veto| V[Blocked]
     H --> I[Reflect]
@@ -29,7 +30,11 @@ flowchart TD
     J -. adaptation .-> B
 ```
 
-The governance phase acts as a critical gate—if policies veto the plan, execution jumps to a blocked state. Each phase has a specific purpose and produces structured events that form the episode timeline.
+The action-candidate phase describes the pending side effect before it reaches
+the OS boundary. Governance then evaluates that candidate; if enforce mode vetoes
+it, execution jumps to a blocked state and no `act` event is emitted. Each phase
+has a specific purpose and produces structured events that form the episode
+timeline.
 
 <Info>
 In **minimal mode**, Direction, Governance, and Insight may emit no events for faster execution. In **meta mode** (default), all faculties are active and the full phase sequence is observable.
@@ -154,6 +159,7 @@ The **act** phase executes the planned actions.
 - Action identity (`action_id`, `kind`, `tool`)
 - Input excerpt and status (`outcome`, `result_status`)
 - Optional execution context (`step_id`, provenance, artifacts, `x-` extensions)
+- Optional action-candidate link (`action_candidate_id`) for governed side effects
 - Execution metrics
 
 **Example event**:
@@ -187,7 +193,10 @@ The **act** phase executes the planned actions.
 }
 ```
 
-When governance/action-candidate flow is active, act events are causally linked to governance through `caused_by`, and state action timestamps align with the act event timestamp.
+When governance/action-candidate flow is active, act events are causally linked
+to governance through `caused_by`, include the accepted
+`action_candidate_id`, and align state action timestamps with the act event
+timestamp.
 
 **Why it matters**: You get a measurable execution history instead of guesswork about what happened.
 
@@ -338,18 +347,77 @@ The **direction** phase applies policy-driven plan mutations (meta mode only).
 {
   "phase": "direction",
   "payload": {
+    "schema_version": "1.2.0",
     "directive_id": "dir_abc123",
     "status": "applied",
-    "advice": "Added safety bounds to query",
-    "diff": ["plan.steps[0].parameters"],
-    "policy_id": "SafetyPolicy@1.0",
-    "confidence": 0.85
+    "reason": "heuristic-adjustment",
+    "diff": [
+      {
+        "key": "plan.steps[0].description",
+        "before": "Collect relevant context",
+        "after": "Collect relevant context with safety review"
+      }
+    ],
+    "applied": true,
+    "policy_id": "SafetyPolicy",
+    "policy_version": "1.0.0",
+    "policy_kind": "rules"
   },
   "caused_by": "plan_event_id"
 }
 ```
 
 **Why it matters**: You can see exactly how policies modified the plan before execution.
+
+## Action candidate
+
+The **action candidate** phase records the pending side effect before governance
+or execution.
+
+**Purpose**: Preserve a deterministic, redaction-aware description of what would
+cross the side-effect boundary.
+
+**What gets recorded**:
+- Stable candidate ID
+- Side-effect kind and normalized payload
+- State reference and `sha256:<64 lowercase hex>` state hash
+- Redaction metadata
+- Optional provenance and risk tags
+
+**Example event**:
+
+```json
+{
+  "phase": "action_candidate",
+  "payload": {
+    "schema_version": "action_candidate/1.0.0",
+    "action_candidate_id": "8f5b5f4d-2d9a-5f1f-a5f7-6f20b8f0a4c8",
+    "kind": "adapter",
+    "payload": {
+      "adapter_label": "adapter:core.minimal",
+      "goal": "Draft release notes",
+      "plan_step_id": "step-2"
+    },
+    "state_ref": "state.json",
+    "state_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "redaction": {
+      "mode": "hash_only",
+      "policy_id": "redact.default",
+      "policy_version": "1.0.0",
+      "field_rules": {}
+    },
+    "provenance": {
+      "plan_step_id": "step-2",
+      "adapter": "adapter:core.minimal"
+    }
+  },
+  "caused_by": "direction_event_id"
+}
+```
+
+**Why it matters**: Governance and audit tools can inspect the exact proposed
+side effect without relying on post-hoc `act` logs. If the candidate is vetoed
+in enforce mode, no `act` event should reference its `action_candidate_id`.
 
 ## Governance
 
@@ -362,6 +430,7 @@ The **governance** phase is a critical gate that audits actions before execution
 - Decision (allow, audit, veto)
 - Rule that triggered the decision
 - Confidence score
+- Runtime mode, failure policy, enforcement flag, and evaluation errors when present
 
 **Example event**:
 
@@ -369,14 +438,21 @@ The **governance** phase is a critical gate that audits actions before execution
 {
   "phase": "governance",
   "payload": {
+    "schema_version": "1.1.0",
     "governance_id": "gov_def456",
+    "decision_id": "dec_789",
     "decision": "allow",
     "rule_id": "rules.allow.default",
     "score": 0.95,
+    "message": "Allowed by default policy",
     "policy_id": "governance.rules",
-    "policy_version": "1.0.0"
+    "policy_version": "1.0.0",
+    "policy_kind": "rules",
+    "mode": "enforce",
+    "failure_policy": "fail_closed",
+    "enforced": false
   },
-  "caused_by": "direction_event_id"
+  "caused_by": "action_candidate_event_id"
 }
 ```
 
@@ -386,17 +462,30 @@ The **governance** phase is a critical gate that audits actions before execution
 | --- | --- |
 | `allow` | Action proceeds normally |
 | `audit` | Action proceeds, flagged for review |
-| `veto` | Action blocked, episode ends |
+| `veto` | In enforce mode, action is blocked and the run terminates or pauses; in audit mode, the veto is recorded and execution may proceed |
 
-**Why it matters**: The PreActGovernor ensures dangerous actions are blocked before they execute, with full audit trails.
+**Why it matters**: The PreActGovernor ensures dangerous actions are blocked
+before they execute, with full audit trails. In audit mode a veto is recorded but
+execution may proceed; in enforce mode a veto emits a blocked direction and no
+`act` event for that candidate.
 
 ## Event order invariant
 
 Events follow this order in **meta mode**:
 
 ```
-observe → intuition → interpret → plan → direction → governance → act+ → reflect → learn → terminate → insight → memory
+observe → intuition → interpret → plan → direction → action_candidate → governance → act+ → reflect → learn → terminate → insight → memory
 ```
+
+An enforced governance veto blocks execution and emits a blocked-direction trace
+instead of `act`:
+
+```
+... → direction(status="blocked") → action_candidate → governance(decision="veto") → terminate
+```
+
+If `governance_pause_on_veto=true`, `run.interrupt → run.checkpoint` replaces
+`terminate` and the run remains unsealed until continuation.
 
 In **minimal mode**, Direction, Governance, and Insight may emit no events:
 
@@ -405,7 +494,9 @@ observe → intuition → interpret → plan → act+ → reflect → learn? →
 ```
 
 <Info>
-**Invariant**: Even on an error or veto, Noēsis emits an ordered trace and summary. You always get artifacts.
+**Invariant**: Even on an error or veto, Noēsis emits an ordered trace. Terminal
+runs get summary and final artifacts; paused vetoes keep checkpoint artifacts
+until continuation.
 </Info>
 
 This means:
