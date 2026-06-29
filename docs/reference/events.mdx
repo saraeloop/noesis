@@ -408,6 +408,89 @@ Optional steering carry-over: `normal`, `elevated`, `strict`.
 Evidence propagated from intuition (`payload.evidence_ids` mirrors this when set).
 </ResponseField>
 
+### action_candidate
+
+Records the side effect the runtime is about to evaluate before any OS-boundary
+adapter or tool invocation executes.
+
+```json
+{
+  "phase": "action_candidate",
+  "payload": {
+    "schema_version": "action_candidate/1.0.0",
+    "action_candidate_id": "8f5b5f4d-2d9a-5f1f-a5f7-6f20b8f0a4c8",
+    "kind": "adapter",
+    "payload": {
+      "adapter_label": "adapter:core.minimal",
+      "goal": "Draft release notes",
+      "plan_step_id": "step-2"
+    },
+    "state_ref": "state.json",
+    "state_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "redaction": {
+      "mode": "hash_only",
+      "policy_id": "redact.default",
+      "policy_version": "1.0.0",
+      "field_rules": {}
+    },
+    "provenance": {
+      "plan_step_id": "step-2",
+      "adapter": "adapter:core.minimal"
+    },
+    "risk_tags": ["destructive_fs"]
+  },
+  "caused_by": "direction_event_id"
+}
+```
+
+<ResponseField name="payload.schema_version" type="string" required>
+Action-candidate schema version (`action_candidate/1.0.0` at time of writing).
+</ResponseField>
+
+<ResponseField name="payload.action_candidate_id" type="string" required>
+Stable candidate identifier. If callers do not supply one, the runtime derives it
+from the episode ID and canonical candidate payload.
+</ResponseField>
+
+<ResponseField name="payload.kind" type="string" required>
+Side-effect class, such as `adapter`, `tool`, or a tool-contract name.
+</ResponseField>
+
+<ResponseField name="payload.payload" type="object" required>
+Normalized side-effect input that governance evaluates. Sensitive fields should
+already be represented according to `payload.redaction`.
+</ResponseField>
+
+<ResponseField name="payload.state_ref" type="string" required>
+Artifact reference for the state snapshot used to build the candidate. Runtime
+builders use `state.json`.
+</ResponseField>
+
+<ResponseField name="payload.state_hash" type="string" required>
+Hash of the state/candidate context in `sha256:<64 lowercase hex>` format.
+</ResponseField>
+
+<ResponseField name="payload.redaction" type="object" required>
+Redaction policy metadata with `mode`, `policy_id`, `policy_version`, and
+optional `field_rules`.
+</ResponseField>
+
+<ResponseField name="payload.provenance" type="object">
+Optional origin metadata, commonly the plan step ID and adapter/tool protocol.
+</ResponseField>
+
+<ResponseField name="payload.risk_tags" type="array">
+Optional policy tags used by governance and downstream audit tooling.
+</ResponseField>
+
+<Info>
+For allow decisions, audit decisions, and audit-mode vetoes, governance is caused
+by the `action_candidate` event and `act.payload.action_candidate_id` links
+execution back to the candidate. For an enforced veto, the trace emits
+`direction(status="blocked") → action_candidate → governance(decision="veto")`;
+no `act` event is emitted for that candidate.
+</Info>
+
 ### governance
 
 Records governance decisions (meta mode only).
@@ -416,24 +499,38 @@ Records governance decisions (meta mode only).
 {
   "phase": "governance",
   "payload": {
+    "schema_version": "1.1.0",
     "governance_id": "gov_def456",
     "decision_id": "dec_789",
     "decision": "allow",
     "rule_id": "rules.allow.default",
     "score": 0.95,
+    "message": "Allowed by default policy",
     "policy_id": "governance.rules",
     "policy_version": "1.0.0",
     "policy_kind": "rules",
+    "mode": "enforce",
+    "failure_policy": "fail_closed",
+    "enforced": false,
     "details": {
       "checked_rules": ["rule1", "rule2"],
       "matched_rule": "rule1"
     }
-  }
+  },
+  "caused_by": "action_candidate_event_id"
 }
 ```
 
 <ResponseField name="payload.governance_id" type="string" required>
 Unique governance event identifier.
+</ResponseField>
+
+<ResponseField name="payload.schema_version" type="string" required>
+Governance schema version (`1.1.0` at time of writing).
+</ResponseField>
+
+<ResponseField name="payload.decision_id" type="string" required>
+Stable runtime decision identifier.
 </ResponseField>
 
 <ResponseField name="payload.decision" type="string" required>
@@ -450,6 +547,30 @@ Confidence score for the decision (0-1).
 
 <ResponseField name="payload.policy_id" type="string" required>
 Governance policy identifier.
+</ResponseField>
+
+<ResponseField name="payload.policy_version" type="string" required>
+Governance policy version used for replay and compatibility diagnostics.
+</ResponseField>
+
+<ResponseField name="payload.policy_kind" type="string" required>
+Policy implementation kind: `llm`, `rules`, or `hybrid`.
+</ResponseField>
+
+<ResponseField name="payload.mode" type="string">
+Runtime governance mode: `off`, `audit`, or `enforce`.
+</ResponseField>
+
+<ResponseField name="payload.failure_policy" type="string">
+How governance errors are handled: `fail_open` or `fail_closed`.
+</ResponseField>
+
+<ResponseField name="payload.enforced" type="boolean" required>
+Whether this decision affected control flow. Enforced vetoes block execution.
+</ResponseField>
+
+<ResponseField name="payload.error" type="object">
+Structured error metadata when policy evaluation fails.
 </ResponseField>
 
 <ResponseField name="payload.details" type="object">
@@ -518,6 +639,12 @@ Plan step ID associated with this action.
 
 <ResponseField name="payload.step_status" type="string">
 Resulting status for `payload.step_id`. This field is used to project final step status from `act` evidence.
+</ResponseField>
+
+<ResponseField name="payload.action_candidate_id" type="string">
+Action-candidate ID that authorized this side effect. Governed side effects use
+this to prove an `act` event descends from a prior `action_candidate` and
+governance decision.
 </ResponseField>
 
 <ResponseField name="payload.x-*" type="any">

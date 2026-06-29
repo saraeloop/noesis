@@ -6,7 +6,10 @@ slug: governed-side-effects
 
 This tutorial demonstrates the OS-boundary contract of `ns.governed_act(...)`:
 
-`action_candidate → governance → act` (or veto handling: `terminate` by default, or `run.interrupt → run.checkpoint` when pause-on-veto is enabled).
+`action_candidate → governance → act` for allowed actions. Enforced vetoes emit
+`direction(status="blocked") → action_candidate → governance` and then either
+`terminate` by default or `run.interrupt → run.checkpoint` when pause-on-veto is
+enabled.
 
 **Why this matters:** you get a hard safety gate with a verifiable audit trail.
 
@@ -32,8 +35,8 @@ uv run python -m tutorials.governed_side_effects
 
 ## Runtime outcomes and constraints
 
-- Default enforce veto (`governance_pause_on_veto=false`): `action_candidate → governance → terminate` (no `act`), and the run is sealed (`final.json` + `manifest.json`).
-- Pause-on-veto (`governance_pause_on_veto=true`): `action_candidate → governance → run.interrupt → run.checkpoint` (no `act`, no `terminate`), and the run remains unsealed until continuation.
+- Default enforce veto (`governance_pause_on_veto=false`): `direction(status="blocked") → action_candidate → governance → terminate` (no `act`), and the run is sealed (`final.json` + `manifest.json`).
+- Pause-on-veto (`governance_pause_on_veto=true`): `direction(status="blocked") → action_candidate → governance → run.interrupt → run.checkpoint` (no `act`, no `terminate`), and the run remains unsealed until continuation.
 - Allow/audit paths emit `action_candidate → governance → act` and seal normally.
 
 ## Source
