@@ -1,0 +1,141 @@
+---
+title: "Final schema"
+description: "Complete reference for the Noesis final.json sealing marker."
+---
+
+The `final.json` artifact is the terminal marker for a run. Its presence means
+Noesis finished finalization, wrote the final contract, and then wrote
+`manifest.json` with `final.json` included in the manifest file list.
+
+Current final schema version: `final/2.0.0` ([JSON schema](/schema/final/2.0.0.json)).
+
+## Schema overview
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "process_id": "proc_a1b2c3",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "verified"
+}
+```
+
+## Root fields
+
+<ResponseField name="schema_version" type="string" required>
+Final artifact schema. Currently `"final/2.0.0"`.
+</ResponseField>
+
+<ResponseField name="episode_id" type="string" required>
+Run or episode identifier for the artifact directory being sealed.
+</ResponseField>
+
+<ResponseField name="process_id" type="string" required>
+Process identity that owns this run. Finalization requires this value so sealed
+artifacts can be tied back to the process registry.
+</ResponseField>
+
+<ResponseField name="run_index" type="integer" required>
+One-based run number within the process.
+</ResponseField>
+
+<ResponseField name="finalized_at" type="string" required>
+ISO 8601 timestamp when `final.json` was written.
+</ResponseField>
+
+<ResponseField name="outcome" type="string" required>
+Terminal outcome class. Allowed values are `"success"`, `"failed"`,
+`"vetoed"`, `"cancelled"`, `"interrupted"`, and `"error"`.
+</ResponseField>
+
+<ResponseField name="verification_status" type="string" required>
+Verification class for the terminal outcome. Allowed values are `"verified"`,
+`"unverified"`, and `"not_applicable"`.
+</ResponseField>
+
+## Outcome mapping
+
+The current core finalization path maps runtime and verification outcomes into
+the final contract as follows:
+
+| Runtime condition | `outcome` | `verification_status` |
+| --- | --- | --- |
+| Adapter succeeded and verification assertions passed | `success` | `verified` |
+| Adapter succeeded and no verification was provided | `success` | `unverified` |
+| Adapter succeeded but verification assertions failed | `failed` | `verified` |
+| Adapter errored or was skipped | `error` | `not_applicable` |
+| Terminal state was explicitly vetoed | `vetoed` | `not_applicable` |
+
+`cancelled` and `interrupted` are part of the schema's terminal outcome
+vocabulary. Current pause/checkpoint flows keep interrupted runs unsealed until
+they continue or terminate.
+
+## Sealing lifecycle
+
+Terminal finalization uses this order:
+
+1. Write `summary.json`, `state.json`, `learn.jsonl` when applicable, and other
+   runtime artifacts.
+2. Write `final.json`.
+3. Write `manifest.json`, which includes `final.json`.
+
+If manifest writing fails after `final.json` is written, Noesis removes
+`final.json` before raising the error. A run should not be treated as sealed
+unless both `final.json` and `manifest.json` are present and the manifest lists
+the final marker.
+
+<Warning>
+Once `final.json` exists, lifecycle mutations such as `interrupt`, `checkpoint`,
+`resume`, and `resume_run` are rejected with `RunSealedError`.
+</Warning>
+
+## Paused and interrupted runs
+
+Paused approval flows are intentionally unsealed:
+
+- `run.interrupt` and `run.checkpoint` are recorded in `events.jsonl`
+- checkpoint files are written under `checkpoints/<checkpoint_id>/checkpoint.json`
+- `run.state_projection.payload.links` includes non-terminal links such as
+  `events` and `learn`
+- `summary.json`, `manifest.json`, and `final.json` are not guaranteed until the
+  run continues to a terminal state
+
+Use `resume_run(...)` after approval to continue the same run ID. When
+continuation reaches a terminal outcome, Noesis emits terminal projection
+evidence and seals the run.
+
+## Operational checks
+
+```bash
+# Confirm a run is sealed.
+test -f .noesis/episodes/<episode_id>/final.json
+test -f .noesis/episodes/<episode_id>/manifest.json
+
+# Inspect the final contract.
+jq '{episode_id, process_id, run_index, outcome, verification_status}' \
+  .noesis/episodes/<episode_id>/final.json
+
+# Confirm the manifest covers final.json.
+jq '.files[] | select(.name == "final.json")' \
+  .noesis/episodes/<episode_id>/manifest.json
+```
+
+## Related references
+
+<CardGroup cols={2}>
+  <Card title="Artifacts" icon="folder" href="/explanation/artifacts">
+    How final markers fit into the episode artifact bundle.
+  </Card>
+  <Card title="Python API" icon="code" href="/reference/python-api">
+    Lifecycle APIs and common sealed-run errors.
+  </Card>
+  <Card title="Events" icon="list" href="/reference/events">
+    Runtime lifecycle events for interrupts, checkpoints, resumes, and state projections.
+  </Card>
+  <Card title="State" icon="database" href="/reference/state">
+    Terminal and non-terminal state projection links.
+  </Card>
+</CardGroup>

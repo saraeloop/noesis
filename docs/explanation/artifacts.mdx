@@ -1,6 +1,6 @@
 ---
 title: "Artifacts"
-description: "Understanding the files Noēsis produces: summary.json, state.json, events.jsonl, and more."
+description: "Understanding the files Noēsis produces: summary.json, state.json, events.jsonl, final.json, and more."
 ---
 
 Every Noēsis episode produces a set of structured artifacts that capture the complete cognitive trace. These files enable replay, debugging, auditing, and analysis.
@@ -14,14 +14,21 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
       events.jsonl             # cognitive event timeline with lineage
       summary.json             # metrics and KPIs (insight.metrics)
       state.json               # plan, beliefs, memory, outcomes
+      final.json               # terminal seal marker
       manifest.json            # SHA-256 catalog + optional HMAC
       learn.jsonl              # learning signals (optional)
       prompts.jsonl            # prompt provenance (opt-in, ADR-005)
+      checkpoints/             # checkpoint anchors for paused runs
 ```
 
 <Info>
 **Episode IDs** use ULID format (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
 </Info>
+
+Terminal runs seal with both `final.json` and `manifest.json`. Paused or
+interrupted runs are intentionally unsealed until they continue or terminate;
+expect `events.jsonl`, `state.json`, `learn.jsonl`, and checkpoint files before
+the terminal artifacts appear.
 
 ## summary.json
 
@@ -334,6 +341,55 @@ noesis events ep_abc123 --phase act
 noesis events ep_abc123 -j | jq '.[] | select(.phase == "plan")'
 ```
 
+## final.json
+
+`final.json` is the terminal seal marker for a run. If it exists, Noesis has
+finished finalization for the run and lifecycle writes such as `interrupt`,
+`checkpoint`, and `resume_run` are rejected.
+
+### Schema
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_2024_abc123_s0",
+  "process_id": "proc_abc123",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "verified"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Final marker schema (`final/2.0.0`) |
+| `episode_id` | Run or episode ID being sealed |
+| `process_id` | Process identity that owns the run |
+| `run_index` | One-based run number within that process |
+| `finalized_at` | ISO 8601 finalization timestamp |
+| `outcome` | Terminal outcome (`success`, `failed`, `vetoed`, `cancelled`, `interrupted`, `error`) |
+| `verification_status` | Verification class (`verified`, `unverified`, `not_applicable`) |
+
+### Sealing order
+
+Noesis writes `final.json` before `manifest.json`, then writes the manifest with
+`final.json` included in its file list. If manifest writing fails, Noesis removes
+`final.json` so the run is not incorrectly marked sealed.
+
+<Tip>
+Treat a run as sealed only when `final.json` exists and `manifest.json` includes
+an entry for `final.json`.
+</Tip>
+
+### Paused runs
+
+Approval pauses and pause-on-veto flows emit `run.interrupt` and
+`run.checkpoint` events, then write checkpoint anchors under
+`checkpoints/<checkpoint_id>/checkpoint.json`. These runs remain unsealed: no
+`final.json` or `manifest.json` is required until the run continues to a terminal
+outcome.
+
 ## manifest.json
 
 The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional signatures.
@@ -365,6 +421,11 @@ The manifest provides integrity verification for all artifacts with SHA-256 hash
 | `files` | Array of files with `name`, `sha256`, `size_bytes`, `kind` (`summary`, `state`, `events`, `learn`, `attachment`, `custom`) |
 | `signature` | Optional signature block with algorithm, key ID, value, timestamp |
 
+`summary.json`, `state.json`, `events.jsonl`, and `learn.jsonl` are tracked by
+default when present. Other files in the run directory, including `final.json`
+and checkpoint files, are included as attachments unless explicitly tracked with
+a narrower kind.
+
 ### Artifact immutability guarantees
 
 All artifacts are written atomically using this pattern:
@@ -389,16 +450,16 @@ def verify_manifest(episode_dir: Path) -> bool:
     with open(manifest_path) as f:
         manifest = json.load(f)
     
-    for filename, info in manifest["files"].items():
-        file_path = episode_dir / filename
+    for info in manifest["files"]:
+        file_path = episode_dir / info["name"]
         
         # Check size
-        if file_path.stat().st_size != info["size"]:
+        if file_path.stat().st_size != info["size_bytes"]:
             return False
         
         # Check hash
         with open(file_path, "rb") as f:
-            actual_hash = hashlib.sha256(f.read()).hexdigest()
+            actual_hash = f"sha256:{hashlib.sha256(f.read()).hexdigest()}"
         
         if actual_hash != info["sha256"]:
             return False
@@ -534,5 +595,8 @@ store.vacuum()  # Remove episodes older than 14 days
   </Card>
   <Card title="Summary reference" icon="file" href="/reference/summary">
     Complete summary schema documentation.
+  </Card>
+  <Card title="Final reference" icon="lock" href="/reference/final">
+    Complete final.json sealing contract.
   </Card>
 </CardGroup>
