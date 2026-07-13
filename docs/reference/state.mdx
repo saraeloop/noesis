@@ -12,6 +12,7 @@ The `state.json` artifact captures cognitive state snapshots during execution an
   "version": "1.0",
   "state_schema_version": "1.0.0",
   "episode": { ... },
+  "process": { ... },
   "goal": { ... },
   "beliefs": [ ... ],
   "plan": { ... },
@@ -34,6 +35,11 @@ Semantic version for the schema contract. Currently `"1.0.0"`.
 <ResponseField name="links" type="object">
 Relative artifact paths for this run (for example `events.jsonl`,
 `learn.jsonl`, `summary.json`, `manifest.json`). Keys vary by lifecycle state.
+</ResponseField>
+
+<ResponseField name="process" type="object">
+Stable process identity for grouping related episodes. Present for runtime-created
+episodes and required for same-run continuation.
 </ResponseField>
 
 ## Episode
@@ -79,6 +85,48 @@ ISO 8601 start timestamp.
 Intuition posture for the episode (advisory | interventive | hybrid). Runs created
 with older Noēsis versions may omit this field (default advisory).
 </ResponseField>
+
+## Process
+
+`process` ties an episode to the filesystem-backed process registry used by
+operator views.
+
+```json
+{
+  "process": {
+    "id": "c0ffee123456",
+    "name": "release-notes",
+    "run_index": 3,
+    "kind": "oneshot"
+  }
+}
+```
+
+<ResponseField name="process.id" type="string" required>
+Opaque stable identifier derived from the resolved workspace identity plus the
+optional process label.
+</ResponseField>
+
+<ResponseField name="process.name" type="string" required>
+Human-readable process label. When no label is supplied, Noēsis derives a name
+from the workspace directory and process id prefix.
+</ResponseField>
+
+<ResponseField name="process.run_index" type="number" required>
+Monotonic, one-based counter allocated by the process registry for this process.
+It orders runs inside one process and is not a global episode count.
+</ResponseField>
+
+<ResponseField name="process.kind" type="string">
+Execution style for the process. Runtime-created CLI and Python runs currently
+use `"oneshot"`.
+</ResponseField>
+
+<Info>
+`state.process` is a snapshot of registry allocation, not a value reconstructed
+from `events.jsonl`. `resume_run` requires `process.id` and `process.run_index`
+in `state.json`.
+</Info>
 
 ## Artifact links
 
@@ -409,6 +457,9 @@ Outcome metrics (e.g., total duration).
 
 - `episode.started_at` is aligned to the `start` event timestamp and remains
   stable across continuation.
+- `process` is registry-backed metadata captured at run allocation time. Use it
+  to group and resume runs, but use the process registry/CLI for current
+  liveness.
 - Whenever `state.json` is persisted, runtime emits
   `phase="runtime"`, `event_type="run.state_projection"` with projection
   evidence for outcomes and links.
@@ -427,6 +478,12 @@ Outcome metrics (e.g., total duration).
     "tags": {"team": "platform"},
     "using": "baseline",
     "started_at": "2024-01-15T10:30:00Z"
+  },
+  "process": {
+    "id": "c0ffee123456",
+    "name": "release-notes",
+    "run_index": 3,
+    "kind": "oneshot"
   },
   "goal": {
     "task": "Draft release notes for v1.2.0",
