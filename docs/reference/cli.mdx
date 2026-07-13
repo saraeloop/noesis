@@ -35,6 +35,7 @@ Most commands accept:
 
 | Command | Purpose |
 | --- | --- |
+| `noesis` | Show the compact home screen and recent-run shortcuts |
 | `noesis run` | Start a baseline episode |
 | `noesis view` | Inspect an episode by ID or path |
 | `noesis ps` | List recent episodes |
@@ -50,6 +51,19 @@ Most commands accept:
 | `noesis help` | Show help (or help for one command) |
 
 ## Core workflows
+
+### Open the home screen
+
+```bash
+# Compact dashboard, exits 0
+noesis
+
+# Include detailed config and recent-run sections
+noesis --full
+```
+
+The home screen is safe for empty workspaces: failures while reading recent
+episodes are treated as empty results.
 
 ### Run an episode
 
@@ -122,12 +136,40 @@ noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --phase governance
 ### Process-oriented inspection
 
 ```bash
-# Process liveness and metadata
-noesis processes --limit 20
+# Group a run under a stable process label
+noesis run "Backfill invoice summaries" --process billing-sync
 
-# Runs for a specific process
+# Process liveness and metadata, optionally filtered by exact id or name
+noesis processes --process billing-sync --json | jq '.processes[0]'
+
+# Recent episodes for one process id or name
+noesis ps --process billing-sync --json | jq '.episodes[].process'
+
+# Runs for a specific process id or name
 noesis runs --process alpha --limit 20
 ```
+
+Process identity is derived from the resolved workspace plus the optional label
+passed to `--process`. If no label is supplied, Noēsis derives a display name
+from the workspace directory and the process id prefix.
+
+`processes` reads the registry and reports liveness fields:
+
+| Field | Meaning |
+| --- | --- |
+| `process_id` | Opaque stable id |
+| `process_name` | Human label or auto-derived workspace label |
+| `kind` | Process type; runtime-created runs currently use `oneshot` |
+| `status` | `running`, `idle`, `stale`, or `error` |
+| `last_seen_at` | Last registry update |
+| `last_heartbeat_at` | Last running-process heartbeat |
+| `active_run_id` | Current episode id when a run is active |
+| `last_run_outcome` | Outcome from the most recent finished run |
+| `next_run_index` | Next one-based index to allocate inside this process |
+
+`ps --process` and `runs --process` filter episodes by exact `process.id` or
+`process.name` from run summaries. `runs --json` returns the filtered episode
+array directly; `ps --json` wraps rows in a `cli/1.1` envelope.
 
 ### Diagnostics and integrity
 
@@ -177,9 +219,10 @@ The verification parser enforces:
 
 ### JSON output shape by command
 
-- `run --json` emits a run-result envelope (`episode_id`, `episode_dir`, `artifacts`, `outcome`, `verification`, `capabilities`)
+- `run --json` emits a run-result envelope (`episode_id`, `episode_dir`, `artifacts`, `outcome`, `verification`, `capabilities`, and `process` when present)
 - `ps --json` emits `{"episodes":[...], ...}`
 - `processes --json` emits `{"processes":[...], ...}`
+- `runs --json --process NAME` emits a filtered episode array
 - `events --json` emits JSONL (one event per line)
 - `events --envelope` emits one JSON object containing all selected events
 
@@ -206,6 +249,18 @@ Fix:
 - check `NOESIS_RUNS_DIR` / runtime config
 - pass a direct episode directory path to `noesis view`
 - inspect available episodes with `noesis ps`
+
+### `noesis runs --process <name>` returns no rows
+
+Cause: the process filter matches exact `process.id` or `process.name` values
+stored in run summaries; it does not fuzzy-match task text or tags.
+
+Fix:
+
+- inspect registry names with `noesis processes`
+- run future episodes with an explicit label, for example
+  `noesis run "task" --process <name>`
+- verify that the same `NOESIS_RUNS_DIR` / runtime config is active
 
 ### `error: corrupted events.jsonl at ...`
 

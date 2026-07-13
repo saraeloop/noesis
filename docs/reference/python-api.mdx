@@ -29,6 +29,7 @@ episode_id = ns.run(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
@@ -57,6 +58,11 @@ Optional runtime context. If provided, execution bypasses the default session.
 Workspace root to snapshot for verification.
 </ParamField>
 
+<ParamField body="process" type="str | None" default="None">
+Optional process label for grouping related episodes in `summary.json`,
+`state.json`, and CLI process views.
+</ParamField>
+
 <ParamField body="verify" type="VerifySpec | Sequence[VerifySpec] | None" default="None">
 Verification assertions to evaluate against the workspace.
 </ParamField>
@@ -70,6 +76,7 @@ import noesis as ns
 
 episode_id = ns.run("Draft release notes")
 episode_id = ns.run("Draft release notes", intuition=False, tags={"env": "staging"})
+episode_id = ns.run("Draft release notes", process="release-notes")
 ```
 
 **Runtime context example**:
@@ -99,6 +106,7 @@ episode_id = ns.solve(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
@@ -118,6 +126,7 @@ def to_upper(task: str) -> dict:
 
 episode_id = ns.solve("process this", using=to_upper)
 episode_id = ns.solve("process this", using="my.module:adapter_fn")
+episode_id = ns.solve("process this", using=to_upper, process="batch-transform")
 ```
 
 ### Run lifecycle APIs
@@ -519,13 +528,18 @@ from noesis import SessionBuilder
 
 session = SessionBuilder.from_env().build()
 ep = session.run("Process customer request")
+grouped_ep = session.run("Process customer request", process="support-triage")
 
 # Read artifacts using the session's RuntimeContext
 import noesis as ns
 summary = ns.summary.read(ep, context=session.context)
 ```
 
-`SessionBuilder` reads config from env/TOML; you can also inject ports before building. Within a session, `run`/`solve` behave like the module-level helpers but share the session’s config and runtime context.
+`SessionBuilder` reads config from env/TOML; you can also inject ports before
+building. Within a session, `run`/`solve` behave like the module-level helpers
+but share the session’s config and runtime context. The optional `process` label
+uses the session workspace/config to derive the same stable process identity used
+by CLI process views.
 
 ## Module facades
 

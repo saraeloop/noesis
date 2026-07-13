@@ -230,6 +230,36 @@ print(f"Steps: {len(state['plan']['steps'])}")
 print(f"Status: {state['outcomes']['status']}")
 ```
 
+### Authority model
+
+`state.json` is a snapshot assembled from multiple authorities. Use the source
+that owns a field when debugging drift:
+
+| State slice | Authority | Operational note |
+| --- | --- | --- |
+| `episode.started_at` | `start` event timestamp | Stable across continuation |
+| `plan` | Latest `plan` event plus later `act.step_status` evidence | Reconstruct with `noesis.runtime.plan_projection.project_plan_state(...)` |
+| `outcomes` and `links` | `run.state_projection` runtime event | Terminal values mirror persisted `state.json` |
+| `process` | Process registry allocation | Use `noesis processes` for current liveness |
+| `beliefs` and `memory` | Runtime state repository | Treat as persisted state, not trace-derived evidence |
+
+For process-scoped runs, Noēsis copies the registry allocation into both
+`summary.json` and `state.json`:
+
+```json
+{
+  "process": {
+    "id": "c0ffee123456",
+    "name": "release-notes",
+    "kind": "oneshot",
+    "run_index": 3
+  }
+}
+```
+
+`process.run_index` is monotonic inside one process. It is required for same-run
+continuation and should not be interpreted as a global episode sequence.
+
 ## events.jsonl
 
 The event timeline records every phase transition with timing and lineage.
