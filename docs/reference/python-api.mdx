@@ -555,19 +555,75 @@ Configure via `ns.set(learn_mode="record")`.
 ```python
 from noesis.learn import LearnStatus
 
-LearnStatus.PENDING   # Awaiting review
+LearnStatus.RECORDED  # Persisted but not scored
+LearnStatus.SCORED    # Scored against the configured gate
 LearnStatus.APPROVED  # Approved for application
+LearnStatus.APPLIED   # Applied to policy configuration
 LearnStatus.REJECTED  # Rejected
-LearnStatus.APPLIED   # Already applied
 ```
 
 ### LearnProposal
 
-Dataclass for learning signals. Contains `kind`, `payload`, `confidence`, `status`, and metadata.
+Dataclass for learning signals. Required fields are `proposal_id`, `policy_id`,
+`policy_version`, `kind`, and `target`. It also carries rationale and evidence,
+score/confidence, status, metadata, acceptance state, and an optional
+`revert_handle`.
 
 <Note>
-In v1.0.0, learning proposals are emitted automatically during summary finalization when `learn_mode` is enabled. When proposals are generated, they are written to `learn.jsonl` for the episode and tracked under `learn_home`.
+Learning hooks run during summary finalization when `learn_mode` is enabled.
+Eligible proposals are written to the episode's `learn.jsonl` and tracked
+under `learn_home`. A pass with no eligible proposal can leave
+`learn.jsonl` absent or empty.
 </Note>
+
+### Causal persistence contract
+
+Every persisted learning record must link to an upstream event. The low-level
+public helper makes `caused_by` required:
+
+```python
+persist_episode_learning(
+    run_dir: Path,
+    *,
+    episode_id: str,
+    agent_id: str,
+    payload: dict[str, object],
+    caused_by: str,
+) -> None
+```
+
+Use an event ID from the same episode. The automatic emitter selects the
+latest non-empty event ID:
+
+```python
+from pathlib import Path
+
+import noesis as ns
+from noesis.learn import MissingCausalLinkError, persist_episode_learning
+
+episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
+run_dir = Path(".noesis/episodes") / episode_id
+events = list(ns.events.read(episode_id))
+parent_id = str(events[-1]["id"]) if events else ""
+
+try:
+    persist_episode_learning(
+        run_dir,
+        episode_id=episode_id,
+        agent_id="policy.release-notes",
+        payload={"policy_id": "policy.release-notes", "proposal": []},
+        caused_by=parent_id,
+    )
+except MissingCausalLinkError:
+    # Do not write an orphaned learning record.
+    raise
+```
+
+`MissingCausalLinkError` subclasses `LearnCausalityError`. An empty
+`caused_by` fails before the helper creates or appends to `learn.jsonl`.
+Callers remain responsible for passing an ID that exists in the episode's
+`events.jsonl`. Writes to a sealed episode are rejected by the artifact
+immutability guard.
 
 ### Helper functions
 
