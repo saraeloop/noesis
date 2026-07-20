@@ -583,40 +583,55 @@ Evaluation metrics.
 
 ### learn
 
-Captures learning signals for future episodes. The minimal validator expects the following keys; runners may add extra detail.
+Points from the event timeline to proposal records in `learn.jsonl`. The runtime
+links the event to the latest upstream event through `caused_by`.
 
 ```json
 {
+  "id": "evt_learn123",
   "phase": "learn",
   "payload": {
-    "policy_id": "policy:core.meta",
-    "basis": ["rules.veto.danger"],
-    "proposal": [],
-    "applied": false,
-    "scope": "episode"
-  }
+    "learn_path": "learn.jsonl",
+    "learn_schema": "learn/1.0",
+    "proposal_ids": ["SafetyPolicy:ep_2024_abc123_s0"],
+    "proposal_count": 1,
+    "applied": false
+  },
+  "caused_by": "evt_terminate123"
 }
 ```
 
-<ResponseField name="payload.policy_id" type="string" required>
-Policy that produced the learning signal.
+<ResponseField name="payload.learn_path" type="string" required>
+Relative path to the learning record stream. The runtime emits `learn.jsonl`.
 </ResponseField>
 
-<ResponseField name="payload.basis" type="array" required>
-Reasons or evidence that drove the learning update.
+<ResponseField name="payload.learn_schema" type="string" required>
+Schema identifier for records in the learning stream (`learn/1.0`).
 </ResponseField>
 
-<ResponseField name="payload.proposal" type="array" required>
-List of proposed updates (may be empty).
+<ResponseField name="payload.proposal_ids" type="array" required>
+IDs of proposal records persisted to `learn.jsonl`. This is empty when no
+proposal record was written.
 </ResponseField>
 
-<ResponseField name="payload.applied" type="boolean" required>
-Whether the proposed updates were applied.
+<ResponseField name="payload.proposal_count" type="integer" required>
+Number of proposals produced by this learning pass.
 </ResponseField>
 
-<ResponseField name="payload.scope" type="string" required>
-Update scope: `session`, `episode`, `policy`, `global`.
+<ResponseField name="payload.applied" type="boolean">
+Whether this learning pass applied at least one proposal.
 </ResponseField>
+
+<ResponseField name="caused_by" type="string">
+ID of the latest upstream event. Persisted proposal records repeat this value
+at the top level so consumers can join `learn.jsonl` back to `events.jsonl`.
+</ResponseField>
+
+<Note>
+The validator also accepts the legacy inline payload shape (`policy_id`,
+`basis`, `proposal`, and `scope`). Current runtime emission uses the artifact
+reference shape above.
+</Note>
 
 ### runtime (`run.*`)
 
