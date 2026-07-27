@@ -412,14 +412,69 @@ JSON serialization uses `canonical_dumps()` with sorted keys for byte-identical 
 
 ## learn.jsonl (optional)
 
-Learning signals are stored separately when the learn phase emits proposals.
+Learning proposals are stored separately from the event timeline. Each
+non-empty line is a `learn/1.0` record ([JSON schema](/schema/learn/1.0.0.json))
+that links back to an existing event.
 
 ### Schema
 
 ```json
-{"proposal_id": "prop_1", "type": "threshold", "target": "veto_confidence", "suggested_value": 0.8}
-{"proposal_id": "prop_2", "type": "memory", "key": "pattern_detected", "value": "sql_injection_attempt"}
+{
+  "schema_version": "learn/1.0",
+  "id": "SafetyPolicy:ep_2024_abc123_s0",
+  "episode_id": "ep_2024_abc123_s0",
+  "agent_id": "SafetyPolicy",
+  "caused_by": "evt_terminate123",
+  "timestamp": "2024-01-15T10:30:05Z",
+  "payload": {
+    "id": "SafetyPolicy:ep_2024_abc123_s0",
+    "policy_id": "SafetyPolicy",
+    "basis": {
+      "success": 0,
+      "reasons": ["policy veto"],
+      "latencies": {},
+      "counts": {"plan": 1, "act": 0, "reflect": 1}
+    },
+    "proposal": [
+      {
+        "proposal_id": "SafetyPolicy:ep_2024_abc123_s0:direction_min_confidence:0.8",
+        "policy_version": "1.0",
+        "kind": "threshold_tune",
+        "target": {
+          "path": "direction_min_confidence",
+          "from": 0.75,
+          "to": 0.8
+        },
+        "rationale": "Increase direction minimum confidence after veto.",
+        "evidence_ids": ["ep_2024_abc123_s0"],
+        "score_fn": "heuristic:veto_rate",
+        "score": 1.0,
+        "confidence": 1.0,
+        "status": "approved",
+        "metadata": {
+          "scorer": "heuristic:veto_rate",
+          "veto_rate": 1.0,
+          "direction_events": 1
+        },
+        "accepted": false
+      }
+    ],
+    "applied": false,
+    "scope": "policy",
+    "approval": "approved"
+  }
+}
 ```
+
+`caused_by` is mandatory at the runtime persistence boundary even though the
+`learn/1.0` schema permits extension fields. It must identify an upstream
+record in the same episode's `events.jsonl`. `persist_episode_learning(...)`
+raises `MissingCausalLinkError` before creating `learn.jsonl` when this value
+is empty.
+
+An enabled learning pass can produce no proposals. In that case,
+`learn.jsonl` may be empty (or absent if never touched) and the corresponding
+`learn` event has an empty `proposal_ids` array.
 
 ### Reading learn signals
 
@@ -428,13 +483,25 @@ import json
 from pathlib import Path
 
 learn_path = Path(f".noesis/episodes/{episode_id}/learn.jsonl")
+events_path = learn_path.with_name("events.jsonl")
 
 if learn_path.exists():
-    with open(learn_path) as f:
-        proposals = [json.loads(line) for line in f]
-    
-    for p in proposals:
-        print(f"Proposal: {p['type']} -> {p.get('target', p.get('key'))}")
+    records = [
+        json.loads(line)
+        for line in learn_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    events_by_id = {
+        event["id"]: event
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+        if (event := json.loads(line)).get("id")
+    }
+
+    for record in records:
+        parent = events_by_id.get(record["caused_by"])
+        if parent is None:
+            raise ValueError(f"Missing causal event for learn record {record['id']}")
+        print(record["id"], parent["phase"], record["payload"]["approval"])
 ```
 
 ## prompts.jsonl (opt-in)

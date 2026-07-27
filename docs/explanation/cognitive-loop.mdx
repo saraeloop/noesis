@@ -231,10 +231,10 @@ The **learn** phase captures updates for future runs.
 **Purpose**: Record follow-up proposals so the next run can inherit lessons.
 
 **What gets recorded**:
-- Update proposals
-- Scope of changes
-- Memory updates
-- Policy adjustment suggestions
+- Artifact reference to `learn.jsonl` (`learn_path`, `learn_schema`)
+- Proposal IDs and counts (empty when no proposal was persisted)
+- Whether any proposal was applied
+- Causal link (`caused_by`) to the latest upstream event
 
 **Example event**:
 
@@ -242,18 +242,20 @@ The **learn** phase captures updates for future runs.
 {
   "phase": "learn",
   "payload": {
-    "updates": [
-      {"type": "memory", "key": "changelog_format", "value": "keep-a-changelog"},
-      {"type": "hint", "content": "Include breaking changes section"}
-    ],
-    "scope": "session"
+    "learn_path": "learn.jsonl",
+    "learn_schema": "learn/1.0",
+    "proposal_ids": ["SafetyPolicy:ep_2024_abc123_s0"],
+    "proposal_count": 1,
+    "applied": false
   },
-  "caused_by": "reflect_event_id",
+  "caused_by": "evt_terminate123",
   "metrics": {
     "duration_ms": 2
   }
 }
 ```
+
+Proposal bodies live in `learn.jsonl`, not inline in the learn event payload.
 
 **Why it matters**: Episodes can improve over time without manual intervention.
 
