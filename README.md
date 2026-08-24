@@ -11,7 +11,7 @@ _Understanding, made observable._
 
 Noēsis is a cognitive runtime for agent workflows. It turns each run into an auditable episode with a causal event chain, governed side effects, and resumable execution.
 
-Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`) that can be inspected, audited, and verified.
+Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `final.json`, `manifest.json`) that can be inspected, audited, and verified.
 
 Bring your own graphs, loops, tools, and prompts. Noēsis adds runtime evidence, verification, and governance boundaries without replacing your orchestrator or agent framework.
 
@@ -57,29 +57,7 @@ episode_id = ns.run("Draft a weekly engineering update", intuition=True)
 
 summary = ns.summary.read(episode_id)
 timeline = list(ns.events.read(episode_id))
-
-ns.set(
-    governance_mode="enforce",
-    governance_pause_on_veto=True,
-    governance_failure_policy="fail_closed",
-    prompt_provenance_enabled=True,
-    prompt_provenance_mode="full",
-)
-
-# Start the run
-episode_id = ns.solve(
-    task="Apply canary rollout config to production",
-    using=lambda: my_agent(),
-    workspace="./repo",
-    verify=(
-        ns.file_exists("canary-rollout.json"),
-        ns.only_modified(["canary-rollout.json"]),
-    ),
-)
-
-# Governance vetoes the risky write →
-# run automatically emits interrupt + checkpoint
-# UI shows: run is paused, waiting on you
+```
 
 ## How it works
 
@@ -106,23 +84,30 @@ flowchart LR
 
 ## Artifact layout
 
-By default, Noēsis writes artifacts under `.noesis/episodes/`:
+By default, Noēsis writes artifacts under `.noesis/`:
 
 ```text
 .noesis/
   episodes/
-    ep_.../
+    ep_<ULID>/
       events.jsonl
       summary.json
       state.json
-      final.json
-      manifest.json
-      learn.jsonl     # optional
-      prompts.jsonl   # optional
+      final.json          # present only after the run seals
+      manifest.json       # present only after the run seals
+      learn.jsonl         # optional
+      prompts.jsonl       # optional
       snapshots/
         pre.json
         post.json
+      checkpoints/
+        chk_<id>/
+          checkpoint.json
+  processes/
+    <process_id>.json
 ```
+
+Paused runs stay unsealed: `final.json` and `manifest.json` are written only when the run reaches a terminal outcome.
 
 ## Governed side effects
 
@@ -156,21 +141,9 @@ except NoesisVeto as veto:
     print(f"Blocked by governance: {veto.advice}")
 ```
 
+With `governance_pause_on_veto=True`, an enforce veto emits `run.interrupt` + `run.checkpoint` and leaves the run unsealed so you can inspect it and continue later.
+
 ## Workspace verification
-
-## Artifact contract
-
-Every episode writes a sealed artifact pack:
-
-episode_id = ns.solve(
-    "Update config",
-    using="my.module:adapter_fn",
-    workspace=".",
-    verify=verify,
-)
-```
-
-## Pause, checkpoint, and continue
 
 ```python
 import noesis as ns
@@ -187,9 +160,18 @@ episode_id = ns.solve(
 )
 ```
 
-Verification produces `snapshots/pre.json` and `snapshots/post.json` and records verification state in the episode artifacts.
+Verification produces `snapshots/pre.json` and `snapshots/post.json` and records the result on the episode summary.
 
----
+## Pause, checkpoint, and continue
+
+```python
+import noesis as ns
+
+episode_id = ns.solve(
+    task="Apply canary rollout config to production",
+    using=lambda: my_agent(),
+    workspace="./repo",
+)
 
 interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
 checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
@@ -199,17 +181,30 @@ ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
 episode_id = ns.resume_run(
     episode_id,
     checkpoint_id=checkpoint["checkpoint_id"],
-    using=my_graph,
+    using=my_agent,
 )
-
-episode_id = session.solve(task="...", using=lambda: my_agent())
-restore()
 ```
 
 Rule of thumb:
 
-- `resume()` emits lifecycle evidence only
-- `resume_run()` emits `run.resume` and continues execution
+- `resume()` emits lifecycle evidence only (`run.resume`)
+- `resume_run()` emits `run.resume` and continues execution on the same run ID
+
+Resume validates the checkpoint against the current artifacts, including `state.json` and `artifact_manifest_hash`. Do not edit episode files between checkpoint and resume; that raises `CheckpointConsistencyError`. See [Python API](https://docs.noesis.systems/reference/python-api).
+
+## Process identity
+
+Runs are grouped by a stable process identity derived from the workspace path plus an optional name:
+
+```python
+episode_id = ns.run("nightly triage", process="triage-bot")
+```
+
+```bash
+noesis run "nightly triage" --process triage-bot
+noesis processes
+noesis ps --process triage-bot
+```
 
 ## Install
 
@@ -240,16 +235,17 @@ uv run python examples/demo.py
 
 ## Docs and links
 
-- Artifacts guide: `docs/artifacts/state.md`
-- Schema index: `docs/app/reference/schema-index.mdx`
-- CLI reference: `docs/app/reference/cli/page.mdx`
-- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
+- Docs home: [docs.noesis.systems](https://docs.noesis.systems/)
+- Quickstart: [docs.noesis.systems/quickstart](https://docs.noesis.systems/quickstart)
+- Python API: [docs.noesis.systems/reference/python-api](https://docs.noesis.systems/reference/python-api)
+- CLI reference: [docs.noesis.systems/reference/cli](https://docs.noesis.systems/reference/cli)
+- Artifacts: [docs.noesis.systems/explanation/artifacts](https://docs.noesis.systems/explanation/artifacts)
 - Examples: `examples/README.md`
 
 ## Status
 
 - Package: `noesis` v1.0.0
-- Schema pack: summary/state/events/kpi v1.0.0
+- Schema pack: summary 1.3.0, events 1.3.0, final 2.0.0
 - Python: >= 3.11
 - CI: contracts, schema guard, and release preparation run in GitHub Actions
 
