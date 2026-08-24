@@ -5,12 +5,13 @@
 - [Quickstart](https://docs.noesis.systems/quickstart): Get your first Noēsis episode running in under 5 minutes.
 
 ## Tutorials
+- [Hello Episode: See Your Agent Think in 5 Minutes](https://docs.noesis.systems/tutorials/hello-episode): Run a tiny agent through Noēsis, open the artifacts, and read the timeline that shows every phase.
 - [Your first episode](https://docs.noesis.systems/tutorials/first-episode): Learn how to run, inspect, and understand Noēsis episodes step by step.
 - [Your first policy](https://docs.noesis.systems/tutorials/first-policy): Learn how to create intuition policies that guide and guard your agent episodes.
-- [Guarded LangGraph Agent: Vetoing Dangerous File Deletes](https://docs.noesis.systems/tutorials/guarded-langgraph-agent): Wrap a LangGraph agent with Noēsis so every tool call is observable and dangerous deletes get vetoed.
-- [Hello Episode: See Your Agent Think in 5 Minutes](https://docs.noesis.systems/tutorials/hello-episode): Run a tiny agent through Noēsis, open the artifacts, and read the timeline that shows every phase.
-- [Build an incident triage dashboard](https://docs.noesis.systems/tutorials/incident-triage): Create a production-ready incident response system with Noēsis, complete with guardrails and human approval loops.
+- [LangGraph episode](https://docs.noesis.systems/tutorials/langgraph-episode): Trace a LangGraph agent through the Noēsis cognitive loop.
+- [Governed side effects](https://docs.noesis.systems/tutorials/governed-side-effects): Enforce `action_candidate → governance → act` with `ns.governed_act(...)`.
 - [Trace-Based Evals: Safety & Success in 100 Lines](https://docs.noesis.systems/tutorials/trace-based-evals): Score your guarded agent over a dataset using Noēsis traces, not just final answers.
+- [Build an incident triage dashboard](https://docs.noesis.systems/tutorials/incident-triage): Create a production-ready incident response system with Noēsis, complete with guardrails and human approval loops.
 
 ## How-to guides
 - [Add a memory port](https://docs.noesis.systems/guides/add-memory-port): Plug long-term memory into Noēsis using SQLite, your DB, or a custom store.
@@ -21,8 +22,6 @@
 - [Human-in-the-loop](https://docs.noesis.systems/guides/human-in-the-loop): How to add human approval workflows to your Noēsis episodes.
 - [Integrate adapters](https://docs.noesis.systems/guides/integrate-adapters): How to connect Noēsis to LangGraph, CrewAI, or your own agent runtime.
 - [Write intuition policies](https://docs.noesis.systems/guides/write-policies): How to create, test, and deploy policies that guide and guard your agent episodes.
-- [Use Noēsis in Cursor](https://docs.noesis.systems/guides/use-noesis-in-cursor): Run episodes, add guardrails, and inspect traces without leaving your editor.
-- [Use GitHub Copilot with Noēsis](https://docs.noesis.systems/guides/use-copilot): Pasteable Noēsis cheat sheet for Copilot to guide users through the API and CLI without hallucinations.
 
 ## Explanation
 - [Core concepts](https://docs.noesis.systems/explanation/core-concepts): Understand the fundamental building blocks of Noēsis: episodes, faculties, and artifacts.
@@ -39,4 +38,4 @@
 - [State schema](https://docs.noesis.systems/reference/state): Complete reference for the Noēsis state.json artifact.
 - [Summary schema](https://docs.noesis.systems/reference/summary): Complete reference for the Noēsis summary.json artifact.
 - [Configuration](https://docs.noesis.systems/reference/configuration): Complete reference for Noēsis configuration options.
-- [llms.txt and llms-full.txt](https://docs.noesis.systems/reference/llms-txt): How Noēsis docs expose LLM-friendly indexes and how to customize them.
+- [llms.txt and LLM indexes](https://docs.noesis.systems/reference/llms-txt): How Noēsis docs expose LLM-friendly indexes.

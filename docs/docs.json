@@ -49,6 +49,8 @@
             "group": "Tutorials",
             "pages": [
               "tutorials/hello-episode",
+              "tutorials/first-episode",
+              "tutorials/first-policy",
               "tutorials/langgraph-episode",
               "tutorials/governed-side-effects",
               "tutorials/trace-based-evals"
