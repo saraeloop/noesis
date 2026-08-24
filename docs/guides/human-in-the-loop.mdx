@@ -59,6 +59,18 @@ def run_with_approval(task: str, using):
 Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
 </Tip>
 
+## Checkpoint resume constraints
+
+`ns.checkpoint(...)` writes a pointer, not a copy of the episode. Resume re-hashes:
+
+- `events.jsonl` prefix (`event_offset` / `last_event_id`)
+- `state.json` (`state_hash`)
+- the current artifact set (`artifact_manifest_hash`)
+
+Do not edit episode files while the run is paused. Adding, removing, or rewriting `manifest.json` after checkpoint also fails resume with `CheckpointConsistencyError`.
+
+Paused runs stay unsealed (`final.json` / `manifest.json` are absent) until continuation or termination. Once `final.json` exists, `interrupt` / `checkpoint` / `resume` raise `RunSealedError`.
+
 ## Policy-driven approval
 
 Create a policy that flags operations for approval:
@@ -300,7 +312,8 @@ async def run_async_approval(task: str):
         request = await queue.request_approval(episode_id, task, {})
         
         if request.status == ApprovalStatus.APPROVED:
-            # Continue with approved action
+            # This starts a follow-up episode, not same-run continuation.
+            # For pause/checkpoint/resume, use the pattern at the top of this page.
             return ns.run(f"{task} [APPROVED by {request.approver}]", intuition=True)
         elif request.status == ApprovalStatus.EXPIRED:
             print("Approval timed out")

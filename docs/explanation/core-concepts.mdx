@@ -13,45 +13,54 @@ An **episode** is the fundamental unit of execution in Noēsis. Every time you r
 import noesis as ns
 
 episode_id = ns.run("Draft release notes")
-# episode_id = "ep_2024_abc123_s0"
+# episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
 ```
-
-### Episode lifecycle
-
-Episodes progress through a defined lifecycle:
-
-```
-queued → running → completed | errored | vetoed
-```
-
-| Status | Meaning |
-| --- | --- |
-| `queued` | Episode created, waiting to start |
-| `running` | Cognitive loop in progress |
-| `completed` | All phases finished successfully |
-| `errored` | An exception occurred during execution |
-| `vetoed` | A policy blocked execution |
 
 ### Episode IDs
 
-Episode IDs follow the format `ep_<timestamp>_<hash>_s<seed>`:
+Episode IDs are `ep_<ULID>`:
 
 - `ep_` prefix identifies it as an episode
-- `<timestamp>` provides chronological ordering
-- `<hash>` ensures uniqueness
-- `s<seed>` enables reproducible runs with the same seed
+- the ULID is monotonic and sortable (48-bit timestamp + 80-bit entropy)
 
 ```python
 import noesis as ns
 
-# Reproducible runs with the same seed
-ns.set(seed=42)
-ep1 = ns.run("task")
-
-ns.set(seed=42)
-ep2 = ns.run("task")
-# ep1 and ep2 will have matching behavior
+# Reproducible runs with the same seed under a deterministic clock
+ep1 = ns.run("task", seed=42)
 ```
+
+### Episode lifecycle
+
+Runtime lifecycle states (schema `run_lifecycle_state_machine/1.0.0`):
+
+```
+running → interrupted → paused → resuming → running
+running → success | failed | vetoed | cancelled | error
+```
+
+| Status | Meaning |
+| --- | --- |
+| `running` | Cognitive loop in progress |
+| `interrupted` | `ns.interrupt(...)` evidence written |
+| `paused` | Checkpoint written; run is unsealed |
+| `resuming` | `ns.resume(...)` / `ns.resume_run(...)` in progress |
+| `success` / `failed` / `vetoed` / `cancelled` / `error` | Terminal; `final.json` seals the run |
+
+Paused runs do not write `final.json` until they later terminate.
+
+## Processes
+
+A **process** groups related episodes for operators. It is not a nested artifact folder.
+
+```python
+episode_id = ns.run("nightly triage", process="triage-bot")
+```
+
+- `process_id` is `sha256(workspace_identity|name)[:12]` (or just the workspace when no name is given)
+- records live in `.noesis/processes/<process_id>.json`
+- `summary.json` and `state.json` include a `process` block (`id`, `name`, `kind`, `run_index`)
+- inspect with `noesis processes` and `noesis ps --process triage-bot`
 
 ## The cognitive loop
 
@@ -145,14 +154,18 @@ class MyPolicy(ns.DirectedIntuition):
 Every episode produces structured **artifacts** that capture the full cognitive trace:
 
 ```
-.noesis/episodes/
-  demo/                    # label
-    ep_2024_abc123_s0/     # episode
+.noesis/
+  episodes/
+    ep_<ULID>/             # episode directory
       summary.json         # metrics and outcomes
       state.json           # cognitive state
       events.jsonl         # timeline
-      manifest.json        # integrity checksums
+      final.json           # seal (terminal runs)
+      manifest.json        # integrity checksums (terminal runs)
+      checkpoints/         # pause/resume pointers
       learn.jsonl          # learning signals (optional)
+  processes/
+    <process_id>.json      # operator identity for grouped runs
 ```
 
 ### summary.json

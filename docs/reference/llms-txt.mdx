@@ -1,0 +1,44 @@
+---
+title: "llms.txt"
+description: "How Noēsis docs expose LLM-friendly indexes."
+---
+
+Noēsis publishes a machine-readable index so coding agents can discover the current docs set without scraping the site.
+
+## Files
+
+| File | Location | Purpose |
+| --- | --- | --- |
+| `llms.txt` | repository root | Curated index of public docs URLs |
+| Mintlify contextual actions | docs site | Copy / view / ChatGPT / Claude / Cursor / VS Code helpers from `docs/docs.json` |
+
+The root `llms.txt` is the canonical LLM index. It lists pages that exist in this repository under `docs/` and are published at [docs.noesis.systems](https://docs.noesis.systems/).
+
+## What to expect
+
+`llms.txt` is grouped the same way as the docs nav:
+
+- Get started
+- Tutorials
+- How-to guides
+- Explanation
+- Reference
+
+Each entry is a title, public URL, and one-line description. Prefer these URLs over guessed paths such as `docs/app/reference/...`.
+
+## Customize
+
+Mintlify also exposes per-page contextual options (copy, view, ChatGPT, Claude, Perplexity, MCP, Cursor, VS Code) from `docs/docs.json` → `contextual.options`. Those options do not replace `llms.txt`; they attach helpers to each rendered page.
+
+When you add or rename a docs page:
+
+1. Add or update the MDX file under `docs/`
+2. Register it in `docs/docs.json` navigation
+3. Add or update the matching bullet in root `llms.txt`
+
+Do not list pages that are not in the repository. Broken index entries cause agents to fetch 404s.
+
+## Related
+
+- Docs site config: `docs/docs.json`
+- Local preview: see `docs/README.md`

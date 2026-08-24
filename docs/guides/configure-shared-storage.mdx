@@ -3,7 +3,7 @@ title: "Configure shared episode storage"
 description: "Point Noēsis at a shared location via network volumes, S3 sync, Docker mounts, or Kubernetes PVCs."
 ---
 
-By default, Noēsis writes episodes under `./.noesis/episodes/<episode-id>/`. In a team or service setting, you usually want a **shared** location so everyone can see/replay the same traces.
+By default, Noēsis writes episodes under `./.noesis/episodes/<episode-id>/` and process records under `./.noesis/processes/`. In a team or service setting, you usually want a **shared** location so everyone can see/replay the same traces.
 
 This guide shows four common setups:
 
@@ -103,5 +103,7 @@ Each pod writes episodes under `/var/noesis/episodes`, backed by the shared PVC.
 ---
 
 <Check>
-If you can answer “Where do episodes live in this environment?” and “Who can read them?”, you’re ready to roll Noēsis out beyond your laptop.
+If you can answer “Where do episodes live in this environment?”, “Where do process records live?”, and “Who can read them?”, you’re ready to roll Noēsis out beyond your laptop.
 </Check>
+
+When `NOESIS_RUNS_DIR` points at an episodes directory (the default `.noesis/episodes`), process files are stored as a sibling: `.noesis/processes/`. Point shared mounts at the `.noesis` root if operators need both `noesis ps` and `noesis processes`.

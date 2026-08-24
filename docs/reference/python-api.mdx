@@ -29,6 +29,7 @@ episode_id = ns.run(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
@@ -54,7 +55,11 @@ Optional runtime context. If provided, execution bypasses the default session.
 </ParamField>
 
 <ParamField body="workspace" type="str | Path | None" default="None">
-Workspace root to snapshot for verification.
+Workspace root to snapshot for verification. Also used as the workspace identity seed for process registration.
+</ParamField>
+
+<ParamField body="process" type="str | None" default="None">
+Optional process name. Groups this run under a stable process identity (`sha256(workspace|name)[:12]`). Omit to auto-derive a display name from the workspace path.
 </ParamField>
 
 <ParamField body="verify" type="VerifySpec | Sequence[VerifySpec] | None" default="None">
@@ -70,6 +75,7 @@ import noesis as ns
 
 episode_id = ns.run("Draft release notes")
 episode_id = ns.run("Draft release notes", intuition=False, tags={"env": "staging"})
+episode_id = ns.run("Draft release notes", process="release-bot")
 ```
 
 **Runtime context example**:
@@ -99,12 +105,17 @@ episode_id = ns.solve(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
 
 <ParamField body="using" type="GraphSource" required>
 Adapter name/import path or callable to execute the task.
+</ParamField>
+
+<ParamField body="process" type="str | None" default="None">
+Optional process name. Same identity rules as `ns.run(..., process=...)`.
 </ParamField>
 
 **Example**:
@@ -209,6 +220,25 @@ Continuation contract:
 - Append-only artifacts preserved.
 - Resume continues post-plan by default (no replan) with anchor validation.
 
+`ns.checkpoint(...)` returns a `checkpoint/1.0.0` pointer written to `checkpoints/<checkpoint_id>/checkpoint.json`:
+
+| Field | Role |
+| --- | --- |
+| `event_offset` | Number of `events.jsonl` records at checkpoint time |
+| `last_event_id` | Causal parent event id |
+| `state_hash` | SHA-256 of `state.json` |
+| `artifact_manifest_hash` | Digest of the current artifact set |
+| `adapter_label` | Persisted adapter identity (when available) |
+
+`artifact_manifest_hash` is `sha256(manifest.json)` when that file exists. On paused/unsealed runs it usually does not, so the runtime digests the current artifact set instead (`events.jsonl`, `state.json`, `summary.json`, plus optional `prompts.jsonl` / `learn.jsonl`). The `events.jsonl` contribution is the prefix of `event_offset` lines, so later `run.checkpoint` / `run.resume` events do not invalidate the pointer.
+
+Resume re-computes those anchors. It fails closed if:
+
+- `events.jsonl` history no longer matches `event_offset` / `last_event_id`
+- `state.json` hash changed
+- `manifest.json` appeared, disappeared, or changed since the checkpoint
+- `caused_by` is supplied and is neither `last_event_id` nor the latest event id
+
 Adapter continuity:
 
 - `resume_run(..., using=...)` must match the persisted adapter from checkpoint/state.
@@ -219,12 +249,21 @@ Adapter continuity:
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint anchors no longer match (`event_offset`, `last_event_id`, `state_hash`, or `artifact_manifest_hash`).
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
 
 All errors above are defined in `noesis.domain.run_lifecycle`.
+
+### Resume troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `CheckpointConsistencyError: ... artifact manifest hash ...` | `manifest.json` was added, removed, or edited after checkpoint | Restore the artifact set that existed at checkpoint time, or start a new run |
+| `CheckpointConsistencyError: ... state hash ...` | `state.json` changed on disk | Do not edit `state.json` between checkpoint and resume |
+| `CheckpointConsistencyError: ... causal anchor ...` | `events.jsonl` ids/order changed | Restore `events.jsonl`; the log is fail-closed and append-only |
+| `RunSealedError` | `final.json` already exists | Resume is only valid on unsealed (paused) runs |
 
 ### Verification helpers
 

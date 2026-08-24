@@ -8,20 +8,31 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
 ## Artifact structure
 
 ```
-.noesis/episodes/
-  <label>/                     # e.g., "demo", "production"
-    <episode_id>/              # e.g., "ep_20251108_120000_abc123_def4_s0"
+.noesis/
+  episodes/
+    <episode_id>/              # e.g., "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
       events.jsonl             # cognitive event timeline with lineage
       summary.json             # metrics and KPIs (insight.metrics)
       state.json               # plan, beliefs, memory, outcomes
-      manifest.json            # SHA-256 catalog + optional HMAC
+      final.json               # seal marker (terminal runs only)
+      manifest.json            # SHA-256 catalog (terminal runs only)
       learn.jsonl              # learning signals (optional)
       prompts.jsonl            # prompt provenance (opt-in, ADR-005)
+      snapshots/               # workspace verification evidence (optional)
+        pre.json
+        post.json
+      checkpoints/             # pause/resume pointers (optional)
+        chk_<id>/
+          checkpoint.json
+  processes/
+    <process_id>.json          # stable operator identity for grouped runs
 ```
 
 <Info>
-**Episode IDs** use ULID format (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
+**Episode IDs** are `ep_<ULID>` (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
 </Info>
+
+Paused or interrupted runs stay **unsealed**: `final.json` and `manifest.json` are written only when the runtime reaches a terminal outcome. Presence of `final.json` is the canonical seal.
 
 ## summary.json
 
@@ -334,6 +345,60 @@ noesis events ep_abc123 --phase act
 noesis events ep_abc123 -j | jq '.[] | select(.phase == "plan")'
 ```
 
+## final.json
+
+`final.json` is the terminal seal. If this file exists, the run is sealed and lifecycle writes (`interrupt`, `checkpoint`, `resume`) are rejected.
+
+### Schema (`final/2.0.0`)
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
+  "process_id": "a1b2c3d4e5f6",
+  "run_index": 3,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "verified"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Always `final/2.0.0` |
+| `episode_id` | Sealed run id |
+| `process_id` | Process identity that owned the run |
+| `run_index` | Monotonic per-process run counter (1-based) |
+| `outcome` | `success`, `failed`, `vetoed`, `cancelled`, `interrupted`, or `error` |
+| `verification_status` | `verified`, `unverified`, or `not_applicable` |
+
+Sealing order is fail-closed:
+
+1. Write `final.json`
+2. Write `manifest.json` including `final.json`
+3. If manifest writing fails, delete `final.json` so the run is not marked sealed
+
+## checkpoints/
+
+Checkpoints are pointers, not full snapshots. `ns.checkpoint(...)` writes `checkpoints/<checkpoint_id>/checkpoint.json` and emits `run.checkpoint`.
+
+```json
+{
+  "schema_version": "checkpoint/1.0.0",
+  "run_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
+  "checkpoint_id": "chk_ab12cd34ef56",
+  "created_at": "2024-01-15T10:30:04Z",
+  "event_offset": 12,
+  "last_event_id": "evt_abc123",
+  "state_hash": "sha256:...",
+  "artifact_manifest_hash": "sha256:..."
+}
+```
+
+`artifact_manifest_hash` is `sha256(manifest.json)` when that file exists. Unsealed runs usually have no manifest, so the runtime hashes a canonical digest of the current artifact set instead. The `events.jsonl` contribution is the prefix of `event_offset` lines, so later lifecycle events do not invalidate the pointer.
+
+Resume recomputes those hashes. If `manifest.json` appears, disappears, or changes after the checkpoint, resume raises `CheckpointConsistencyError`. Do not edit episode files between checkpoint and resume.
+
 ## manifest.json
 
 The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional signatures.
@@ -365,6 +430,8 @@ The manifest provides integrity verification for all artifacts with SHA-256 hash
 | `files` | Array of files with `name`, `sha256`, `size_bytes`, `kind` (`summary`, `state`, `events`, `learn`, `attachment`, `custom`) |
 | `signature` | Optional signature block with algorithm, key ID, value, timestamp |
 
+`files` is an **array of objects**, not a name-keyed map. Kind values commonly include `summary`, `state`, `events`, `learn`, and `attachment`. Terminal manifests also catalog `final.json`.
+
 ### Artifact immutability guarantees
 
 All artifacts are written atomically using this pattern:
@@ -383,26 +450,19 @@ from pathlib import Path
 
 
 def verify_manifest(episode_dir: Path) -> bool:
-    """Verify artifact integrity using manifest."""
-    manifest_path = episode_dir / "manifest.json"
-    
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-    
-    for filename, info in manifest["files"].items():
-        file_path = episode_dir / filename
-        
-        # Check size
-        if file_path.stat().st_size != info["size"]:
+    """Verify artifact integrity using manifest.json."""
+    manifest = json.loads((episode_dir / "manifest.json").read_text(encoding="utf-8"))
+    for entry in manifest["files"]:
+        file_path = episode_dir / entry["name"]
+        if not file_path.is_file():
             return False
-        
-        # Check hash
-        with open(file_path, "rb") as f:
-            actual_hash = hashlib.sha256(f.read()).hexdigest()
-        
-        if actual_hash != info["sha256"]:
+        if file_path.stat().st_size != entry["size_bytes"]:
             return False
-    
+        actual_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
+        expected = entry["sha256"]
+        expected_hex = expected.split(":", 1)[1] if expected.startswith("sha256:") else expected
+        if actual_hash != expected_hex:
+            return False
     return True
 ```
 
@@ -457,7 +517,7 @@ When prompt provenance is enabled (ADR-005, experimental), all prompts are recor
 ```
 
 <Warning>
-**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(log_prompts=True)` only when needed for debugging or compliance.
+**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(prompt_provenance_enabled=True, prompt_provenance_mode="hash_only")` only when needed for debugging or compliance.
 </Warning>
 
 ### Use cases
@@ -481,19 +541,19 @@ ns.set(runs_dir="./my-runs")
 # NOESIS_RUNS_DIR=./my-runs
 ```
 
-### Labels
+### Process grouping
 
-Organize episodes with labels:
+Episode directories are not nested by label. Group related runs with a process name instead:
 
 ```python
 import noesis as ns
 
-ns.set(label="production")
-# Artifacts go to .noesis/episodes/production/ep_.../
-
-ns.set(label="staging")
-# Artifacts go to .noesis/episodes/staging/ep_.../
+ns.run("nightly triage", process="triage-bot")
+# Episode: .noesis/episodes/ep_<ULID>/
+# Process: .noesis/processes/<process_id>.json
 ```
+
+Process identity is `sha256(workspace_identity|process_name)[:12]`. The same workspace + name always maps to the same `process_id`. Inspect with `noesis processes` or `noesis ps --process triage-bot`.
 
 ### Retention
 

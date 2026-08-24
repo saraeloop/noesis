@@ -624,6 +624,39 @@ Runtime events share `phase="runtime"` and use `event_type` as the stable subtyp
 The current lifecycle family includes `run.interrupt`, `run.checkpoint`,
 `run.resume`, and `run.state_projection`.
 
+`run.interrupt` records a pause request. `run.checkpoint` records the pointer written to `checkpoints/<checkpoint_id>/checkpoint.json`. `run.resume` records that the pointer was validated and continuation may proceed.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.checkpoint",
+  "payload": {
+    "kind": "run.checkpoint",
+    "status": "paused",
+    "checkpoint_id": "chk_ab12cd34ef56",
+    "event_offset": 12,
+    "checkpoint_path": "checkpoints/chk_ab12cd34ef56/checkpoint.json"
+  },
+  "caused_by": "evt_interrupt123"
+}
+```
+
+<ResponseField name="payload.checkpoint_id" type="string">
+Id of the on-disk checkpoint pointer. Required on `run.checkpoint` and `run.resume`.
+</ResponseField>
+
+<ResponseField name="payload.event_offset" type="integer">
+Number of `events.jsonl` records at checkpoint time. Resume hashes only this prefix when computing `artifact_manifest_hash` for unsealed runs.
+</ResponseField>
+
+<ResponseField name="payload.checkpoint_path" type="string">
+Relative path of `checkpoint.json` inside the episode directory (`run.checkpoint` only).
+</ResponseField>
+
+<ResponseField name="payload.resume_strategy" type="string">
+On `run.resume`, currently `same_run_id`. Continuation stays on the original episode id.
+</ResponseField>
+
 `run.state_projection` is emitted whenever state is persisted so `state.json`
 outcome/link fields have explicit event evidence.
 

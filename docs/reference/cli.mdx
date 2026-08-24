@@ -57,6 +57,14 @@ Most commands accept:
 noesis run "Draft release notes"
 ```
 
+Group related runs under a named process:
+
+```bash
+noesis run "Draft release notes" --process release-bot
+```
+
+`--process` is a display name. The runtime derives a stable `process_id` from `sha256(workspace_identity|name)[:12]`. The same workspace + name always maps to the same process. Omit `--process` and Noēsis auto-derives a name from the workspace directory.
+
 Run with verification inputs:
 
 ```bash
@@ -121,12 +129,29 @@ noesis events ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C --phase governance
 
 ### Process-oriented inspection
 
+A **process** is the operator-facing identity that groups runs. Records live in `.noesis/processes/<process_id>.json` (schema `process/1.1`) next to episode artifacts.
+
+| Field | Meaning |
+| --- | --- |
+| `process_id` | Stable 12-hex digest from workspace + optional name |
+| `process_name` | Human label (`--process` value, or auto-derived) |
+| `kind` | Currently `oneshot` for CLI/`ns.run` / `ns.solve` |
+| `status` | `running`, `idle`, `stale`, or `error` |
+| `run_index` / `next_run_index` | Monotonic per-process run counter |
+| `active_run_id` | Current episode id while a run is in flight |
+| `last_run_outcome` | Outcome of the most recent completed run |
+
+Liveness: while a run is active the runtime heartbeats about every 150s. `noesis processes` reports `stale` when the last heartbeat is older than 300 seconds. `idle` and `error` statuses are returned as stored.
+
 ```bash
 # Process liveness and metadata
 noesis processes --limit 20
 
+# Filter by id or name
+noesis processes --process release-bot
+
 # Runs for a specific process
-noesis runs --process alpha --limit 20
+noesis runs --process release-bot --limit 20
 ```
 
 ### Diagnostics and integrity
@@ -216,6 +241,17 @@ Fix:
 - inspect `events.jsonl` near the reported line number
 - restore the run artifacts from a known-good copy if available
 - re-run the episode if recovery is not possible
+
+### `CheckpointConsistencyError` on resume
+
+Cause: artifacts changed after `ns.checkpoint(...)`. Resume compares `event_offset`, `last_event_id`, `state_hash`, and `artifact_manifest_hash`.
+
+Typical triggers:
+
+- editing `state.json` or `events.jsonl`
+- adding, removing, or rewriting `manifest.json` on a paused run
+
+Fix: restore the artifact set from checkpoint time. Do not hand-edit episode files between checkpoint and `ns.resume` / `ns.resume_run`.
 
 ### `Textual not available: ...` on `noesis browse`
 

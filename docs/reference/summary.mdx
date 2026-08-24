@@ -88,6 +88,39 @@ Verification summary block.
 </Expandable>
 </ResponseField>
 
+## Process
+
+Operator identity for the run. Written by `ns.run` / `ns.solve` when a process is registered.
+
+```json
+{
+  "process": {
+    "id": "a1b2c3d4e5f6",
+    "name": "triage-bot",
+    "kind": "oneshot",
+    "run_index": 3
+  }
+}
+```
+
+<ResponseField name="process.id" type="string">
+Stable process id (`sha256(workspace_identity|name)[:12]`).
+</ResponseField>
+
+<ResponseField name="process.name" type="string">
+Display name from `process=` / `--process`, or an auto-derived workspace label.
+</ResponseField>
+
+<ResponseField name="process.kind" type="string">
+Execution style. CLI and Python entrypoints currently register `oneshot`.
+</ResponseField>
+
+<ResponseField name="process.run_index" type="integer">
+Monotonic per-process run counter. The same value is copied into `final.json`.
+</ResponseField>
+
+The same block appears on `state.json` when process identity is present.
+
 ## Flags
 
 Configuration flags for the episode run.
