@@ -29,6 +29,7 @@ episode_id = ns.run(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
@@ -57,6 +58,10 @@ Optional runtime context. If provided, execution bypasses the default session.
 Workspace root to snapshot for verification.
 </ParamField>
 
+<ParamField body="process" type="str | None" default="None">
+Human process label for grouping runs. Stored in the process registry under `.noesis/processes/`; does **not** nest episode directories. Identity is `sha256(workspace|name)[:12]`.
+</ParamField>
+
 <ParamField body="verify" type="VerifySpec | Sequence[VerifySpec] | None" default="None">
 Verification assertions to evaluate against the workspace.
 </ParamField>
@@ -70,6 +75,7 @@ import noesis as ns
 
 episode_id = ns.run("Draft release notes")
 episode_id = ns.run("Draft release notes", intuition=False, tags={"env": "staging"})
+episode_id = ns.run("Apply canary", process="rollout", seed=42)
 ```
 
 **Runtime context example**:
@@ -99,6 +105,7 @@ episode_id = ns.solve(
     tags: dict[str, object] | None = None,
     context: Any | None = None,
     workspace: str | Path | None = None,
+    process: str | None = None,
     verify: VerifySpec | Sequence[VerifySpec] | None = None,
 ) -> str
 ```
@@ -174,29 +181,41 @@ episode_id = ns.resume_run(
 ```python
 import noesis as ns
 
-# 1) Optional: enable pause-on-veto in enforce mode
+# 1) Enable pause-on-veto in enforce mode so a veto pauses instead of sealing
 ns.set(
     governance_mode="enforce",
     governance_pause_on_veto=True,
 )
 
-# 2) Start a run
+# 2) Start a run. If governance vetoes, solve returns an unsealed episode
+#    with run.interrupt + run.checkpoint already on the trace.
 episode_id = ns.solve("Danger operation: delete production database", using=my_graph)
 
-# 3) Manual pause (if your approval system decides to pause)
-interrupt_id = ns.interrupt(episode_id, reason="Awaiting human approval")
-checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
-
-# 4a) Emit resume evidence only (no execution continuation)
-resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
-
-# 4b) Continue execution from checkpoint on the same run ID
-episode_id = ns.resume_run(
-    episode_id,
-    checkpoint_id=checkpoint["checkpoint_id"],
-    using=my_graph,  # required for non-minimal runs
+checkpoint_event = next(
+    (
+        event
+        for event in ns.events.read(episode_id)
+        if event.get("phase") == "runtime" and event.get("event_type") == "run.checkpoint"
+    ),
+    None,
 )
+
+if checkpoint_event is None:
+    # Run completed and sealed. ns.interrupt(...) would raise RunSealedError.
+    pass
+else:
+    checkpoint_id = checkpoint_event["payload"]["checkpoint_id"]
+    # 3a) Emit resume evidence only (no execution continuation)
+    resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint_id)
+    # 3b) Continue execution from checkpoint on the same run ID
+    episode_id = ns.resume_run(
+        episode_id,
+        checkpoint_id=checkpoint_id,
+        using=my_graph,  # required for non-minimal runs
+    )
 ```
+
+Manual `ns.interrupt` / `ns.checkpoint` is only valid on **unsealed** runs. After `final.json` exists, use a new run rather than mutating the sealed episode.
 
 Determinism scope:
 
@@ -304,7 +323,7 @@ episodes = list_runs(
 ) -> list[dict]
 ```
 
-Each row includes `episode_id`, `task`, `started_at`, `flags`, `success`, `manifest`, and `manifest_status` (when `strict_manifest=True`).
+Each row includes `episode_id`, `task`, `started_at`, `flags`, `success`, `process`, `manifest`, and `manifest_status` (when `strict_manifest=True`). There is no `timestamp` field; use `started_at`.
 
 <Note>
 In v1.0.0, `ns.list_runs()` exists as a deprecated legacy alias. Prefer `noesis.io.list_runs()`.
@@ -592,18 +611,20 @@ Manage an on-disk episode manifest (and optional FAISS similarity index).
 from noesis.episode import EpisodeIndex
 
 store = EpisodeIndex(
-    root="./.noesis/episodes/_episodes",
-    ttl_days=14,
+    root=".noesis/index",
+    ttl_days=30,
     enable_faiss=False,  # set True if faiss + numpy installed and you provide embeddings
 )
 ```
+
+The runtime writes this index best-effort after sealing (`noesis/core.py`, `ttl_days=30`). `vacuum()` drops expired **index rows** only; it does not delete `.noesis/episodes/ep_*/` directories. There is no `_episodes/` folder under `episodes/`.
 
 **Core methods**:
 
 - `append(episode_id, summary_path, state_path, status, task, using, provenance=None, embedding=None)`
 - `iter(include_expired=False)` → iterator of `EpisodeRecord`
 - `search(embedding, k=5)` → similarity matches (empty if FAISS disabled)
-- `vacuum()` → prune expired records
+- `vacuum()` → rewrite `episodes.jsonl` excluding expired index rows (does not delete episode directories)
 
 ## Type definitions
 

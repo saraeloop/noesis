@@ -8,20 +8,29 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
 ## Artifact structure
 
 ```
-.noesis/episodes/
-  <label>/                     # e.g., "demo", "production"
-    <episode_id>/              # e.g., "ep_20251108_120000_abc123_def4_s0"
+.noesis/
+  episodes/
+    ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/   # episode id (ep_<ULID>)
       events.jsonl             # cognitive event timeline with lineage
       summary.json             # metrics and KPIs (insight.metrics)
       state.json               # plan, beliefs, memory, outcomes
-      manifest.json            # SHA-256 catalog + optional HMAC
+      final.json               # terminal seal marker (absent while paused)
+      manifest.json            # SHA-256 catalog (terminal runs)
       learn.jsonl              # learning signals (optional)
       prompts.jsonl            # prompt provenance (opt-in, ADR-005)
+      checkpoints/             # pause / interrupt pointers
+  processes/                   # process registry (grouping, not a directory nest)
+    index.json
+    <process_id>.json
+  index/                       # best-effort EpisodeIndex (not _episodes/)
+    episodes.jsonl
 ```
 
 <Info>
-**Episode IDs** use ULID format (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
+**Episode IDs** use `ep_<ULID>` (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking. Episode directories are **flat** under `episodes/`; there is no per-label subdirectory.
 </Info>
+
+Paused runs (interrupt / `governance_pause_on_veto=True`) keep `events.jsonl` and `state.json` append-only and **do not** write `final.json` or `manifest.json` until the run becomes terminal.
 
 ## summary.json
 
@@ -32,7 +41,7 @@ The summary captures episode outcomes, metrics, and cross-references.
 ```json
 {
   "schema_version": "1.3.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "task": "Draft release notes for v1.2.0",
   "seed": 42,
   "started_at": "2024-01-15T10:30:00Z",
@@ -119,7 +128,7 @@ The state captures the cognitive context at the end of the episode.
   "version": "1.0",
   "state_schema_version": "1.0.0",
   "episode": {
-    "id": "ep_2024_abc123_s0",
+    "id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
     "seed": 0,
     "adapter": "baseline",
     "started_at": "2024-01-15T10:30:00Z",
@@ -343,7 +352,7 @@ The manifest provides integrity verification for all artifacts with SHA-256 hash
 ```json
 {
   "schema_version": "manifest/1.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "created_at": "2024-01-15T10:30:05Z",
   "files": [
     {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
@@ -439,25 +448,32 @@ if learn_path.exists():
 
 ## prompts.jsonl (opt-in)
 
-When prompt provenance is enabled (ADR-005, experimental), all prompts are recorded for debugging and auditing.
+When prompt provenance is enabled (ADR-005, experimental), prompts are recorded under `.noesis/episodes/<episode_id>/prompts.jsonl`. See [Prompt provenance](/explanation/prompt-provenance) for field-level mode behavior.
 
-### Schema
+### Schema (`prompt@1.1.0`)
 
 ```json
 {
-  "prompt_id": "pmt_abc123",
-  "timestamp": "2024-01-15T10:30:01Z",
-  "model": "gpt-4",
-  "template": "Generate release notes for:\n{changelog}",
-  "variables": {"changelog": "..."},
-  "response": "## Release Notes...",
-  "tokens": {"input": 150, "output": 200},
-  "latency_ms": 1250
+  "$schema_name": "prompt",
+  "$schema_version": "1.1.0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
+  "phase": "plan",
+  "agent_id": "direction.planner",
+  "role": "system",
+  "template_id": "planner.v2",
+  "template": "Plan for: {{goal}}",
+  "rendered": "Plan for: ship the release",
+  "variables": {"goal": "ship the release"},
+  "fingerprint": "sha256:...",
+  "timestamp": "2025-11-21T12:34:56.789Z",
+  "model": "gpt-4.1",
+  "mode": "full",
+  "tags": {"env": "production"}
 }
 ```
 
 <Warning>
-**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(log_prompts=True)` only when needed for debugging or compliance.
+**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(prompt_provenance_enabled=True, prompt_provenance_mode="hash_only")`. There is no `log_prompts` config key.
 </Warning>
 
 ### Use cases
@@ -471,39 +487,46 @@ When prompt provenance is enabled (ADR-005, experimental), all prompts are recor
 
 ### Runs directory
 
-```python
-import noesis as ns
+Default `runs_dir` is `.noesis/episodes`. Path resolution (`noesis/runtime/paths.py`):
 
-# Set custom runs directory
-ns.set(runs_dir="./my-runs")
-
-# Or via environment
-# NOESIS_RUNS_DIR=./my-runs
-```
-
-### Labels
-
-Organize episodes with labels:
+| `runs_dir` value | Episodes written to |
+| --- | --- |
+| `.noesis/episodes` (parent is `.noesis`) | that directory |
+| `.noesis` | `.noesis/episodes` |
+| any other path | `{runs_dir}/.noesis/episodes` (unless `{runs_dir}/episodes` already exists) |
 
 ```python
 import noesis as ns
 
-ns.set(label="production")
-# Artifacts go to .noesis/episodes/production/ep_.../
-
-ns.set(label="staging")
-# Artifacts go to .noesis/episodes/staging/ep_.../
+ns.set(runs_dir=".noesis/episodes")
+# NOESIS_RUNS_DIR=.noesis/episodes
 ```
+
+Pitfall: `NOESIS_RUNS_DIR=/srv/noesis/episodes` does **not** treat that path as the episodes root, because the parent directory is not named `.noesis`. Prefer `/srv/noesis/.noesis/episodes`.
+
+### Process grouping (not labels)
+
+`ns.set(label=...)` is not a config key and raises `ValueError: unknown config keys`. Group related runs with `process=`:
+
+```python
+import noesis as ns
+
+episode_id = ns.run("Apply canary", process="rollout")
+# CLI: noesis run "Apply canary" --process rollout
+# Inspect: noesis processes && noesis runs --process rollout
+```
+
+Process identity is `sha256("{workspace}|{name}")[:12]` when a name is provided (`noesis.domain.process.derive_process_identity`). Registry files live under `.noesis/processes/`. Episode bundles stay flat: `.noesis/episodes/ep_<ULID>/`.
 
 ### Retention
 
-Control artifact retention:
+The runtime appends a best-effort index under `.noesis/index/` with `ttl_days=30`. `EpisodeIndex.vacuum()` rewrites `episodes.jsonl` to drop **expired index rows**; it does not delete episode directories.
 
 ```python
 from noesis.episode import EpisodeIndex
 
-store = EpisodeIndex("./.noesis/episodes/_episodes", ttl_days=14)
-store.vacuum()  # Remove episodes older than 14 days
+store = EpisodeIndex(".noesis/index", ttl_days=30)
+removed = store.vacuum()  # count of expired index records removed
 ```
 
 ## Best practices
