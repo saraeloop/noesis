@@ -85,18 +85,20 @@ print(summary["metrics"]["success"])
 print(timeline[0]["phase"], timeline[0].get("payload"))
 ```
 
-Every run produces a clean artifact structure:
+Every run produces a clean artifact structure. Directories are **flat** (`ep_<ULID>/` under `.noesis/episodes/`). Group related runs with `process=` / `--process`; `ns.set(label=...)` is not a config key.
 
 ```
 .noesis/episodes/
-  demo/                # label (configurable)
-    ep_.../            # episode id
-      summary.json     # metrics and outcomes
-      state.json       # current plan and episode state
-      events.jsonl     # timeline with causal IDs
-      manifest.json    # SHA-256 + size ledger for tamper evidence
-      learn.jsonl      # optional learning payloads
+  ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/
+    summary.json     # metrics and outcomes
+    state.json       # current plan and episode state
+    events.jsonl     # timeline with causal IDs
+    final.json       # terminal seal marker
+    manifest.json    # SHA-256 + size ledger for tamper evidence
+    learn.jsonl      # optional learning payloads
 ```
+
+Paused runs stay unsealed (no `final.json` / `manifest.json`) until continuation.
 
 ## Next steps
 

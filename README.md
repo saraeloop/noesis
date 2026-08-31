@@ -11,7 +11,7 @@ _Understanding, made observable._
 
 Noēsis is a cognitive runtime for agent workflows. It turns each run into an auditable episode with a causal event chain, governed side effects, and resumable execution.
 
-Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`) that can be inspected, audited, and verified.
+Each run produces a structured artifact pack (`events.jsonl`, `summary.json`, `state.json`, `manifest.json`) that can be inspected, audited, and verified. Terminal runs also write `final.json`. Paused runs stay unsealed until continuation.
 
 Bring your own graphs, loops, tools, and prompts. Noēsis adds runtime evidence, verification, and governance boundaries without replacing your orchestrator or agent framework.
 
@@ -42,7 +42,7 @@ Noēsis gives you a third option: keep your orchestrator, but run it inside a ru
 
 ## What Noēsis does
 
-- **structured episodes**: every run emits `events.jsonl`, `summary.json`, `state.json`, `final.json`, and `manifest.json`
+- **structured episodes**: every run emits `events.jsonl`, `summary.json`, and `state.json`. Terminal runs also seal `final.json` and `manifest.json`.
 - **governed side effects**: review, audit, veto, or pause actions before they execute
 - **resumable execution**: interrupt, checkpoint, and continue the same run
 - **verification**: capture workspace evidence and assert expected changes
@@ -58,34 +58,15 @@ episode_id = ns.run("Draft a weekly engineering update", intuition=True)
 summary = ns.summary.read(episode_id)
 timeline = list(ns.events.read(episode_id))
 
-ns.set(
-    governance_mode="enforce",
-    governance_pause_on_veto=True,
-    governance_failure_policy="fail_closed",
-    prompt_provenance_enabled=True,
-    prompt_provenance_mode="full",
-)
-
-# Start the run
-episode_id = ns.solve(
-    task="Apply canary rollout config to production",
-    using=lambda: my_agent(),
-    workspace="./repo",
-    verify=(
-        ns.file_exists("canary-rollout.json"),
-        ns.only_modified(["canary-rollout.json"]),
-    ),
-)
-
-# Governance vetoes the risky write →
-# run automatically emits interrupt + checkpoint
-# UI shows: run is paused, waiting on you
+print(summary["metrics"]["success"])
+print(timeline[0]["phase"], timeline[0].get("payload"))
+```
 
 ## How it works
 
 Noēsis models each run as explicit cognition phases:
 
-**Observe -> Interpret -> Plan -> Govern -> Act -> Reflect -> Learn**
+**Observe -> Interpret -> Plan -> Direction -> Governance -> Act -> Reflect -> Learn -> Insight**
 
 Each phase emits typed events with `caused_by` linkage, so the artifact trail preserves how the run moved from observation to action and reflection.
 
@@ -106,23 +87,31 @@ flowchart LR
 
 ## Artifact layout
 
-By default, Noēsis writes artifacts under `.noesis/episodes/`:
+By default, Noēsis writes artifacts under `.noesis/episodes/<episode_id>/`. Episode IDs are `ep_<ULID>`. Directories are flat: there is no per-label nesting. Group related runs with `process=` / `--process` instead of `ns.set(label=...)` (`label` is not a config key).
 
 ```text
 .noesis/
   episodes/
-    ep_.../
+    ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/
       events.jsonl
       summary.json
       state.json
-      final.json
-      manifest.json
+      final.json      # terminal runs only
+      manifest.json   # terminal runs only
       learn.jsonl     # optional
-      prompts.jsonl   # optional
-      snapshots/
+      prompts.jsonl   # optional, prompt provenance
+      snapshots/      # when verify=... is set
         pre.json
         post.json
+      checkpoints/    # paused / interrupted runs
+  processes/
+    index.json
+    <process_id>.json
+  index/
+    episodes.jsonl    # best-effort EpisodeIndex (TTL 30 days)
 ```
+
+Paused runs (for example enforce-mode veto with `governance_pause_on_veto=True`) write a checkpoint and **do not** seal `final.json` / `manifest.json` until continuation finishes.
 
 ## Governed side effects
 
@@ -158,9 +147,16 @@ except NoesisVeto as veto:
 
 ## Workspace verification
 
-## Artifact contract
+Pass `verify=` to `ns.run` / `ns.solve` with helpers from `noesis.verification` (also re-exported on `ns`):
 
-Every episode writes a sealed artifact pack:
+```python
+import noesis as ns
+
+verify = (
+    ns.file_exists("canary-rollout.json"),
+    ns.file_contains("canary-rollout.json", "canary: true"),
+    ns.only_modified(["canary-rollout.json"]),
+)
 
 episode_id = ns.solve(
     "Update config",
@@ -170,46 +166,56 @@ episode_id = ns.solve(
 )
 ```
 
+`file_contains` is literal-only in v0.1: passing a compiled `re.Pattern` without `literal=True` raises `ValueError`. The CLI also rejects combining `--verify-no-modifications` with `--verify-only-modified`.
+
+Verification writes `snapshots/pre.json` and `snapshots/post.json` and records the result on the episode summary.
+
 ## Pause, checkpoint, and continue
+
+Do not call `interrupt` / `checkpoint` after a completed run. Terminal runs write `final.json` and reject later lifecycle mutations with `RunSealedError`.
+
+Canonical approval path: pause during the run, then continue the **same** episode ID.
 
 ```python
 import noesis as ns
 
-episode_id = ns.solve(
-    task="Update rollout config",
-    using=lambda: my_agent(),
-    workspace="./repo",
-    verify=(
-        ns.file_exists("canary-rollout.json"),
-        ns.file_contains("canary-rollout.json", "canary: true"),
-        ns.only_modified(["canary-rollout.json"]),
-    ),
+ns.set(
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
 )
-```
 
-Verification produces `snapshots/pre.json` and `snapshots/post.json` and records verification state in the episode artifacts.
-
----
-
-interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
-checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
-
-ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
-
-episode_id = ns.resume_run(
-    episode_id,
-    checkpoint_id=checkpoint["checkpoint_id"],
+episode_id = ns.solve(
+    task="Danger operation: delete production database",
     using=my_graph,
 )
 
-episode_id = session.solve(task="...", using=lambda: my_agent())
-restore()
+checkpoint_event = next(
+    event
+    for event in ns.events.read(episode_id)
+    if event.get("phase") == "runtime" and event.get("event_type") == "run.checkpoint"
+)
+checkpoint_id = checkpoint_event["payload"]["checkpoint_id"]
+
+# After human approval, continue the same run
+episode_id = ns.resume_run(
+    episode_id,
+    checkpoint_id=checkpoint_id,
+    using=my_graph,
+)
+```
+
+You can also pause an **unsealed** run yourself:
+
+```python
+interrupt_id = ns.interrupt(episode_id, reason="awaiting approval")
+checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+ns.resume_run(episode_id, checkpoint_id=checkpoint["checkpoint_id"], using=my_graph)
 ```
 
 Rule of thumb:
 
-- `resume()` emits lifecycle evidence only
-- `resume_run()` emits `run.resume` and continues execution
+- `resume()` emits lifecycle evidence only (`run.resume`)
+- `resume_run()` emits `run.resume` and continues execution on the same run ID
 
 ## Install
 
@@ -228,6 +234,8 @@ Run the demo:
 uv run python examples/demo.py
 ```
 
+The demo sets `runs_dir="./.noesis/episodes/demo"`, so its artifacts live under that custom root rather than the default `.noesis/episodes/` directory.
+
 ## Who it's for
 
 **Builders / platform teams**: wrap LangGraph, CrewAI, or custom graphs with observable cognition and governed execution without rewriting your orchestrator.
@@ -240,16 +248,20 @@ uv run python examples/demo.py
 
 ## Docs and links
 
-- Artifacts guide: `docs/artifacts/state.md`
-- Schema index: `docs/app/reference/schema-index.mdx`
-- CLI reference: `docs/app/reference/cli/page.mdx`
-- Quickstart guide: `docs/app/guides/quickstart/page.mdx`
+- Quickstart: `docs/quickstart.mdx`
+- Artifacts: `docs/explanation/artifacts.mdx`
+- Python API: `docs/reference/python-api.mdx`
+- CLI reference: `docs/reference/cli.mdx`
+- Events schema: `docs/reference/events.mdx`
+- Human-in-the-loop: `docs/guides/human-in-the-loop.mdx`
 - Examples: `examples/README.md`
+
+Published site: https://docs.noesis.systems
 
 ## Status
 
 - Package: `noesis` v1.0.0
-- Schema pack: summary/state/events/kpi v1.0.0
+- Schema pack: summary 1.3.0, events 1.3.0, final 2.0.0
 - Python: >= 3.11
 - CI: contracts, schema guard, and release preparation run in GitHub Actions
 

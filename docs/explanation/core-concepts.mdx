@@ -13,44 +13,37 @@ An **episode** is the fundamental unit of execution in Noēsis. Every time you r
 import noesis as ns
 
 episode_id = ns.run("Draft release notes")
-# episode_id = "ep_2024_abc123_s0"
+# episode_id = "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C"
 ```
 
 ### Episode lifecycle
 
-Episodes progress through a defined lifecycle:
+A run either **seals** or **pauses**:
 
 ```
-queued → running → completed | errored | vetoed
+running → sealed (final.json + manifest.json)
+        → paused (checkpoint, unsealed until resume_run)
 ```
 
-| Status | Meaning |
+| Outcome | Meaning |
 | --- | --- |
-| `queued` | Episode created, waiting to start |
-| `running` | Cognitive loop in progress |
-| `completed` | All phases finished successfully |
-| `errored` | An exception occurred during execution |
-| `vetoed` | A policy blocked execution |
+| Sealed terminal | `final.json` exists. Lifecycle APIs raise `RunSealedError`. |
+| Paused / interrupted | Checkpoint written; no `final.json` yet. Continue with `ns.resume_run(...)`. |
+| Enforce veto (default) | Side effect is blocked and the run terminates (`governance_pause_on_veto=False`). |
+| Enforce veto (pause) | Side effect is blocked, then `run.interrupt` + `run.checkpoint` (`governance_pause_on_veto=True`). |
 
 ### Episode IDs
 
-Episode IDs follow the format `ep_<timestamp>_<hash>_s<seed>`:
+Episode IDs follow the format `ep_<ULID>` (26 Crockford base32 characters after the prefix). The ULID encodes a millisecond timestamp plus entropy so IDs sort chronologically.
 
-- `ep_` prefix identifies it as an episode
-- `<timestamp>` provides chronological ordering
-- `<hash>` ensures uniqueness
-- `s<seed>` enables reproducible runs with the same seed
+Reproducibility uses the **per-call** `seed=` argument. `seed` is not a `ns.set()` config key.
 
 ```python
 import noesis as ns
 
-# Reproducible runs with the same seed
-ns.set(seed=42)
-ep1 = ns.run("task")
-
-ns.set(seed=42)
-ep2 = ns.run("task")
-# ep1 and ep2 will have matching behavior
+ep1 = ns.run("task", seed=42)
+ep2 = ns.run("task", seed=42)
+# Matching seed + frozen inputs → matching behavior (external tools/LLMs may still vary)
 ```
 
 ## The cognitive loop
@@ -146,13 +139,13 @@ Every episode produces structured **artifacts** that capture the full cognitive 
 
 ```
 .noesis/episodes/
-  demo/                    # label
-    ep_2024_abc123_s0/     # episode
-      summary.json         # metrics and outcomes
-      state.json           # cognitive state
-      events.jsonl         # timeline
-      manifest.json        # integrity checksums
-      learn.jsonl          # learning signals (optional)
+  ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/
+    summary.json         # metrics and outcomes
+    state.json           # cognitive state
+    events.jsonl         # timeline
+    final.json           # terminal seal
+    manifest.json        # integrity checksums
+    learn.jsonl          # learning signals (optional)
 ```
 
 ### summary.json
@@ -162,7 +155,7 @@ The summary captures episode outcomes, flags, metrics, and insight:
 ```json
 {
   "schema_version": "1.3.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "task": "Draft release notes",
   "seed": 42,
   "started_at": "2024-01-15T10:30:00Z",
@@ -213,7 +206,7 @@ The state captures the cognitive context:
 {
   "version": "1.0",
   "episode": {
-    "id": "ep_2024_abc123_s0",
+    "id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
     "adapter": "baseline"
   },
   "goal": {
@@ -252,7 +245,7 @@ The manifest provides integrity verification:
 ```json
 {
   "schema_version": "manifest/1.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "created_at": "2024-01-15T10:30:05Z",
   "files": [
     {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
@@ -314,10 +307,12 @@ Noēsis is configured through multiple sources:
 
 Key configuration options:
 
-- `runs_dir`: Where artifacts are stored
+- `runs_dir`: Where artifacts are stored (default `.noesis/episodes`)
 - `planner_mode`: `meta` (full governance) or `minimal`
-- `seed`: For reproducible episodes
-- `label`: Subdirectory name for organizing runs
+- `governance_mode` / `governance_pause_on_veto`: pre-act audit and pause-on-veto
+- Per-call `seed=`, `tags=`, `process=`, `verify=` on `ns.run` / `ns.solve` (not `ns.set()` keys)
+
+There is no `label` config key. Group runs with `process="rollout"` / `--process rollout`. Process identity is `sha256(workspace|name)[:12]` and lives under `.noesis/processes/`, not as a nested episode folder.
 
 ## Mental model
 

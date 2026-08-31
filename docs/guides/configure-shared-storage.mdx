@@ -24,14 +24,15 @@ ls /srv/noesis/episodes
 # (empty or existing runs)
 ```
 
-Configure your app/runtime to use it as the base runs directory, e.g.:
+Configure your app/runtime to use a path whose parent is `.noesis` so the resolver treats it as the episodes root:
 
 ```bash
-# pseudo-config
-NOESIS_RUNS_DIR=/srv/noesis/episodes
+NOESIS_RUNS_DIR=/srv/noesis/.noesis/episodes
 ```
 
-Result: `/srv/noesis/episodes/<service>/<episode-id>/` is shared across the team.
+Result: `/srv/noesis/.noesis/episodes/<episode-id>/` is shared across the team. There is no per-service subdirectory; group runs with `--process` / `process=`.
+
+Pitfall: `NOESIS_RUNS_DIR=/srv/noesis/episodes` (parent not named `.noesis`) resolves to `/srv/noesis/episodes/.noesis/episodes/`.
 
 ## B) Shared dev: local + S3 (or any object store)
 
@@ -39,13 +40,13 @@ Don’t write directly to S3; sync a local directory.
 
 ```bash
 # App writes episodes locally
-NOESIS_RUNS_DIR=/var/noesis/episodes
+NOESIS_RUNS_DIR=/var/noesis/.noesis/episodes
 
 # Periodic sync job (cron/CI)
-aws s3 sync /var/noesis/episodes s3://my-bucket/noesis-runs --delete
+aws s3 sync /var/noesis/.noesis s3://my-bucket/noesis-root --delete
 
 # Optionally pull shared episodes down
-aws s3 sync s3://my-bucket/noesis-runs /var/noesis/episodes
+aws s3 sync s3://my-bucket/noesis-root /var/noesis/.noesis
 ```
 
 Pattern: local path for fast replay/debugging, S3 as central archive.
@@ -53,15 +54,15 @@ Pattern: local path for fast replay/debugging, S3 as central archive.
 ## C) Docker: bind-mount the runs directory
 
 ```bash
-mkdir -p /srv/noesis/episodes
+mkdir -p /srv/noesis/.noesis/episodes
 
 docker run \
-  -v /srv/noesis/episodes:/app/.noesis/episodes \
+  -v /srv/noesis/.noesis:/app/.noesis \
   -e NOESIS_RUNS_DIR=/app/.noesis/episodes \
   my-noesis-service:latest
 ```
 
-Inside the container, Noēsis writes to `/app/.noesis/episodes/...`; on the host, you see `/srv/noesis/episodes/...`.
+Inside the container, Noēsis writes to `/app/.noesis/episodes/<episode-id>/`; on the host, you see `/srv/noesis/.noesis/episodes/<episode-id>/`. Mount the `.noesis` root so `processes/` and `index/` stay with the episodes.
 
 ## D) Kubernetes: PersistentVolumeClaim
 
@@ -88,17 +89,17 @@ spec:
           image: my-noesis-service:latest
           env:
             - name: NOESIS_RUNS_DIR
-              value: /var/noesis/episodes
+              value: /var/noesis/.noesis/episodes
           volumeMounts:
             - name: noesis-runs
-              mountPath: /var/noesis/episodes
+              mountPath: /var/noesis/.noesis
       volumes:
         - name: noesis-runs
           persistentVolumeClaim:
             claimName: noesis-runs-pvc
 ```
 
-Each pod writes episodes under `/var/noesis/episodes`, backed by the shared PVC.
+Each pod writes episodes under `/var/noesis/.noesis/episodes/<episode-id>/`, backed by the shared PVC.
 
 ---
 

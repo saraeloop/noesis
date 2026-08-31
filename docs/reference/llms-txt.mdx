@@ -1,0 +1,39 @@
+---
+title: "llms.txt and llms-full.txt"
+description: "How Noēsis docs expose LLM-friendly indexes and how to customize them."
+---
+
+Noēsis publishes a compact Markdown index so coding agents and other LLM tools can discover the public docs without scraping the site.
+
+## Files
+
+| File | Location | Purpose |
+| --- | --- | --- |
+| `llms.txt` | repository root | Curated list of public docs URLs with one-line summaries |
+| This page | `docs/reference/llms-txt.mdx` | Explains the index for humans |
+
+Mintlify also exposes the same content at [https://docs.noesis.systems/llms.txt](https://docs.noesis.systems/llms.txt) when the docs site is deployed.
+
+## What belongs in the index
+
+Only pages that exist under `docs/` **and** are intended for public consumption:
+
+- Get started, tutorials, how-to guides, explanation, and reference MDX
+- URLs must match Mintlify routes (for example `/tutorials/hello-episode`, not `/docs/app/...`)
+
+Do **not** list:
+
+- Deprecated stubs (for example `tutorials/guarded-langgraph-agent`)
+- Internal plans under `docs/internal/`
+- Pages that are not in the repo (the previous index listed `/guides/use-noesis-in-cursor` and `/guides/use-copilot`, which have no MDX files)
+
+## Maintainers
+
+When you add or rename a public docs page:
+
+1. Add or update the MDX file under `docs/`.
+2. Add the route to `docs/docs.json` navigation so the sidebar matches the index.
+3. Add a bullet to root `llms.txt` with the published `https://docs.noesis.systems/...` URL.
+4. From `docs/`, run `npx --yes mintlify@latest broken-links`.
+
+Keep descriptions to one sentence. Group entries the same way the sidebar is grouped.
