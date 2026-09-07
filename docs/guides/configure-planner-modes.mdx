@@ -9,8 +9,12 @@ Noēsis supports two planner modes that control the level of governance and obse
 
 | Mode | Description | Use when |
 | --- | --- | --- |
-| `meta` (default) | Full governance with MetaPlanner and PreActGovernor | You need auditability, vetoes, and insight KPIs |
-| `minimal` | Skips governance, uses legacy stepwise planner | Quick sanity checks or smoke tests |
+| `meta` (default) | MetaPlanner + Direction search / directives | Production planning, intuition steering, richer insight |
+| `minimal` | Simple planner; skips Direction search | Smoke tests, or when you only need a short plan |
+
+<Info>
+`planner_mode` chooses the planner. **Governance is separate:** `governance_mode` (`off` / `audit` / `enforce`) and `governance_pause_on_veto`. Pause-on-veto is covered with `planner_mode="minimal"` and `governance_mode="enforce"` in `tests/runtime/test_run_lifecycle.py`.
+</Info>
 
 ## Setting the planner mode
 
@@ -20,12 +24,13 @@ Noēsis supports two planner modes that control the level of governance and obse
 import noesis as ns
 
 # Set globally
-ns.set(planner_mode="meta")  # Full governance (default)
-ns.set(planner_mode="minimal")  # Skip governance
+ns.set(planner_mode="meta")      # MetaPlanner (default)
+ns.set(planner_mode="minimal")   # Simple planner
 
-# Check current mode
-config = ns.config()
-print(config.planner_mode)
+# Read the current snapshot (ns.config() is not a public API)
+config = ns.get()
+print(config["planner_mode"])
+print(config["governance_mode"])
 ```
 
 ### Environment variable
@@ -135,34 +140,48 @@ print(f"Governance events: {len(governance)}")
 
 ## Minimal mode
 
-Minimal mode skips governance for faster execution:
+Minimal mode uses a simple planner and, **with the default `governance_mode="off"`**, emits no direction or governance events:
 
 ```python
 import noesis as ns
 
-ns.set(planner_mode="minimal")
+ns.set(planner_mode="minimal")  # governance_mode still defaults to "off"
 
-episode_id = ns.run("Quick sanity check")
+episode_id = ns.run("Quick sanity check", intuition=False)
 
-# No governance events
 events = list(ns.events.read(episode_id))
 governance = [e for e in events if e["phase"] == "governance"]
-assert len(governance) == 0  # No governance in minimal mode
+assert len(governance) == 0
 ```
 
-### What minimal mode skips
+That assertion matches `tests/governance/test_pre_act.py` (`planner_mode="minimal"` without an enforce override).
 
-- MetaPlanner and PreActGovernor
-- Direction and governance events
-- Policy-based vetoes
-- Some insight metrics (veto_count, plan_adherence)
+### What minimal mode changes by default
 
-### What minimal mode keeps
+- Uses `MinimalPlanner` instead of `MetaPlanner`
+- Skips Direction search when `governance_mode` is `off`
+- Keeps the cognitive loop and artifact pack (`events.jsonl`, `summary.json`, `state.json`)
 
-- The cognitive loop (observe → interpret → plan → act → reflect → learn)
-- Event timeline (`events.jsonl`)
-- Summary artifacts (`summary.json`)
-- Basic metrics (success, act_count)
+### What it does **not** disable
+
+Setting `governance_mode="enforce"` still runs `PreActGovernor` before act, including pause-on-veto:
+
+```python
+class NoopGraph:
+    def invoke(self, payload):
+        return payload
+
+ns.set(
+    planner_mode="minimal",
+    governance_mode="enforce",
+    governance_pause_on_veto=True,
+)
+episode_id = ns.solve(
+    "Danger operation: delete production database",
+    using=NoopGraph(),
+    intuition=False,
+)
+```
 
 ## Inspecting governance metrics
 
@@ -229,13 +248,13 @@ You can switch modes between episodes:
 ```python
 import noesis as ns
 
-# Run with full governance
+# Run with MetaPlanner
 ns.set(planner_mode="meta")
 governed_ep = ns.run("Critical operation", intuition=True)
 
-# Run quick test without governance
+# Simple planner; governance still follows governance_mode
 ns.set(planner_mode="minimal")
-test_ep = ns.run("Quick test")
+test_ep = ns.run("Quick test", intuition=False)
 
 # Back to governed mode
 ns.set(planner_mode="meta")
@@ -247,29 +266,28 @@ another_governed_ep = ns.run("Another critical operation", intuition=True)
 Toggle modes from the command line:
 
 ```bash
-# Meta mode (default)
+# Meta planner (default)
 noesis run "Sensitive task"
 
-# Minimal mode via environment
-NOESIS_PLANNER=minimal noesis run "Quick test"
+# Minimal planner (does not by itself set governance_mode=off)
+noesis run "Quick test" --planner minimal
+# equivalent: NOESIS_PLANNER=minimal noesis run "Quick test"
 ```
 
 ## When to use each mode
 
 ### Use meta mode for:
 
-- Production workloads
-- Compliance-sensitive operations
-- Operations requiring audit trails
-- Tasks with intuition policies
-- Any operation that might need to be vetoed
+- Production planning that needs Direction + intuition steering
+- Tasks that should record directive diffs and richer insight KPIs
 
 ### Use minimal mode for:
 
 - Development and testing
 - Quick sanity checks
 - Benchmarking adapter performance
-- Operations that don't need governance overhead
+
+To actually block side effects, set `governance_mode="enforce"` regardless of planner mode. To pause instead of seal on veto, also set `governance_pause_on_veto=True`.
 
 ## Troubleshooting
 
@@ -278,20 +296,20 @@ NOESIS_PLANNER=minimal noesis run "Quick test"
     You're likely in `minimal` mode. Check with:
     
     ```python
-    config = ns.config()
-    print(config.planner_mode)  # Should be "meta"
+    config = ns.get()
+    print(config["planner_mode"])  # "meta" or "minimal"
+    print(config["governance_mode"])
     ```
     
     Set to meta mode: `ns.set(planner_mode="meta")`
   </Accordion>
   
   <Accordion title="Veto not blocking actions">
-    Ensure Governance is enforcing:
-    
+    Ensure Governance is enforcing. Planner mode is not enough:
+
     ```python
-    ns.set(planner_mode="meta")
     ns.set(governance_mode="enforce")
-    ns.run("task", intuition=True)
+    ns.run("Danger operation: delete production database", intuition=False)
     ```
 
     In `governance_mode="audit"` or `off`, veto-like risk signals can still appear in direction/intuition artifacts, but they do not block actuation.

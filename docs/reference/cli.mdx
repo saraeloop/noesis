@@ -156,13 +156,39 @@ noesis explain ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C
 # Interactive terminal UI
 noesis browse
 
-# Migrate old storage layout
+# Migrate old storage layout (copy, do not delete)
 noesis migrate-layout
+noesis migrate-layout --json
 
 # Help
 noesis help
 noesis help events
 ```
+
+## Migrate a legacy layout
+
+`noesis migrate-layout` copies episode directories and process JSON from legacy roots into the canonical `.noesis/` tree. Source files are left in place.
+
+```bash
+noesis migrate-layout --json
+```
+
+JSON fields (`MigrationResult.to_dict()`):
+
+| Field | Meaning |
+| --- | --- |
+| `episodes_copied` | Number of `ep_*` directories copied |
+| `processes_copied` | Number of process `*.json` files copied |
+| `legacy_roots` | Absolute paths that were scanned |
+| `warnings` | Per-entry copy failures |
+
+Constraints:
+
+- Only **directories named `ep_*`** are treated as episodes. Nested `label/ep_...` trees are not flattened.
+- Existing destination paths are skipped (no overwrite).
+- A marker file `MIGRATED_FROM.json` is written at the layout root.
+
+After migration, confirm with `noesis ps` and `noesis processes`. Full layout notes: [Configure shared episode storage](/guides/configure-shared-storage).
 
 ## Command constraints
 
@@ -222,6 +248,16 @@ Fix:
 Cause: `textual` is not installed in the current environment.
 
 Fix: install UI dependencies, then re-run `noesis browse`.
+
+### `migrate-layout` copied 0 episodes
+
+Cause: no legacy root contained a top-level `ep_*` directory, or destinations already exist.
+
+Fix:
+
+- run `noesis migrate-layout --json` and inspect `legacy_roots` / `warnings`
+- remember the copier does not recurse into `label/` folders
+- check `NOESIS_RUNS_DIR` so you are migrating the tree you think you are
 
 ### `invalid cli version (expected cli/MAJOR.MINOR)` on `run --json`
 
