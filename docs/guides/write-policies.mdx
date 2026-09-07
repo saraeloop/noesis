@@ -242,13 +242,9 @@ pytest test_policy.py -v
 
 ## Wiring policies
 
-### CLI
+### Python (supported)
 
-```bash
-noesis run "my task" --intuition my_module:MyPolicy
-```
-
-### Python
+The shipped `noesis run` command has no `--intuition` or `--policy` flag. Attach a policy instance on `ns.run` / `ns.solve`:
 
 ```python
 import noesis as ns
@@ -256,6 +252,18 @@ from my_policy import MyPolicy
 
 episode_id = ns.run("my task", intuition=MyPolicy())
 ```
+
+Then inspect with the CLI:
+
+```bash
+noesis events "$EPISODE_ID" --phase intuition
+noesis events "$EPISODE_ID" --phase direction
+noesis explain "$EPISODE_ID"
+```
+
+### Config aliases
+
+`policy_aliases` in `noesis.toml` maps short names to `module:Class` import specs. That mapping is consumed by the legacy argparse `solve` helper (`noesis/cli/commands/solve.py`), not by `noesis run`.
 
 ### Multiple policies
 
@@ -311,7 +319,8 @@ def advise(self, state: dict) -> IntuitionEvent | None:
 
 ### Policy not being called
 
-- Verify `intuition=True` or `intuition=MyPolicy()` is passed to `ns.run()`
+- Pass `intuition=MyPolicy()` (or `intuition=True` for the default policy) to `ns.run()` / `ns.solve()`
+- Do not expect `noesis run --intuition ...` to work; that flag is not on the shipped CLI
 
 ### Veto not blocking
 

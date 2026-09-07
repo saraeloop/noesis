@@ -410,22 +410,39 @@ episode_id = ns.run(
     seed=42,                        # reproducibility seed
     tags={"env": "staging"},        # metadata tags
     intuition=True,                 # enable/disable intuition
+    process="docs-smoke",           # process registry grouping
 )
 ```
 
 <Info>
-Global configuration (via `ns.set()`) applies to all episodes. Per-call parameters like `seed`, `tags`, and `intuition` are set at run time.
+Global configuration (via `ns.set()`) applies to all episodes. Per-call parameters like `seed`, `tags`, `process`, and `intuition` are set at run time, not via `ns.set()`.
 </Info>
+
+## Keys that are **not** configuration
+
+`ns.set()` only accepts `ALLOWED_CONFIG_KEYS` (`noesis/domain/config/settings.py`). Unknown names raise `ValueError`.
+
+These are **not** config keys:
+
+| Attempt | What to use instead |
+| --- | --- |
+| `ns.set(label="production")` | Group runs with `ns.run(..., process="production")` / `noesis run ... --process` |
+| `ns.set(seed=42)` | Pass `seed=` to `ns.run` / `ns.solve` |
+| `ns.set(log_prompts=True)` | `prompt_provenance_enabled` + `prompt_provenance_mode` |
+
+Episode directories are flat `.noesis/episodes/ep_<ULID>/`. There is no `label/` nesting.
 
 ## CLI configuration
 
 Most CLI configuration is done via environment variables:
 
 ```bash
-NOESIS_RUNS_DIR=./artifacts noesis run "task"
+NOESIS_RUNS_DIR=./.noesis/episodes noesis run "task"
 NOESIS_PLANNER=minimal noesis run "task"
 NOESIS_DIRECTION_MIN_CONFIDENCE=0.8 noesis run "task"
 ```
+
+`NOESIS_RUNS_DIR=./artifacts` stores bundles at `./artifacts/.noesis/episodes` because the parent directory is not named `.noesis`. See [shared storage](/guides/configure-shared-storage).
 
 ## Configuration validation
 

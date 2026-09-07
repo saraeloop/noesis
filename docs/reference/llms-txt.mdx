@@ -1,0 +1,36 @@
+---
+title: "llms.txt"
+description: "LLM-friendly indexes for Noēsis docs."
+---
+
+Noēsis publishes a small index of public docs pages so coding agents can discover the current site without scraping every MDX file.
+
+## Files
+
+| File | Role |
+| --- | --- |
+| [`llms.txt`](https://github.com/saraeloop/noesis/blob/main/llms.txt) (repo root) | Curated list of **published** docs URLs |
+| Mintlify `/llms.txt` / `/llms-full.txt` | Generated from `docs/docs.json` navigation when the docs site is built |
+
+Keep the root `llms.txt` aligned with pages that actually exist under `docs/` **and** are listed in `docs/docs.json`. Unpublished, deprecated, or removed pages (for example `tutorials/guarded-langgraph-agent`) should not appear there.
+
+## What to include
+
+- Get started, tutorials, how-to guides, explanation, and reference pages that are in the sidebar
+- One-line descriptions that match the page frontmatter
+
+## What to omit
+
+- Deprecated stubs
+- Internal notes under `docs/internal/`
+- Schema JSON under `docs/schema/` (those are generated artifacts)
+
+## Preview locally
+
+From `docs/`:
+
+```bash
+npx --yes mintlify@latest broken-links
+```
+
+Run that from `docs/`, not the repo root. Root execution reports false broken absolute links.
