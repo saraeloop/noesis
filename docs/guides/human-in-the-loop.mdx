@@ -1,444 +1,187 @@
 ---
 title: "Human-in-the-loop"
-description: "How to add human approval workflows to your Noēsis episodes."
+description: "Pause a run on governance veto, collect approval, and resume the same episode."
 ---
 
-Many agent scenarios require human oversight before executing high-risk operations. This guide shows how to implement human-in-the-loop patterns with Noēsis.
+Human approval in Noēsis is a **same-run continuation**, not a second episode. The runtime pauses before the side effect, writes a checkpoint, and waits. After a reviewer decides, `ns.resume_run(...)` continues that episode ID.
 
-## When to use human approval
+Do not call `ns.interrupt()` / `ns.checkpoint()` after `ns.solve()` / `ns.run()` has already returned a sealed run. Presence of `final.json` means the run is sealed; lifecycle writes then raise `RunSealedError`.
 
-Add human approval when:
+## When to pause for approval
 
-- Actions are **irreversible** (deletes, deployments, financial transactions)
-- Risk scores **exceed thresholds**
-- Policies flag operations as **requiring review**
-- Regulations demand **audit trails** with human sign-off
+Use pause-on-veto when:
 
-## Basic approval pattern
+- The side effect is **irreversible** (deletes, deploys, financial writes)
+- A policy should **block actuation** until a human reviews the trace
+- You need a **single append-only history** instead of a follow-up rerun
 
-The recommended pattern is pause -> checkpoint -> approve -> resume (same run):
+## Canonical pattern: pause on veto, then resume
+
+Enable enforce-mode governance and pause-on-veto **before** starting the run. Built-in danger rules (for example a goal containing `"danger"`) veto in enforce mode. The runner then emits `run.interrupt` and `run.checkpoint` and returns without `act`, `terminate`, `final.json`, or `manifest.json`.
 
 ```python
 import noesis as ns
 
 
 def require_approval(episode_id: str, action: str) -> bool:
-    """
-    In production, replace with:
-    - Slack interactive message
-    - ServiceNow approval workflow
-    - Custom approval UI
-    """
-    print(f"\n⚠️  Approval required for episode {episode_id}")
-    print(f"   Action: {action}")
-    response = input("   Approve? (y/n): ")
-    return response.lower() == "y"
+    """Replace with Slack, ServiceNow, or your approval UI."""
+    print(f"Approval required for {episode_id}: {action}")
+    return input("Approve? (y/n): ").lower() == "y"
+
+
+def checkpoint_id_from_events(episode_id: str) -> str:
+    events = list(ns.events.read(episode_id))
+    checkpoint = next(
+        event
+        for event in reversed(events)
+        if event.get("phase") == "runtime" and event.get("event_type") == "run.checkpoint"
+    )
+    return str(checkpoint["payload"]["checkpoint_id"])
 
 
 def run_with_approval(task: str, using):
-    # Start run
-    episode_id = ns.solve(task, using=using, intuition=True)
+    ns.set(
+        governance_mode="enforce",
+        governance_pause_on_veto=True,
+    )
 
-    # Pause and checkpoint before high-risk continuation
-    interrupt_id = ns.interrupt(episode_id, reason="High-risk action requires approval")
-    checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+    episode_id = ns.solve(task, using=using, intuition=False)
+    checkpoint_id = checkpoint_id_from_events(episode_id)
 
     if not require_approval(episode_id, task):
-        print("❌ Action rejected by human reviewer")
+        print("Rejected; run stays paused and unsealed")
         return None
 
-    # Continue same run ID from checkpoint (no rerun)
+    # Same run ID. resume_run does not rewrite the goal.
     return ns.resume_run(
         episode_id,
-        checkpoint_id=checkpoint["checkpoint_id"],
+        checkpoint_id=checkpoint_id,
         using=using,
     )
 ```
 
 <Tip>
-Prefer `resume_run(...)` over rerunning from scratch after approval. It preserves a continuous, append-only run history.
+`planner_mode` is independent of this path. `planner_mode="minimal"` with `governance_mode="enforce"` and `governance_pause_on_veto=True` still pauses on an enforce veto.
 </Tip>
 
-## Policy-driven approval
+On the paused path:
 
-Create a policy that flags operations for approval:
+| Artifact / event | Present? |
+| --- | --- |
+| `action_candidate` → `governance(decision=veto)` | yes |
+| `run.interrupt` → `run.checkpoint` | yes |
+| `act` / `terminate` | no |
+| `state.json` `outcomes.status` | `partial` (summary includes `paused at checkpoint <id>`) |
+| `final.json` / `manifest.json` / `summary.json` | not yet |
 
-```python
-import noesis as ns
-from noesis.intuition import IntuitionEvent
+`ns.list_runs()` skips directories without `summary.json`, so paused runs do not appear there. Discover them by listing `ep_*` dirs that have a `checkpoints/` folder and no `final.json`.
 
+## Resume contract
 
-class ApprovalPolicy(ns.DirectedIntuition):
-    """Policy that requires approval for high-risk operations."""
-    
-    __version__ = "1.0"
-    
-    HIGH_RISK_KEYWORDS = {"delete", "drop", "truncate", "deploy", "rollback"}
-    
-    def advise(self, state: dict) -> IntuitionEvent | None:
-        task = state.get("task", "").lower()
-        
-        # Check for high-risk keywords
-        if any(kw in task for kw in self.HIGH_RISK_KEYWORDS):
-            return self.intervene(
-                advice="High-risk operation detected. Requiring human approval.",
-                patch={
-                    "requires_approval": True,
-                    "risk_reason": "high_risk_keyword",
-                },
-                target="plan",
-                rationale="Operations matching high-risk patterns need review.",
-            )
-        
-        # Check for production environment
-        if "production" in task or state.get("environment") == "production":
-            return self.intervene(
-                advice="Production operation detected. Requiring human approval.",
-                patch={
-                    "requires_approval": True,
-                    "risk_reason": "production_environment",
-                },
-                target="plan",
-                rationale="All production changes require human sign-off.",
-            )
-        
-        return None
+`ns.resume_run(...)` continues the **same** episode:
+
+- Reuses the persisted goal. There is no `task=` argument; tagging the next `ns.run(...)` with `[APPROVED]` starts a **new** episode.
+- Emits `run.resume` then continues post-plan by default (no replan).
+- Requires `using=` for non-minimal checkpoints, matching the adapter label stored on the checkpoint / `state.json`.
+- `PreActGovernor` can veto again on continuation. Pause-on-veto may fire a second time.
+
+Checkpoint JSON lives at:
+
+```text
+.noesis/episodes/<episode_id>/checkpoints/<checkpoint_id>/checkpoint.json
 ```
 
-## Slack integration
+Fields used on resume (`checkpoint/1.0.0`): `event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`, optional `adapter_label`.
 
-Send approval requests to Slack:
+## Manual interrupt (unsealed runs only)
+
+`ns.interrupt` / `ns.checkpoint` / `ns.resume` are valid on an **unsealed** run. They are the wrong tool after a completed `ns.run` / `ns.solve` that already wrote `final.json`.
+
+```python
+# Only while the run is still open (no final.json)
+interrupt_id = ns.interrupt(episode_id, reason="Awaiting human approval")
+checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+ns.resume_run(episode_id, checkpoint_id=checkpoint["checkpoint_id"], using=using)
+```
+
+`ns.resume(...)` writes `run.resume` evidence only. Use `ns.resume_run(...)` when you want execution to continue.
+
+## Approval channels
+
+Slack, queues, and UIs are **notification and decision** surfaces. After approve/reject, call `ns.resume_run(...)` (or leave the run paused). Do not start a follow-up `ns.run(...)` to “record the approval.”
+
+### Slack (notify, then resume)
 
 ```python
 import os
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 import noesis as ns
 
-
-class SlackApproval:
-    """Handle approvals via Slack interactive messages."""
-    
-    def __init__(self, channel: str):
-        self.client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
-        self.channel = channel
-        self.pending = {}  # episode_id -> message_ts
-    
-    def request_approval(self, episode_id: str, action: str, context: dict) -> str:
-        """Send approval request to Slack."""
-        blocks = [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "🔒 Approval Required"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Episode:* `{episode_id}`\n*Action:* {action}",
-                },
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {"type": "mrkdwn", "text": f"*Reason:* {context.get('reason', 'Policy requirement')}"},
-                ],
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "✅ Approve"},
-                        "style": "primary",
-                        "action_id": f"approve_{episode_id}",
-                    },
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "❌ Reject"},
-                        "style": "danger",
-                        "action_id": f"reject_{episode_id}",
-                    },
-                ],
-            },
-        ]
-        
-        try:
-            response = self.client.chat_postMessage(
-                channel=self.channel,
-                blocks=blocks,
-                text=f"Approval required for {episode_id}",
-            )
-            self.pending[episode_id] = response["ts"]
-            return response["ts"]
-        except SlackApiError as e:
-            raise RuntimeError(f"Slack API error: {e.response['error']}")
-    
-    def handle_response(self, episode_id: str, approved: bool, user: str):
-        """Handle approval response from Slack."""
-        if episode_id in self.pending:
-            # Update the message
-            status = "✅ Approved" if approved else "❌ Rejected"
-            self.client.chat_update(
-                channel=self.channel,
-                ts=self.pending[episode_id],
-                text=f"{status} by {user}",
-            )
-            del self.pending[episode_id]
-        
-        return approved
+client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
 
 
-# Usage
-slack = SlackApproval(channel="#approvals")
-
-def run_with_slack_approval(task: str):
-    episode_id = ns.run(task, intuition=ApprovalPolicy())
-    
-    # Check if approval needed
-    events = list(ns.events.read(episode_id))
-    approval_event = next(
-        (e for e in events if e.get("payload", {}).get("requires_approval")),
-        None,
+def request_approval(channel: str, episode_id: str, action: str) -> None:
+    client.chat_postMessage(
+        channel=channel,
+        text=f"Approval required for `{episode_id}`: {action}",
     )
-    
-    if approval_event:
-        slack.request_approval(
-            episode_id,
-            task,
-            {"reason": approval_event["payload"].get("risk_reason")},
-        )
-        return {"status": "pending_approval", "episode_id": episode_id}
-    
-    return {"status": "completed", "episode_id": episode_id}
+
+
+def on_approved(episode_id: str, checkpoint_id: str, using) -> str:
+    return ns.resume_run(episode_id, checkpoint_id=checkpoint_id, using=using)
 ```
 
-## Async approval workflow
-
-For production systems, use an async workflow:
-
-```python
-import asyncio
-from dataclasses import dataclass
-from enum import Enum
-import noesis as ns
-
-
-class ApprovalStatus(Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-
-
-@dataclass
-class ApprovalRequest:
-    episode_id: str
-    action: str
-    context: dict
-    status: ApprovalStatus = ApprovalStatus.PENDING
-    approver: str | None = None
-
-
-class ApprovalQueue:
-    """Async approval queue with timeout support."""
-    
-    def __init__(self, timeout_seconds: int = 3600):
-        self.requests: dict[str, ApprovalRequest] = {}
-        self.timeout = timeout_seconds
-        self._events: dict[str, asyncio.Event] = {}
-    
-    async def request_approval(self, episode_id: str, action: str, context: dict) -> ApprovalRequest:
-        """Submit an approval request and wait for response."""
-        request = ApprovalRequest(episode_id, action, context)
-        self.requests[episode_id] = request
-        self._events[episode_id] = asyncio.Event()
-        
-        # Send to your approval channel (Slack, email, etc.)
-        await self._notify_approvers(request)
-        
-        # Wait for response with timeout
-        try:
-            await asyncio.wait_for(
-                self._events[episode_id].wait(),
-                timeout=self.timeout,
-            )
-        except asyncio.TimeoutError:
-            request.status = ApprovalStatus.EXPIRED
-        
-        return request
-    
-    async def approve(self, episode_id: str, approver: str):
-        """Mark request as approved."""
-        if episode_id in self.requests:
-            self.requests[episode_id].status = ApprovalStatus.APPROVED
-            self.requests[episode_id].approver = approver
-            self._events[episode_id].set()
-    
-    async def reject(self, episode_id: str, approver: str):
-        """Mark request as rejected."""
-        if episode_id in self.requests:
-            self.requests[episode_id].status = ApprovalStatus.REJECTED
-            self.requests[episode_id].approver = approver
-            self._events[episode_id].set()
-    
-    async def _notify_approvers(self, request: ApprovalRequest):
-        """Send notification to approvers."""
-        # Implement your notification logic here
-        print(f"Approval requested: {request.episode_id}")
-
-
-# Usage
-queue = ApprovalQueue(timeout_seconds=300)
-
-
-async def run_async_approval(task: str):
-    episode_id = ns.run(task, intuition=ApprovalPolicy())
-    
-    events = list(ns.events.read(episode_id))
-    if any(e.get("payload", {}).get("requires_approval") for e in events):
-        request = await queue.request_approval(episode_id, task, {})
-        
-        if request.status == ApprovalStatus.APPROVED:
-            # Continue with approved action
-            return ns.run(f"{task} [APPROVED by {request.approver}]", intuition=True)
-        elif request.status == ApprovalStatus.EXPIRED:
-            print("Approval timed out")
-            return None
-        else:
-            print(f"Rejected by {request.approver}")
-            return None
-    
-    return episode_id
-```
-
-## Recording approval in events
-
-The approval decision should be captured in the event timeline:
+### Async waiter
 
 ```python
 import noesis as ns
 
 
-def record_approval(episode_id: str, approved: bool, approver: str):
-    """Record approval decision in a new episode that references the original."""
-    
-    summary = ns.summary.read(episode_id)
-    original_task = summary.get("task", "")
-    
-    # Create a linked episode with the decision
-    approval_episode = ns.run(
-        f"Human review of: {original_task}",
-        intuition=False,
-        tags={
-            "type": "approval",
-            "original_episode": episode_id,
-            "approved": approved,
-            "approver": approver,
-        },
-    )
-    
-    return approval_episode
+async def wait_then_resume(episode_id: str, checkpoint_id: str, using, approved: bool):
+    if not approved:
+        return None  # leave the run paused and unsealed
+    return ns.resume_run(episode_id, checkpoint_id=checkpoint_id, using=using)
 ```
 
-## UI for approvals
+Rejection should leave the run paused (unsealed), not spawn a new episode.
 
-Build a simple approval UI with Gradio:
+## Troubleshooting
 
-```python
-import gradio as gr
-import noesis as ns
+### `RunSealedError`
 
+The episode already has `final.json`. Typical cause: calling `ns.interrupt` after a terminal `ns.solve`/`ns.run`, or after an enforce veto with `governance_pause_on_veto=False` (that path terminates and seals).
 
-def get_pending_approvals():
-    """Get episodes awaiting approval."""
-    episodes = ns.list_runs(limit=50)
-    pending = []
-    
-    for ep in episodes:
-        events = list(ns.events.read(ep["episode_id"]))
-        if any(e.get("payload", {}).get("requires_approval") for e in events):
-            summary = ns.summary.read(ep["episode_id"])
-            if not summary.get("tags", {}).get("approved"):
-                pending.append({
-                    "episode_id": ep["episode_id"],
-                    "task": summary.get("task", ""),
-                    "timestamp": ep["timestamp"],
-                })
-    
-    return pending
+Fix: enable `governance_pause_on_veto=True` **before** the run that needs approval.
 
+### `CheckpointConsistencyError`
 
-def approve_episode(episode_id: str, approver: str):
-    """Approve an episode."""
-    ns.run(
-        f"[APPROVED] {ns.summary.read(episode_id).get('task', '')}",
-        tags={"approved": True, "approver": approver, "original": episode_id},
-    )
-    return f"✅ Approved by {approver}"
+Resume compares the checkpoint to current artifacts:
 
+| Anchor | Failure |
+| --- | --- |
+| `event_offset` / `last_event_id` | `events.jsonl` prefix no longer matches |
+| `state_hash` | `state.json` changed |
+| `artifact_manifest_hash` | `manifest.json` appeared, disappeared, or the pre-manifest digest of `events.jsonl` / `state.json` / `summary.json` / `learn.jsonl` / `prompts.jsonl` changed |
 
-def reject_episode(episode_id: str, approver: str, reason: str):
-    """Reject an episode."""
-    ns.run(
-        f"[REJECTED] {ns.summary.read(episode_id).get('task', '')}",
-        tags={"rejected": True, "approver": approver, "reason": reason, "original": episode_id},
-    )
-    return f"❌ Rejected by {approver}: {reason}"
+Paused runs usually have **no** `manifest.json`. Creating one after the checkpoint, or deleting one that existed at checkpoint time, fails resume.
 
+`caused_by` on `ns.resume` / `ns.resume_run` must be the checkpoint `last_event_id` or the latest event id.
 
-# Build Gradio interface
-with gr.Blocks(title="Approval Queue") as app:
-    gr.Markdown("# 🔐 Approval Queue")
-    
-    with gr.Row():
-        refresh_btn = gr.Button("Refresh")
-        pending_list = gr.Dataframe(headers=["Episode ID", "Task", "Timestamp"])
-    
-    with gr.Row():
-        episode_input = gr.Textbox(label="Episode ID")
-        approver_input = gr.Textbox(label="Your name")
-        reason_input = gr.Textbox(label="Rejection reason (if rejecting)")
-    
-    with gr.Row():
-        approve_btn = gr.Button("✅ Approve", variant="primary")
-        reject_btn = gr.Button("❌ Reject", variant="stop")
-    
-    result = gr.Textbox(label="Result")
-    
-    refresh_btn.click(
-        lambda: [[p["episode_id"], p["task"], p["timestamp"]] for p in get_pending_approvals()],
-        outputs=pending_list,
-    )
-    approve_btn.click(approve_episode, inputs=[episode_input, approver_input], outputs=result)
-    reject_btn.click(reject_episode, inputs=[episode_input, approver_input, reason_input], outputs=result)
+### `ResumeAdapterRequiredError` / `ResumeAdapterMismatchError`
 
+Pass the same `using=` graph/adapter that was persisted on the checkpoint. Omitting `using` is allowed only for minimal (`core.minimal`) runs.
 
-if __name__ == "__main__":
-    app.launch()
-```
+### Pending run missing from `ns.list_runs()`
 
-## Best practices
-
-<Tip>
-**Set reasonable timeouts.** Pending approvals shouldn't block indefinitely—expire them after a reasonable period.
-</Tip>
-
-<Warning>
-**Authenticate approvers.** In production, verify the identity of approvers through SSO or similar.
-</Warning>
-
-<Info>
-**Create audit trails.** Record all approval decisions with timestamps, approvers, and reasons in the event timeline.
-</Info>
+Expected for pause-on-veto: no `summary.json` yet. Look for `checkpoints/` and a latest `run.checkpoint` event instead.
 
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Trace-Based Evals" icon="triangle-exclamation" href="/tutorials/trace-based-evals">
-    Full example harness with veto visibility and scoring.
+  <Card title="Governed side effects" icon="shield" href="/tutorials/governed-side-effects">
+    `action_candidate → governance → act` (or pause/terminate on veto).
   </Card>
-  <Card title="Governance guide" icon="shield" href="/guides/configure-planner-modes">
-    Configure governance for approval requirements.
+  <Card title="Planner vs governance" icon="sliders" href="/guides/configure-planner-modes">
+    `planner_mode` does not turn governance on or off.
   </Card>
 </CardGroup>

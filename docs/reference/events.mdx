@@ -624,6 +624,52 @@ Runtime events share `phase="runtime"` and use `event_type` as the stable subtyp
 The current lifecycle family includes `run.interrupt`, `run.checkpoint`,
 `run.resume`, and `run.state_projection`.
 
+### `run.interrupt` / `run.checkpoint` / `run.resume`
+
+Pause-on-veto (`governance_mode="enforce"` and `governance_pause_on_veto=True`) emits interrupt then checkpoint and leaves the run unsealed. Manual `ns.interrupt` / `ns.checkpoint` do the same on an unsealed run.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.interrupt",
+  "payload": {
+    "kind": "run.interrupt",
+    "status": "interrupted",
+    "reason": "Governance veto; awaiting approval"
+  }
+}
+```
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.checkpoint",
+  "payload": {
+    "kind": "run.checkpoint",
+    "status": "paused",
+    "checkpoint_id": "chk_ab12cd34ef56",
+    "event_offset": 12,
+    "checkpoint_path": "checkpoints/chk_ab12cd34ef56/checkpoint.json"
+  }
+}
+```
+
+On-disk `checkpoint.json` (`checkpoint/1.0.0`) also stores `last_event_id`, `state_hash`, `artifact_manifest_hash`, and optional `adapter_label`. Resume fails with `CheckpointConsistencyError` when those anchors no longer match. If `manifest.json` is absent, `artifact_manifest_hash` is a digest of the existing artifact set with `events.jsonl` hashed only through `event_offset`.
+
+```json
+{
+  "phase": "runtime",
+  "event_type": "run.resume",
+  "payload": {
+    "kind": "run.resume",
+    "status": "resuming",
+    "checkpoint_id": "chk_ab12cd34ef56",
+    "event_offset": 12,
+    "resume_strategy": "same_run_id"
+  }
+}
+```
+
 `run.state_projection` is emitted whenever state is persisted so `state.json`
 outcome/link fields have explicit event evidence.
 

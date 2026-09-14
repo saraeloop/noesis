@@ -1,0 +1,16 @@
+---
+title: "llms.txt"
+description: "How Noēsis docs expose an LLM-friendly index of the published site."
+---
+
+The repository root `llms.txt` lists canonical documentation URLs for assistants. Point tools at [https://docs.noesis.systems](https://docs.noesis.systems) and the GitHub copy of `llms.txt`.
+
+There is no generated `llms-full.txt` in this tree. Prefer the pages listed in `llms.txt` over unpublished MDX files that are not in `docs/docs.json` navigation (for example some tutorial drafts).
+
+## What is in `llms.txt`
+
+- Get started: landing page, quickstart
+- Tutorials and how-to guides that exist as MDX under `docs/`
+- Explanation and reference pages, including events, state, summary, configuration, CLI, and Python API
+
+When you add or rename a published page, update both `docs/docs.json` and `llms.txt` so crawlers and assistants stay aligned.

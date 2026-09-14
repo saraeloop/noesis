@@ -89,13 +89,13 @@ Every run produces a clean artifact structure:
 
 ```
 .noesis/episodes/
-  demo/                # label (configurable)
-    ep_.../            # episode id
-      summary.json     # metrics and outcomes
-      state.json       # current plan and episode state
-      events.jsonl     # timeline with causal IDs
-      manifest.json    # SHA-256 + size ledger for tamper evidence
-      learn.jsonl      # optional learning payloads
+  ep_.../              # episode id (ULID)
+    events.jsonl       # timeline with causal IDs
+    state.json         # current plan and episode state
+    summary.json       # metrics and outcomes (on seal)
+    final.json         # seal marker
+    manifest.json      # SHA-256 + size ledger for tamper evidence
+    learn.jsonl        # optional learning payloads
 ```
 
 ## Next steps

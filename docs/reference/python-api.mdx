@@ -174,29 +174,36 @@ episode_id = ns.resume_run(
 ```python
 import noesis as ns
 
-# 1) Optional: enable pause-on-veto in enforce mode
+# 1) Pause-on-veto must be set before the run that needs approval
 ns.set(
     governance_mode="enforce",
     governance_pause_on_veto=True,
 )
 
-# 2) Start a run
+# 2) Start a run. An enforce veto pauses this call; it does not seal.
 episode_id = ns.solve("Danger operation: delete production database", using=my_graph)
 
-# 3) Manual pause (if your approval system decides to pause)
-interrupt_id = ns.interrupt(episode_id, reason="Awaiting human approval")
-checkpoint = ns.checkpoint(episode_id, caused_by=interrupt_id)
+checkpoint = next(
+    event
+    for event in ns.events.read(episode_id)
+    if event.get("phase") == "runtime" and event.get("event_type") == "run.checkpoint"
+)
+checkpoint_id = checkpoint["payload"]["checkpoint_id"]
 
-# 4a) Emit resume evidence only (no execution continuation)
-resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint["checkpoint_id"])
+# 3a) Emit resume evidence only (no execution continuation)
+resume_event_id = ns.resume(episode_id, checkpoint_id=checkpoint_id)
 
-# 4b) Continue execution from checkpoint on the same run ID
+# 3b) Continue execution from checkpoint on the same run ID
 episode_id = ns.resume_run(
     episode_id,
-    checkpoint_id=checkpoint["checkpoint_id"],
+    checkpoint_id=checkpoint_id,
     using=my_graph,  # required for non-minimal runs
 )
 ```
+
+`ns.interrupt` / `ns.checkpoint` remain valid for **unsealed** runs. After `final.json` exists they raise `RunSealedError`. `resume_run` does not take a new `task`; it continues the persisted goal.
+
+Checkpoint dict (`checkpoint/1.0.0`) includes `checkpoint_id`, `event_offset`, `last_event_id`, `state_hash`, and `artifact_manifest_hash`.
 
 Determinism scope:
 
@@ -219,7 +226,7 @@ Adapter continuity:
 - `RunSealedError`: lifecycle writes and resume attempts are rejected once `final.json` seals the run.
 - `CheckpointNotFoundError`: `resume`/`resume_run` reference a checkpoint that does not exist.
 - `MissingCausalParentError`: checkpoint/interrupt cannot anchor to a causal parent event.
-- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`) no longer matches artifacts.
+- `CheckpointConsistencyError`: checkpoint anchor (`event_offset`, `last_event_id`, `state_hash`, `artifact_manifest_hash`) no longer matches artifacts. Manifest appearance or disappearance after the checkpoint also fails this check. Event-prefix digesting is used when `manifest.json` is absent.
 - `RunLifecycleTransitionError`: lifecycle mutation violates the run state-machine contract.
 - `ResumeAdapterRequiredError`: `resume_run` requires explicit `using` for non-minimal checkpoints.
 - `ResumeAdapterMismatchError`: `resume_run` adapter does not match checkpoint adapter contract.
@@ -592,8 +599,8 @@ Manage an on-disk episode manifest (and optional FAISS similarity index).
 from noesis.episode import EpisodeIndex
 
 store = EpisodeIndex(
-    root="./.noesis/episodes/_episodes",
-    ttl_days=14,
+    root="./.noesis/index",  # layout.index_dir; runtime uses ttl_days=30
+    ttl_days=30,
     enable_faiss=False,  # set True if faiss + numpy installed and you provide embeddings
 )
 ```

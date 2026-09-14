@@ -242,11 +242,7 @@ pytest test_policy.py -v
 
 ## Wiring policies
 
-### CLI
-
-```bash
-noesis run "my task" --intuition my_module:MyPolicy
-```
+The shipped `noesis run` CLI has `--planner` and `--process`, but **no** `--intuition` / `--policy` flags. Bind policies from Python:
 
 ### Python
 
