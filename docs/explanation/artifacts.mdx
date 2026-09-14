@@ -26,7 +26,7 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
 
 Episode directories are **flat**: `.noesis/episodes/ep_<ULID>/`. There is no `<label>/` nesting. `label` is not an `ns.set()` config key.
 
-Paused runs (for example enforce veto with `governance_pause_on_veto=True`) write `events.jsonl`, `state.json`, and `checkpoints/` but not `summary.json`, `final.json`, or `manifest.json` until the run terminates.
+Paused runs (for example enforce veto with `governance_pause_on_veto=True`) write `events.jsonl`, `state.json`, `checkpoints/`, and usually `learn.jsonl`, but not `summary.json`, `final.json`, or `manifest.json` until the run terminates.
 
 <Info>
 **Episode IDs** are `ep_` plus a 26-character Crockford ULID (48-bit timestamp + 80-bit entropy). **Directive, governance, and action-candidate IDs** use deterministic UUIDv5 for reproducible lineage tracking.
