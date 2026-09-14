@@ -16,52 +16,48 @@ This guide shows four common setups:
 Pick one of these patterns for your environment—you don’t need all four.
 </Tip>
 
+<Warning>
+`runs_dir` is treated as the episodes root only when its parent is named `.noesis` (for example `/srv/noesis/.noesis/episodes`) or when `runs_dir` itself is `.noesis`. A path like `/srv/noesis/episodes` resolves to `/srv/noesis/episodes/.noesis/episodes`.
+</Warning>
+
 ## A) Shared dev: network volume
 
 ```bash
-# Example: shared volume mounted at /srv/noesis/episodes
-ls /srv/noesis/episodes
-# (empty or existing runs)
+# Shared volume whose parent directory is named .noesis
+ls /srv/noesis/.noesis/episodes
 ```
-
-Configure your app/runtime to use it as the base runs directory, e.g.:
 
 ```bash
-# pseudo-config
-NOESIS_RUNS_DIR=/srv/noesis/episodes
+NOESIS_RUNS_DIR=/srv/noesis/.noesis/episodes
 ```
 
-Result: `/srv/noesis/episodes/<service>/<episode-id>/` is shared across the team.
+Result: `/srv/noesis/.noesis/episodes/<episode-id>/` is shared across the team.
 
 ## B) Shared dev: local + S3 (or any object store)
 
-Don’t write directly to S3; sync a local directory.
+Don’t write directly to S3; sync a local directory that satisfies the `.noesis` parent rule.
 
 ```bash
-# App writes episodes locally
-NOESIS_RUNS_DIR=/var/noesis/episodes
+NOESIS_RUNS_DIR=/var/noesis/.noesis/episodes
 
-# Periodic sync job (cron/CI)
-aws s3 sync /var/noesis/episodes s3://my-bucket/noesis-runs --delete
-
-# Optionally pull shared episodes down
-aws s3 sync s3://my-bucket/noesis-runs /var/noesis/episodes
+aws s3 sync /var/noesis/.noesis s3://my-bucket/noesis-root --delete
+aws s3 sync s3://my-bucket/noesis-root /var/noesis/.noesis
 ```
 
-Pattern: local path for fast replay/debugging, S3 as central archive.
+Sync the `.noesis` root (episodes, index, processes), not only a custom folder named `episodes` whose parent is not `.noesis`.
 
 ## C) Docker: bind-mount the runs directory
 
 ```bash
-mkdir -p /srv/noesis/episodes
+mkdir -p /srv/noesis/.noesis/episodes
 
 docker run \
-  -v /srv/noesis/episodes:/app/.noesis/episodes \
+  -v /srv/noesis/.noesis:/app/.noesis \
   -e NOESIS_RUNS_DIR=/app/.noesis/episodes \
   my-noesis-service:latest
 ```
 
-Inside the container, Noēsis writes to `/app/.noesis/episodes/...`; on the host, you see `/srv/noesis/episodes/...`.
+Inside the container, Noēsis writes to `/app/.noesis/episodes/...`; on the host, you see `/srv/noesis/.noesis/episodes/...`.
 
 ## D) Kubernetes: PersistentVolumeClaim
 
@@ -88,17 +84,35 @@ spec:
           image: my-noesis-service:latest
           env:
             - name: NOESIS_RUNS_DIR
-              value: /var/noesis/episodes
+              value: /var/noesis/.noesis/episodes
           volumeMounts:
             - name: noesis-runs
-              mountPath: /var/noesis/episodes
+              mountPath: /var/noesis/.noesis
       volumes:
         - name: noesis-runs
           persistentVolumeClaim:
             claimName: noesis-runs-pvc
 ```
 
-Each pod writes episodes under `/var/noesis/episodes`, backed by the shared PVC.
+Each pod writes episodes under `/var/noesis/.noesis/episodes`, backed by the shared PVC.
+
+## Layout migration
+
+If older trees used a different root, copy leftover `ep_*` directories (not nested `label/ep_*` trees) and process `*.json` files:
+
+```bash
+noesis migrate-layout
+```
+
+The command skips existing targets, writes `MIGRATED_FROM.json` on the resolved `.noesis` root, and does not flatten label-nested episode dirs.
+
+## Troubleshooting
+
+### Episodes did not land where `NOESIS_RUNS_DIR` points
+
+Cause: parent of `runs_dir` is not `.noesis`, so the runtime created `{runs_dir}/.noesis/episodes`.
+
+Fix: set `NOESIS_RUNS_DIR` to `.../.noesis/episodes` (or to the `.noesis` directory itself) and remount/sync that path.
 
 ---
 

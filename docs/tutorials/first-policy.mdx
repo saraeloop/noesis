@@ -121,25 +121,17 @@ python test_policy.py
 
 ## Step 3: Wire the policy into an episode
 
-Use your policy with the CLI:
-
-```bash
-noesis run "SELECT * FROM users" --intuition my_policy:SafetyGuard
-```
-
-Or with Python:
+The shipped `noesis run` command has no `--intuition` flag. Bind the policy from Python:
 
 ```python
 import noesis as ns
 from my_policy import SafetyGuard
 
-# Run with the policy attached
 episode_id = ns.run(
     "SELECT * FROM users",
     intuition=SafetyGuard(),
 )
 
-# Check what happened
 summary = ns.summary.read(episode_id)
 print(f"Direction applied: {summary['flags'].get('direction', {}).get('applied', 0)}")
 ```

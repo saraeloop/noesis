@@ -158,6 +158,8 @@ noesis browse
 
 # Migrate old storage layout
 noesis migrate-layout
+# copies leftover ep_* dirs + process *.json into the canonical .noesis layout
+# skips existing targets; writes MIGRATED_FROM.json; does not flatten label/ep_* trees
 
 # Help
 noesis help
@@ -222,6 +224,12 @@ Fix:
 Cause: `textual` is not installed in the current environment.
 
 Fix: install UI dependencies, then re-run `noesis browse`.
+
+### `noesis migrate-layout` copied nothing
+
+Cause: only top-level directories named `ep_*` and process `*.json` files are copied. Nested `label/ep_*` trees are skipped. Existing targets are left untouched.
+
+Fix: move leftover episode dirs to a legacy root that `resolve_noesis_paths` still scans, or copy `ep_*` dirs into `.noesis/episodes/` yourself, then re-run the command.
 
 ### `invalid cli version (expected cli/MAJOR.MINOR)` on `run --json`
 

@@ -22,10 +22,14 @@ Directory where episode artifacts are stored (episodes root).
 
 | Source | Setting |
 | --- | --- |
-| Python | `ns.set(runs_dir="./my-runs")` |
-| Environment | `NOESIS_RUNS_DIR=./my-runs` |
-| TOML | `runs_dir = "./my-runs"` |
+| Python | `ns.set(runs_dir="./.noesis/episodes")` |
+| Environment | `NOESIS_RUNS_DIR=./.noesis/episodes` |
+| TOML | `runs_dir = "./.noesis/episodes"` |
 | Default | `".noesis/episodes"` |
+
+<Warning>
+The path is the episodes root only when its parent is named `.noesis` (or `runs_dir` is `.noesis`). `ns.set(runs_dir="./my-runs")` stores episodes at `./my-runs/.noesis/episodes`. Details: [shared storage](/guides/configure-shared-storage).
+</Warning>
 
 ### planner_mode
 
