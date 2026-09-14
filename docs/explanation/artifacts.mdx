@@ -8,19 +8,28 @@ Every Noēsis episode produces a set of structured artifacts that capture the co
 ## Artifact structure
 
 ```
-.noesis/episodes/
-  <label>/                     # e.g., "demo", "production"
-    <episode_id>/              # e.g., "ep_20251108_120000_abc123_def4_s0"
-      events.jsonl             # cognitive event timeline with lineage
-      summary.json             # metrics and KPIs (insight.metrics)
-      state.json               # plan, beliefs, memory, outcomes
-      manifest.json            # SHA-256 catalog + optional HMAC
-      learn.jsonl              # learning signals (optional)
-      prompts.jsonl            # prompt provenance (opt-in, ADR-005)
+.noesis/
+  episodes/
+    ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/   # episode id (ULID)
+      events.jsonl                    # cognitive event timeline with lineage
+      state.json                      # plan, beliefs, memory, outcomes
+      summary.json                    # metrics and KPIs (written on seal)
+      final.json                      # seal marker (schema final/2.0.0)
+      manifest.json                   # SHA-256 catalog including final.json
+      learn.jsonl                     # learning signals (optional)
+      prompts.jsonl                   # prompt provenance (opt-in, ADR-005)
+      checkpoints/                    # present while the run is paused
+        chk_.../checkpoint.json
+  index/                              # best-effort EpisodeIndex (ttl_days=30)
+  processes/                          # process registry
 ```
 
+Episode directories are **flat**: `.noesis/episodes/ep_<ULID>/`. There is no `<label>/` nesting. `label` is not an `ns.set()` config key.
+
+Paused runs (for example enforce veto with `governance_pause_on_veto=True`) write `events.jsonl`, `state.json`, and `checkpoints/` but not `summary.json`, `final.json`, or `manifest.json` until the run terminates.
+
 <Info>
-**Episode IDs** use ULID format (monotonic, sortable, 48-bit timestamp + 80-bit entropy). **Directive and governance IDs** use deterministic UUIDv5 for reproducible lineage tracking.
+**Episode IDs** are `ep_` plus a 26-character Crockford ULID (48-bit timestamp + 80-bit entropy). **Directive, governance, and action-candidate IDs** use deterministic UUIDv5 for reproducible lineage tracking.
 </Info>
 
 ## summary.json
@@ -32,7 +41,7 @@ The summary captures episode outcomes, metrics, and cross-references.
 ```json
 {
   "schema_version": "1.3.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "task": "Draft release notes for v1.2.0",
   "seed": 42,
   "started_at": "2024-01-15T10:30:00Z",
@@ -119,7 +128,7 @@ The state captures the cognitive context at the end of the episode.
   "version": "1.0",
   "state_schema_version": "1.0.0",
   "episode": {
-    "id": "ep_2024_abc123_s0",
+    "id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
     "seed": 0,
     "adapter": "baseline",
     "started_at": "2024-01-15T10:30:00Z",
@@ -334,6 +343,39 @@ noesis events ep_abc123 --phase act
 noesis events ep_abc123 -j | jq '.[] | select(.phase == "plan")'
 ```
 
+## final.json
+
+`final.json` is the **seal marker**. A run is sealed when this file exists. `manifest.json` alone does not seal a run.
+
+Schema: [`final/2.0.0`](/schema/final/2.0.0.json).
+
+```json
+{
+  "schema_version": "final/2.0.0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
+  "process_id": "a1b2c3d4e5f6",
+  "run_index": 1,
+  "finalized_at": "2024-01-15T10:30:05Z",
+  "outcome": "success",
+  "verification_status": "unverified"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `outcome` | `success`, `failed`, `vetoed`, `cancelled`, `interrupted`, `error` |
+| `verification_status` | `verified`, `unverified`, `not_applicable` (veto maps to `not_applicable`) |
+
+Sealing order:
+
+1. Write `final.json`.
+2. Write `manifest.json` including `final.json`.
+3. If manifest writing fails, delete `final.json` so the run is not marked sealed.
+
+A second seal raises `ImmutabilityError` (`finalization marker already exists`) and does not mutate the existing files.
+
+Lifecycle APIs (`interrupt`, `checkpoint`, `resume`, `resume_run`) raise `RunSealedError` when `final.json` is present.
+
 ## manifest.json
 
 The manifest provides integrity verification for all artifacts with SHA-256 hashes and optional signatures.
@@ -343,12 +385,13 @@ The manifest provides integrity verification for all artifacts with SHA-256 hash
 ```json
 {
   "schema_version": "manifest/1.0",
-  "episode_id": "ep_2024_abc123_s0",
+  "episode_id": "ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C",
   "created_at": "2024-01-15T10:30:05Z",
   "files": [
     {"name": "summary.json", "sha256": "sha256:abc123...", "size_bytes": 1234, "kind": "summary"},
     {"name": "state.json", "sha256": "sha256:def456...", "size_bytes": 5678, "kind": "state"},
-    {"name": "events.jsonl", "sha256": "sha256:ghi789...", "size_bytes": 9012, "kind": "events"}
+    {"name": "events.jsonl", "sha256": "sha256:ghi789...", "size_bytes": 9012, "kind": "events"},
+    {"name": "final.json", "sha256": "sha256:jkl012...", "size_bytes": 256, "kind": "attachment"}
   ],
   "signature": {
     "alg": "hs256",
@@ -383,28 +426,21 @@ from pathlib import Path
 
 
 def verify_manifest(episode_dir: Path) -> bool:
-    """Verify artifact integrity using manifest."""
-    manifest_path = episode_dir / "manifest.json"
-    
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-    
-    for filename, info in manifest["files"].items():
-        file_path = episode_dir / filename
-        
-        # Check size
-        if file_path.stat().st_size != info["size"]:
+    """Verify artifact integrity using manifest.json `files` array."""
+    manifest = json.loads((episode_dir / "manifest.json").read_text(encoding="utf-8"))
+
+    for info in manifest["files"]:
+        file_path = episode_dir / info["name"]
+        if file_path.stat().st_size != info["size_bytes"]:
             return False
-        
-        # Check hash
-        with open(file_path, "rb") as f:
-            actual_hash = hashlib.sha256(f.read()).hexdigest()
-        
-        if actual_hash != info["sha256"]:
+        actual = "sha256:" + hashlib.sha256(file_path.read_bytes()).hexdigest()
+        if actual != info["sha256"]:
             return False
-    
+
     return True
 ```
+
+The loop matches the on-disk `files[]` shape (`name`, `sha256` with `sha256:` prefix, `size_bytes`).
 
 <Tip>
 JSON serialization uses `canonical_dumps()` with sorted keys for byte-identical output, ensuring consistent hashes across runs.
@@ -457,7 +493,7 @@ When prompt provenance is enabled (ADR-005, experimental), all prompts are recor
 ```
 
 <Warning>
-**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(log_prompts=True)` only when needed for debugging or compliance.
+**Experimental feature (ADR-005)**: Enable prompt logging carefully—prompts may contain sensitive data. Use `ns.set(prompt_provenance_enabled=True)` (not `log_prompts`) only when needed for debugging or compliance.
 </Warning>
 
 ### Use cases
@@ -474,36 +510,30 @@ When prompt provenance is enabled (ADR-005, experimental), all prompts are recor
 ```python
 import noesis as ns
 
-# Set custom runs directory
-ns.set(runs_dir="./my-runs")
+# Default: ./.noesis/episodes
+ns.set(runs_dir="./.noesis/episodes")
 
 # Or via environment
-# NOESIS_RUNS_DIR=./my-runs
+# NOESIS_RUNS_DIR=./.noesis/episodes
 ```
 
-### Labels
+`resolve_noesis_root` treats `runs_dir` as the episodes root only when its parent directory is named `.noesis` (or `runs_dir` itself is `.noesis`). Other paths resolve to `{runs_dir}/.noesis/episodes`. See [shared storage](/guides/configure-shared-storage) for the operational pitfall.
 
-Organize episodes with labels:
-
-```python
-import noesis as ns
-
-ns.set(label="production")
-# Artifacts go to .noesis/episodes/production/ep_.../
-
-ns.set(label="staging")
-# Artifacts go to .noesis/episodes/staging/ep_.../
-```
+Group runs with `ns.run(..., process="...")` / `noesis run --process` and `tags=`, not a layout label.
 
 ### Retention
 
-Control artifact retention:
+The runtime index lives at `.noesis/index/` (`layout.index_dir`) with `ttl_days=30`. Index writes are best-effort and must not fail the run.
 
 ```python
 from noesis.episode import EpisodeIndex
+from pathlib import Path
+import noesis as ns
+from noesis.runtime.paths import resolve_noesis_paths
 
-store = EpisodeIndex("./.noesis/episodes/_episodes", ttl_days=14)
-store.vacuum()  # Remove episodes older than 14 days
+layout = resolve_noesis_paths(workspace=None, runs_dir=Path(ns.get()["runs_dir"]))
+store = EpisodeIndex(layout.index_dir, ttl_days=30)
+store.vacuum()
 ```
 
 ## Best practices

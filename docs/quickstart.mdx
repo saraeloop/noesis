@@ -103,21 +103,21 @@ Every episode creates a structured artifact directory (written under `.noesis/ep
 ```
 .noesis/episodes/
   ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/   # episode id (ULID)
-    summary.json                  # metrics + rollups
+    summary.json                  # metrics + rollups (written when the run seals)
     state.json                    # final state snapshot
     events.jsonl                  # append-only timeline
+    final.json                    # seal marker
     manifest.json                 # SHA-256 + size ledger
     learn.jsonl                   # optional learning payloads
-  _episodes/                      # optional episode index (best-effort)
-    episodes.jsonl
+.noesis/index/                    # best-effort EpisodeIndex (ttl_days=30)
 ```
 
-The `_episodes/` index is written on a best-effort basis at the end of runs and may be missing or empty (for example, if indexing fails due to permissions).
+The `.noesis/index/` catalog is written on a best-effort basis at the end of **terminal** runs and may be missing (for example, if indexing fails due to permissions). Paused runs have no `summary.json` / `final.json` yet.
 
 <Tip>
 Use `jq` for pretty-printing JSON artifacts: `cat .noesis/episodes/ep_01JH6Z2V9Q2K6Y6N0QZ7K2QW8C/summary.json | jq .`
 
-To change the artifact location, set `NOESIS_RUNS_DIR` or in Python call `ns.set(runs_dir="./my-runs")`.
+To change the artifact location, set `NOESIS_RUNS_DIR` to a path whose parent is `.noesis` (default `./.noesis/episodes`) or in Python call `ns.set(runs_dir="./.noesis/episodes")`. Other values resolve to `{runs_dir}/.noesis/episodes`.
 </Tip>
 
 ## What's next?

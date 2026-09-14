@@ -12,7 +12,7 @@ It's practical and opinionated: what to do, what to avoid, and how to fit Noēsi
 ## 1) What Noēsis actually adds
 
 - **Episodes**: every run is a cognitive episode with a stable ID.
-- **Artifacts**: `events.jsonl`, `summary.json`, `state.json`, `manifest.json`, optional `prompts.jsonl`.
+- **Artifacts**: `events.jsonl`, `state.json`, `summary.json`, `final.json`, `manifest.json`, optional `prompts.jsonl` / `learn.jsonl`.
 - **Cognitive phases**: `observe → intuition → interpret → plan → direction → governance → act → reflect → learn → terminate → insight → memory`.
 - **Governance & direction**: policies that hint, intervene, or veto, with explicit flags in summary + events.
 - **Determinism controls**: seeds, deterministic clocks/IDs, replay support.
@@ -44,8 +44,9 @@ You don’t need a perfect “episode store” on day one—pick **one** place t
 ```
 ./.noesis/episodes/<episode-id>/
   events.jsonl
-  summary.json
   state.json
+  summary.json
+  final.json
   manifest.json
 ```
 
@@ -58,7 +59,7 @@ Goal: make episodes easy to find, safe to keep, and cheap to delete.
 - Add cleanup: in CI delete after each job; on dev machines prune old runs (`find runs -mtime +7 -delete` or similar).
 
 **Shared / long-lived (later, if Noēsis becomes central)**
-- Centralize base path: `/var/noesis/episodes/<service>/<date>/...` or a mounted volume/S3 prefix.
+- Centralize the `.noesis` root: `/var/noesis/.noesis/episodes/...` on a mounted volume. Do not use `/var/noesis/episodes` unless that path’s parent is named `.noesis` — otherwise the runtime writes `{runs_dir}/.noesis/episodes`. See [shared storage](/guides/configure-shared-storage).
 - Add retention: keep N latest per service, and “golden” episodes (evals, interesting failures) tagged for longer.
 - Noēsis never deletes by itself—use your scheduler/scripts.
 
